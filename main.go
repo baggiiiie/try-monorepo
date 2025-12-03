@@ -32,12 +32,15 @@ func getURLHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	shortURL := path[1]
 	fmt.Println("short url is", shortURL)
-	longURL, err := getLongURL(shortURL, myURLMap)
+	newURL, err := getLongURL(shortURL, myURLMap)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	w.Write([]byte(longURL))
+	location := fmt.Sprintf("http://localhost:3000/%s", newURL)
+	w.Header().Set("Location", location)
+	w.WriteHeader(http.StatusMovedPermanently)
+	w.Write([]byte("test"))
 }
 
 func main() {
