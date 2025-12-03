@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net/http"
+	"strings"
 )
 
 type App struct {
@@ -16,21 +16,28 @@ var myURLMap = urlMapping{
 	"short-url-1": "this-is-a-very-long-url-1",
 }
 
-func (app *App) getLongURL(shortURL string) (string, error) {
-	if longURL, ok := app.urlMap[shortURL]; ok {
+func getLongURL(shortURL string, urlMap urlMapping) (string, error) {
+	if longURL, ok := urlMap[shortURL]; ok {
 		return longURL, nil
 	}
 	err := fmt.Errorf("%s doesn't exist", shortURL)
 	return "", err
 }
 
-func homeHandler(w http.ResponseWriter, r *http.Request) {
-	msg := "welcome to my url shortener"
-	byteNum, err := fmt.Fprintf(w, "%s\n", msg)
-	if err != nil {
-		log.Println("writing failed")
+func getURLHandler(w http.ResponseWriter, r *http.Request) {
+	path := strings.Split(r.URL.Path, "/")
+	if len(path) < 1 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
-	log.Printf("%d number of bytes written", byteNum)
+	shortURL := path[1]
+	fmt.Println("short url is", shortURL)
+	longURL, err := getLongURL(shortURL, myURLMap)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	w.Write([]byte(longURL))
 }
 
 func main() {
@@ -40,15 +47,15 @@ func main() {
 	// - check mapping
 	// - http server return long url and redirect code
 	fmt.Println("my url shortener starts")
-	http.HandleFunc("/", homeHandler)
+	http.HandleFunc("/", getURLHandler)
 	_ = http.ListenAndServe("localhost:3000", nil)
-	app := App{
-		urlMap: myURLMap,
-	}
-	longURL, err := app.getLongURL("")
-	if err != nil {
-		fmt.Println("error getting url", err)
-	} else {
-		fmt.Println("long url is", longURL)
-	}
+	// app := App{
+	// 	urlMap: myURLMap,
+	// }
+	// longURL, err := app.getLongURL("")
+	// if err != nil {
+	// 	fmt.Println("error getting url", err)
+	// } else {
+	// 	fmt.Println("long url is", longURL)
+	// }
 }
