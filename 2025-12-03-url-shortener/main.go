@@ -50,8 +50,11 @@ func main() {
 	// - check mapping
 	// - http server return long url and redirect code
 	fmt.Println("my url shortener starts")
-	http.HandleFunc("/", getURLHandler)
-	_ = http.ListenAndServe("localhost:3000", nil)
+	server := &http.Server{
+		Addr:    ":3000",
+		Handler: http.HandlerFunc(getURLHandler),
+	}
+	_ = server.ListenAndServe()
 	// app := App{
 	// 	urlMap: myURLMap,
 	// }
