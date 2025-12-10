@@ -4,16 +4,14 @@ import sys
 from pathlib import Path
 from tqdm import tqdm
 import chromadb
-from openai import OpenAI
+import ollama
 
 # -------------------------
 # CONFIG
 # -------------------------
-EMBED_MODEL = "text-embedding-3-small"
-CHAT_MODEL = "gpt-4.1"
+EMBED_MODEL = "nomic-embed-text"  # Ollama embedding model
+CHAT_MODEL = "llama3.2"  # Ollama chat model
 VECTOR_DB_PATH = ".deepchat_store"
-
-client = OpenAI()
 
 
 # -------------------------
@@ -52,8 +50,8 @@ def chunk_text(text, max_lines=40):
 # -------------------------
 def embed_text(text):
     """Get embedding vector."""
-    resp = client.embeddings.create(model=EMBED_MODEL, input=text)
-    return resp.data[0].embedding
+    resp = ollama.embeddings(model=EMBED_MODEL, prompt=text)
+    return resp["embedding"]
 
 
 def build_index(path):
@@ -116,12 +114,12 @@ def answer_with_context(question, docs):
         },
     ]
 
-    resp = client.chat.completions.create(
+    resp = ollama.chat(
         model=CHAT_MODEL,
         messages=messages,
     )
 
-    return resp.choices[0].message["content"]
+    return resp["message"]["content"]
 
 
 # -------------------------
