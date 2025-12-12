@@ -3,6 +3,7 @@
 **Description:** Creates a GitHub PR from the current bookmark, automatically extracting metadata from jj revision data. The title is derived from the latest commit message on the bookmark, the body from the revision description, and the base branch is auto-detected (usually main/master). If the bookmark name contains `draft/`, the PR is created in draft mode.
 
 **Command Workflow:**
+
 ```bash
 # 1. Ensure you're on the bookmark you want to create a PR from
 jj log -r @
@@ -42,6 +43,7 @@ fi
 **Command Workflow:**
 
 **Push mode (--push):**
+
 ```bash
 # 1. List all local bookmarks
 jj bookmark list
@@ -54,6 +56,7 @@ jj git push --bookmark my-feature --remote origin
 ```
 
 **Pull mode (--pull):**
+
 ```bash
 # 1. Fetch all remote branches
 jj git fetch --remote origin
@@ -72,6 +75,7 @@ jj git fetch --remote origin
 ```
 
 **Sync all mode (--all):**
+
 ```bash
 # 1. Fetch from remote first
 jj git fetch --remote origin
@@ -96,6 +100,7 @@ done
 **Rationale:** Developers often need to review or fix PRs locally. This integrates gh's PR fetching with jj's immutable change model, making it easier to iterate without messing up Git history.
 
 **Command Workflow:**
+
 ```bash
 # 1. Get PR information from GitHub
 PR_NUMBER=123
@@ -140,6 +145,7 @@ jj log -r @
 **Rationale:** Streamlines navigation from local development to related GitHub issues/PRs without context switching or manual URL construction.
 
 **Command Workflow:**
+
 ```bash
 # 1. Get the current revision description
 REV=${1:-@}  # Default to current revision
@@ -178,6 +184,7 @@ fi
 **Rationale:** Visibility is key in large repos. This extends gh's pr list by tying it to jj's local state, helping users quickly see PR status for their bookmarks without switching tools.
 
 **Command Workflow:**
+
 ```bash
 # 1. Get all local bookmarks
 LOCAL_BOOKMARKS=$(jj bookmark list --all | awk '{print $1}')
@@ -222,6 +229,7 @@ gh pr list --author "$AUTHOR" --json number,title,headRefName | \
 **Rationale:** Common workflow when main branch advances while you're working on a feature. Keeps your changes up-to-date without merge commits.
 
 **Command Workflow:**
+
 ```bash
 # 1. Fetch the latest main from remote
 REMOTE=${1:-origin}
@@ -269,6 +277,7 @@ jj log -r "@ | $MAIN_BRANCH"
 **Rationale:** After PRs are merged and branches deleted on GitHub, local bookmarks become stale. This automates cleanup and keeps local state in sync with remote.
 
 **Command Workflow:**
+
 ```bash
 REMOTE=${1:-origin}
 
@@ -316,6 +325,7 @@ jj bookmark list
 **Rationale:** Streamlines the final step of PR preparation - ensures code is pushed, switches from draft to ready, and notifies reviewers in one command.
 
 **Command Workflow:**
+
 ```bash
 # 1. Get current bookmark
 BOOKMARK=$(jj log -r @ --no-graph -T 'bookmarks' | awk '{print $1}')
@@ -376,6 +386,7 @@ gh pr view "$PR_NUM"
 **Rationale:** Reviewing PRs often requires them to be up-to-date with the target branch. This combines checkout and rebase in one step for efficiency.
 
 **Command Workflow:**
+
 ```bash
 PR_NUMBER=$1
 BOOKMARK_NAME=${2:-}
@@ -430,6 +441,7 @@ fi
 **Rationale:** Quick navigation between active PRs without remembering bookmark names. Integrates GitHub PR state with local jj workspace.
 
 **Command Workflow:**
+
 ```bash
 BASE_BRANCH=${1:-main}
 
@@ -501,6 +513,7 @@ jj log -r @ -n 5
 **Rationale:** Streamlines starting work on a GitHub issue by creating a properly named bookmark with issue context embedded in the revision description. Maintains traceability between issues and code changes.
 
 **Command Workflow:**
+
 ```bash
 ISSUE_NUMBER=$1
 BASE_BRANCH=${2:-main}
