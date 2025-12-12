@@ -111,7 +111,9 @@ push_bookmarks() {
 
     # Get list of local bookmarks (excluding @git refs)
     local bookmarks
-    bookmarks=$(jj bookmark list | grep -v '@' | awk '{print $1}' | grep -v '^$' || true)
+    bookmarks=$(
+        jj bookmark list -T 'concat(name,"\n")' | sort -u
+    )
 
     if [[ -z $bookmarks ]]; then
         log_warn "No local bookmarks found to push"
