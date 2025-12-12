@@ -41,6 +41,19 @@ class Solution:
     def mergeTwoListsRecursive(
         self, list1: Optional[ListNode], list2: Optional[ListNode]
     ) -> Optional[ListNode]:
+        # base case:
+        # - when there's one or more empty list, return the other list or None
+        #
+        # break down to sub-problems:
+        # - what should be returned back to call stack: head of list
+        #
+        # states between problems:
+        # - next one in the list
+
+        if not list1 or not list2:
+            return list1 or list2
+
+        return list1
         pass
 
 
