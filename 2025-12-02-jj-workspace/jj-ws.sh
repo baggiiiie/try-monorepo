@@ -12,7 +12,7 @@ init_metadata() {
     fi
 
     if [[ ! -f "$JJ_WS_METADATA" ]]; then
-        echo '{"workspaces":{}}' > "$JJ_WS_METADATA"
+        echo '{"workspaces":{}}' >"$JJ_WS_METADATA"
     fi
 }
 
@@ -27,8 +27,8 @@ add_workspace_metadata() {
     # Use jq to update the metadata file
     tmp_file=$(mktemp)
     jq --arg name "$name" --arg path "$path" --arg created "$created" \
-       '.workspaces[$name] = {path: $path, created: $created}' \
-       "$JJ_WS_METADATA" > "$tmp_file"
+        '.workspaces[$name] = {path: $path, created: $created}' \
+        "$JJ_WS_METADATA" >"$tmp_file"
     mv "$tmp_file" "$JJ_WS_METADATA"
 }
 
@@ -42,7 +42,7 @@ remove_workspace_metadata() {
 
     tmp_file=$(mktemp)
     jq --arg name "$name" 'del(.workspaces[$name])' \
-       "$JJ_WS_METADATA" > "$tmp_file"
+        "$JJ_WS_METADATA" >"$tmp_file"
     mv "$tmp_file" "$JJ_WS_METADATA"
 }
 
@@ -64,12 +64,8 @@ add_workspace() {
         exit 1
     fi
 
-    # Create the workspace directory
-    mkdir -p "$workspace_path"
-    echo "Created workspace directory: $workspace_path"
-
     # Add workspace with jj
-    if jj workspace add "$name" "$workspace_path"; then
+    if jj workspace add --name "$name" "$workspace_path"; then
         echo "Added workspace '$name' to jj"
 
         # Save metadata
@@ -121,12 +117,12 @@ delete_workspace() {
 
 # Show usage
 show_usage() {
-    cat << EOF
+    cat <<EOF
 jjw - JJ Workspace Manager
 
 Usage:
   jjw add <name>       Create a new workspace
-  jjw delete <name>    Remove a workspace
+  jjw rm/del <name>    Remove a workspace
   jjw help             Show this help message
 
 Examples:
@@ -141,21 +137,21 @@ main() {
     shift || true
 
     case "$command" in
-        add)
-            add_workspace "$@"
-            ;;
-        delete|remove|rm)
-            delete_workspace "$@"
-            ;;
-        help|--help|-h)
-            show_usage
-            ;;
-        *)
-            echo "Error: unknown command '$command'"
-            echo ""
-            show_usage
-            exit 1
-            ;;
+    add)
+        add_workspace "$@"
+        ;;
+    del | rm)
+        delete_workspace "$@"
+        ;;
+    help | --help | -h)
+        show_usage
+        ;;
+    *)
+        echo "Error: unknown command '$command'"
+        echo ""
+        show_usage
+        exit 1
+        ;;
     esac
 }
 
