@@ -112,6 +112,15 @@ delete_workspace() {
     remove_workspace_metadata "$name"
     echo "Removed workspace metadata"
 
+    # Kill tmux window if it exists
+    if [[ -n "$TMUX" ]] && tmux list-windows -F "#{window_name}" 2>/dev/null | grep -q "^${name}$"; then
+        if tmux kill-window -t "$name" 2>/dev/null; then
+            echo "Killed tmux window '$name'"
+        else
+            echo "Warning: failed to kill tmux window '$name'"
+        fi
+    fi
+
     echo "Successfully deleted workspace '$name'"
 }
 
@@ -161,12 +170,6 @@ switch_workspace() {
         exit 1
     fi
 
-    # Check if --tmux was specified (not implemented yet)
-    if [[ "$tmux_flag" == true ]]; then
-        echo "Error: --tmux option is not yet implemented" >&2
-        exit 1
-    fi
-
     # Get workspace path from metadata
     local workspace_path=$(get_workspace_path "$name")
 
@@ -183,11 +186,29 @@ switch_workspace() {
         exit 1
     fi
 
-    # Output the path to stdout (for cd)
-    echo "$workspace_path"
+    # Handle --tmux flag
+    if [[ "$tmux_flag" == true ]]; then
+        # Check if we're in a tmux session
+        if [[ -z "$TMUX" ]]; then
+            echo "Error: --tmux flag requires running inside a tmux session" >&2
+            echo "Please start tmux first, then run this command" >&2
+            exit 1
+        fi
 
-    # Print informational message to stderr
-    echo "Switched to workspace '$name'" >&2
+        # Create a new tmux window with the workspace directory and name
+        if tmux new-window -c "$workspace_path" -n "$name"; then
+            echo "Created tmux window '$name' at $workspace_path" >&2
+        else
+            echo "Error: failed to create tmux window" >&2
+            exit 1
+        fi
+    else
+        # Output the path to stdout (for cd)
+        echo "$workspace_path"
+
+        # Print informational message to stderr
+        echo "Switched to workspace '$name'" >&2
+    fi
 }
 
 # Show usage
@@ -202,14 +223,15 @@ Usage:
   jjw help                 Show this help message
 
 Options for switch:
-  --tmux                   Open workspace in tmux (not yet implemented)
+  --tmux                   Open workspace in new tmux window (requires tmux)
 
 Examples:
   jjw add feature-x        # Creates workspace at ~/.jj-ws/feature-x
   jjw switch feature-x     # Outputs path to switch to workspace
-  jjw delete feature-x     # Removes workspace and directory
+  jjw switch feature-x --tmux  # Opens workspace in new tmux window
+  jjw delete feature-x     # Removes workspace, directory, and tmux window
 
-Note: To use switch, create a shell function:
+Note: To use switch without --tmux, create a shell function:
   jjw_switch() { cd "\$(jjw switch "\$@")"; }
   Then use: jjw_switch feature-x
 EOF
