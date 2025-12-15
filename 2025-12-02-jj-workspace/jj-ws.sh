@@ -115,19 +115,103 @@ delete_workspace() {
     echo "Successfully deleted workspace '$name'"
 }
 
+# Get workspace path from metadata
+get_workspace_path() {
+    local name=$1
+
+    if [[ ! -f "$JJ_WS_METADATA" ]]; then
+        return 1
+    fi
+
+    jq -r --arg name "$name" '.workspaces[$name].path // empty' "$JJ_WS_METADATA"
+}
+
+# Switch to a workspace
+switch_workspace() {
+    local name=""
+    local tmux_flag=false
+
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --tmux)
+                tmux_flag=true
+                shift
+                ;;
+            -*)
+                echo "Error: unknown option '$1'" >&2
+                echo "Usage: jjw switch <name> [--tmux]" >&2
+                exit 1
+                ;;
+            *)
+                if [[ -z "$name" ]]; then
+                    name="$1"
+                else
+                    echo "Error: unexpected argument '$1'" >&2
+                    exit 1
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    if [[ -z "$name" ]]; then
+        echo "Error: workspace name is required" >&2
+        echo "Usage: jjw switch <name> [--tmux]" >&2
+        exit 1
+    fi
+
+    # Check if --tmux was specified (not implemented yet)
+    if [[ "$tmux_flag" == true ]]; then
+        echo "Error: --tmux option is not yet implemented" >&2
+        exit 1
+    fi
+
+    # Get workspace path from metadata
+    local workspace_path=$(get_workspace_path "$name")
+
+    if [[ -z "$workspace_path" ]]; then
+        echo "Error: workspace '$name' not found in metadata" >&2
+        echo "Run 'jjw list' to see available workspaces" >&2
+        exit 1
+    fi
+
+    # Verify the directory exists
+    if [[ ! -d "$workspace_path" ]]; then
+        echo "Error: workspace directory not found at $workspace_path" >&2
+        echo "The workspace may have been deleted manually" >&2
+        exit 1
+    fi
+
+    # Output the path to stdout (for cd)
+    echo "$workspace_path"
+
+    # Print informational message to stderr
+    echo "Switched to workspace '$name'" >&2
+}
+
 # Show usage
 show_usage() {
     cat <<EOF
 jjw - JJ Workspace Manager
 
 Usage:
-  jjw add <name>       Create a new workspace
-  jjw rm/del <name>    Remove a workspace
-  jjw help             Show this help message
+  jjw add <name>           Create a new workspace
+  jjw switch <name>        Switch to a workspace directory
+  jjw rm/del <name>        Remove a workspace
+  jjw help                 Show this help message
+
+Options for switch:
+  --tmux                   Open workspace in tmux (not yet implemented)
 
 Examples:
-  jjw add feature-x       # Creates workspace at ~/.jj-ws/feature-x
-  jjw delete feature-x    # Removes workspace and directory
+  jjw add feature-x        # Creates workspace at ~/.jj-ws/feature-x
+  jjw switch feature-x     # Outputs path to switch to workspace
+  jjw delete feature-x     # Removes workspace and directory
+
+Note: To use switch, create a shell function:
+  jjw_switch() { cd "\$(jjw switch "\$@")"; }
+  Then use: jjw_switch feature-x
 EOF
 }
 
@@ -142,6 +226,9 @@ main() {
         ;;
     del | rm)
         delete_workspace "$@"
+        ;;
+    switch)
+        switch_workspace "$@"
         ;;
     help | --help | -h)
         show_usage
