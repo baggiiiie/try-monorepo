@@ -45,7 +45,7 @@ Switch to an existing workspace
   - `-l, --list` - Show available workspaces before switching (interactive picker)
 - **Example:** `jjw switch feature-x`
 
-#### `jjw delete <name> [names...]`
+#### `jjw rm <name> [names...]`
 
 Remove workspace(s) and clean up directories
 
