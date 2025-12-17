@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Parse command line arguments
 branch=""
@@ -76,6 +76,7 @@ fi
 
 # Push branch if needed
 if [[ -d .jj ]]; then
+    jj bookmark track "${branch#"$me":}@origin"
     if ! jj git push -b "${branch#"$me":}"; then
         echo "probably a private commit, push failed"
         exit 1
