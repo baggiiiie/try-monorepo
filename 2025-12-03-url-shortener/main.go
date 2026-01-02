@@ -1,13 +1,17 @@
 package main
 
 import (
+	"crypto/sha1"
+	"encoding/base64"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 )
 
 type App struct {
-	urlMap urlMapping
+	urlMap    urlMapping
+	URLLength int
 }
 
 type urlMapping = map[string]string
@@ -16,31 +20,56 @@ var myURLMap = urlMapping{
 	"short-url-1": "this-is-a-very-long-url-1",
 }
 
-func getLongURL(shortURL string, urlMap urlMapping) (string, error) {
-	if longURL, ok := urlMap[shortURL]; ok {
+func (app App) getLongURL(shortURL string) (string, error) {
+	if longURL, ok := app.urlMap[shortURL]; ok {
 		return longURL, nil
 	}
 	err := fmt.Errorf("%s doesn't exist", shortURL)
 	return "", err
 }
 
-func getURLHandler(w http.ResponseWriter, r *http.Request) {
+func (app App) generateShortURL(longURL string) string {
+	hash := sha1.Sum([]byte(longURL))
+	shortURL := base64.RawURLEncoding.EncodeToString(hash[:])
+	return shortURL[:app.URLLength]
+}
+
+func (app App) getURLHandler(w http.ResponseWriter, r *http.Request) {
 	path := strings.Split(r.URL.Path, "/")
 	if len(path) < 1 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	shortURL := path[1]
-	fmt.Println("short url is", shortURL)
-	newURL, err := getLongURL(shortURL, myURLMap)
+	fmt.Println("requested short url is", shortURL)
+	longURL, err := app.getLongURL(shortURL)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	location := fmt.Sprintf("http://localhost:3000/%s", newURL)
+	location := fmt.Sprintf("http://localhost:3000/%s", longURL)
 	w.Header().Set("Location", location)
 	w.WriteHeader(http.StatusMovedPermanently)
-	w.Write([]byte("test"))
+	if _, err = fmt.Fprintf(w, "%s is moved permanently to %s", shortURL, longURL); err != nil {
+		fmt.Println("err writing to response writer:", err)
+	}
+	fmt.Printf("%s is moved permanently to %s", shortURL, longURL)
+}
+
+func (app App) generateURLHandler(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "cannot read body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	longURL := string(body)
+	shortURL := app.generateShortURL(longURL)
+	app.urlMap[shortURL] = longURL
+	msg := fmt.Sprintf("%s is generated for %s", shortURL, longURL)
+	fmt.Println(msg)
+	w.Write([]byte(msg))
 }
 
 func main() {
@@ -50,18 +79,17 @@ func main() {
 	// - check mapping
 	// - http server return long url and redirect code
 	fmt.Println("my url shortener starts")
+	app := App{
+		urlMap:    myURLMap,
+		URLLength: 16,
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", app.getURLHandler)
+	mux.HandleFunc("/url", app.generateURLHandler)
+
 	server := &http.Server{
 		Addr:    ":3000",
-		Handler: http.HandlerFunc(getURLHandler),
+		Handler: mux,
 	}
 	_ = server.ListenAndServe()
-	// app := App{
-	// 	urlMap: myURLMap,
-	// }
-	// longURL, err := app.getLongURL("")
-	// if err != nil {
-	// 	fmt.Println("error getting url", err)
-	// } else {
-	// 	fmt.Println("long url is", longURL)
-	// }
 }
