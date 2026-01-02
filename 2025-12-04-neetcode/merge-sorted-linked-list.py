@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Optional
 
 
 # Definition for singly-linked list.
@@ -15,26 +15,21 @@ class Solution:
     def mergeTwoLists(
         self, list1: Optional[ListNode], list2: Optional[ListNode]
     ) -> Optional[ListNode]:
-        # compare the heads of the two lists
-        # point curr.next to the smaller one
-        # move the smaller head to its next node
-        # move curr to to curr.next
-        # when one list finishes, append rest of the other list to tail
-
-        # dummy points to a None node whose next node is the new head
+        # set up an empty dummy node
+        # compare the heads of two lists
+        # point dummy node's next_node to smaller one
+        # move heads of two lists to next
         curr = dummy = ListNode()
-
         while list1 and list2:
-            if list1.val < list2.val:
-                curr.next = list1
-                curr = curr.next
-                list1 = list1.next
-            else:
+            if list1.val > list2.val:
                 curr.next = list2
-                curr = curr.next
                 list2 = list2.next
-
-        curr.next = list1 or list2
+            else:
+                curr.next = list1
+                list1 = list1.next
+            curr = curr.next
+        if list1 or list2:
+            curr.next = list1 or list2
 
         return dummy.next
 
@@ -42,19 +37,23 @@ class Solution:
         self, list1: Optional[ListNode], list2: Optional[ListNode]
     ) -> Optional[ListNode]:
         # base case:
-        # - when there's one or more empty list, return the other list or None
-        #
-        # break down to sub-problems:
-        # - what should be returned back to call stack: head of list
-        #
-        # states between problems:
-        # - next one in the list
-
-        if not list1 or not list2:
+        # - one list is empty
+        # sub problems:
+        # - compare the heads of two lists
+        # - pass the next_node of smaller head, and the other head to next function call (states)
+        # return:
+        # - return the head of the smaller head back to call stack
+        # - calling function is waiting for the head of a sorted list to be returned
+        # - (we don't need a dummy node in this case, the return is already a head)
+        if (not list1) or (not list2):
+            # base case: either one is empty
             return list1 or list2
-
-        return list1
-        pass
+        if list1.val < list2.val:
+            list1.next = self.mergeTwoListsRecursive(list1.next, list2)
+            return list1
+        else:
+            list2.next = self.mergeTwoListsRecursive(list1, list2.next)
+            return list2
 
 
 if __name__ == "__main__":
@@ -62,7 +61,7 @@ if __name__ == "__main__":
     s = Solution()
     list1 = ListNode(1, ListNode(2, ListNode(4)))
     list2 = ListNode(1, ListNode(3, ListNode(4)))
-    head = s.mergeTwoLists(list1, list2)
+    head = s.mergeTwoListsRecursive(list1, list2)
 
     current = head
     while current:
