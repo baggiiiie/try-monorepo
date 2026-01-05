@@ -20,41 +20,40 @@ class ListNode:
 
 class Solution:
     def reorderList(self, head: Optional[ListNode]) -> None:
-        # break list into halves
-        # go to middle (length / 2)
-        # - list1: head to length / 2;
-        # - list2: length/2 +1 : length
-        # sort list2
-        # join list1 list2
         if not head or not head.next:
             return
 
-        # get head of 2nd half of the list
-        slow_p, fast_p = head, head.next
-        while fast_p and fast_p.next and slow_p:
-            slow_p = slow_p.next
-            fast_p = fast_p.next.next
+        # step 1: break down list to 2 halves
+        slow_ptr, fast_ptr = head, head.next
+        assert slow_ptr is not None  # this is only to make lsp shut up
+        while fast_ptr and fast_ptr.next:
+            fast_ptr = fast_ptr.next.next
+            slow_ptr = slow_ptr.next
 
-        assert slow_p is not None
-        list2 = slow_p.next
-        slow_p.next = None
+        assert slow_ptr is not None  # this is only to make lsp shut up
+        second_list = slow_ptr.next
+        # break the end of first list from linking to start of second list
+        slow_ptr.next = None
 
-        # reverse the second list
+        # step 2: reverse 2nd list
         prev = None
-        while list2:
-            next_node = list2.next
-            list2.next = prev
-            prev = list2
-            list2 = next_node
-        list2 = prev
+        while second_list:
+            next_node = second_list.next
+            second_list.next = prev
+            prev = second_list
+            second_list = next_node
 
-        # join two lists
-        list1 = head
-        while list1 and list2:
-            list1_next, list2_next = list1.next, list2.next
-            list1.next = list2
-            list2.next = list1_next
-            list1, list2 = list1_next, list2_next
+        # when the while loop breaks, second_list is None
+        # prev is the last element, the actual the head of second_list
+        second_list = prev
+
+        # step 3: join two lists
+        first_list = head
+        while second_list:  # len(second_list) <= len(first_list)
+            next_1st, next_2nd = first_list.next, second_list.next
+            first_list.next = second_list
+            second_list.next = next_1st
+            first_list, second_list = next_1st, next_2nd
 
 
 if __name__ == "__main__":

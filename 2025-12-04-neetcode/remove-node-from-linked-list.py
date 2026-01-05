@@ -20,30 +20,22 @@ class ListNode:
 
 class Solution:
     def removeNthFromEnd(self, head: Optional[ListNode], n: int) -> Optional[ListNode]:
-        # brute force:
-        # - go through the list, check every time if the next n item is None
-        # - O(n^2)
-        # better?:
-        # - go through list to get length
-        # - find (len-n)-th node, point its previous.next to its next
-        # - O(n)?
-        if not head:
-            return None
-
         dummy = ListNode(0, head)
+        fast_ptr = slow_ptr = dummy
 
-        right_ptr, left_ptr = head, dummy
-        for _ in range(n):
-            right_ptr = right_ptr.next
+        # shift fast_ptr forward
+        for _ in range(n + 1):
+            fast_ptr = fast_ptr.next
 
-        while right_ptr:
-            right_ptr = right_ptr.next
-            left_ptr = left_ptr.next
-        previous_node = left_ptr
+        # shift both pointers to desired position
+        while fast_ptr:
+            fast_ptr, slow_ptr = fast_ptr.next, slow_ptr.next
 
-        assert previous_node is not None
-        assert previous_node.next is not None
-        previous_node.next = previous_node.next.next
+        # slow_ptr is now the previous node before the node to be removed
+        assert slow_ptr is not None
+        assert slow_ptr.next is not None
+        slow_ptr.next = slow_ptr.next.next
+
         return dummy.next
 
 
