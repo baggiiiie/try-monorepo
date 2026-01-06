@@ -1,4 +1,4 @@
-from curses import noraw
+from collections import defaultdict
 from typing import Optional
 
 
@@ -37,20 +37,45 @@ class Solution:
             return
 
         # node_map = {None: None}
-        node_map = {}
+        node_map = defaultdict(lambda: Node(0))
 
-        curr = head
-        while curr:
-            node_map[curr] = Node(curr.val)
-            curr = curr.next
+        # curr = head
+        # while curr:
+        #     node_map[curr] = Node(curr.val)
+        #     curr = curr.next
 
         for old_node, new_node in node_map.items():
-            if old_node.next:
-                new_node.next = node_map[old_node.next]
-            if old_node.random:
-                new_node.random = node_map[old_node.random]
+            new_node.val = old_node.val
+            new_node.next = node_map[old_node.next]
+            new_node.random = node_map[old_node.random]
 
         return node_map[head]
+
+    def copyRandomListInterleave(self, head: Optional[Node]) -> Optional[Node]:
+        # go through linked list
+        # for each node:
+        # - create an identical node
+        if not head:
+            return
+
+        # 1st pass: create interleaving linked list
+        curr = head
+        while curr:
+            curr.next = Node(curr.val, curr.next, None)
+            curr = curr.next.next
+
+        # 2nd pass: remove old list
+        curr = head
+        while curr and curr.next:
+            next_node = curr.next.next
+            new_node = curr.next
+            if curr.random:
+                new_node.random = curr.random.next
+            if next_node:
+                new_node.next = next_node.next
+            curr = next_node
+
+        return head.next
 
 
 if __name__ == "__main__":
@@ -62,6 +87,6 @@ if __name__ == "__main__":
         # Node(1, None),
     ]
     for test_case in test_cases:
-        head = s.copyRandomList(test_case)
+        head = s.copyRandomListInterleave(test_case)
         print_linked_list(head)
         print()
