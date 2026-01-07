@@ -36,13 +36,12 @@ class Solution:
         if not head:
             return
 
-        # node_map = {None: None}
-        node_map = defaultdict(lambda: Node(0))
+        node_map = {}
 
-        # curr = head
-        # while curr:
-        #     node_map[curr] = Node(curr.val)
-        #     curr = curr.next
+        curr = head
+        while curr:
+            node_map[curr] = Node(curr.val)
+            curr = curr.next
 
         for old_node, new_node in node_map.items():
             new_node.val = old_node.val
@@ -52,9 +51,6 @@ class Solution:
         return node_map[head]
 
     def copyRandomListInterleave(self, head: Optional[Node]) -> Optional[Node]:
-        # go through linked list
-        # for each node:
-        # - create an identical node
         if not head:
             return
 
@@ -64,18 +60,19 @@ class Solution:
             curr.next = Node(curr.val, curr.next, None)
             curr = curr.next.next
 
-        # 2nd pass: remove old list
+        new_head = head.next
+        # 2nd pass
         curr = head
         while curr and curr.next:
             next_node = curr.next.next
-            new_node = curr.next
             if curr.random:
-                new_node.random = curr.random.next
+                curr.next.random = curr.random.next
             if next_node:
-                new_node.next = next_node.next
+                curr.next.next = next_node.next
+            curr.next = next_node
             curr = next_node
 
-        return head.next
+        return new_head
 
 
 if __name__ == "__main__":
