@@ -178,7 +178,7 @@ pull_bookmarks() {
             ((tracked_count++))
         else
             # Track the remote bookmark
-            if jj bookmark track "${branch}@${REMOTE}" 2>&1; then
+            if jj bookmark track "${branch}" --remote="${REMOTE}" 2>&1; then
                 ((tracked_count++))
                 $VERBOSE && log_info "✓ Tracked: ${branch}"
             else

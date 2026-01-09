@@ -41,7 +41,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-jj bookmark track "$branch_to_fetch@$remote" || {
+jj bookmark track "$branch_to_fetch" --remote="$remote" || {
     echo "failed to track remote branch '$branch_to_fetch' from remote '$remote'"
     exit 1
 }
