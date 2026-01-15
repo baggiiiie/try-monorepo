@@ -42,6 +42,11 @@ if [[ -z $branch ]]; then
     fi
 fi
 
+if [[ -z $branch ]]; then
+    echo "no branch selected, exiting"
+    exit 1
+fi
+
 # Read remotes into array (faster than multiple pipes)
 mapfile -t remotes_array < <(git remote)
 
@@ -50,6 +55,11 @@ if [[ ${#remotes_array[@]} -gt 1 ]]; then
     selected_remote=$(printf '%s\n' "${remotes_array[@]}" | fzf --prompt="Select remote to open PR in: ")
 else
     selected_remote="${remotes_array[0]}"
+fi
+
+if [[ -z $selected_remote ]]; then
+    echo "no remote selected, exiting"
+    exit 1
 fi
 
 # Extract user and repo from remote URL
