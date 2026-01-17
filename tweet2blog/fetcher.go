@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -36,11 +37,11 @@ func (f *TwitterFetcher) FetchThread(ctx context.Context, tweetURL string) (*Thr
 
 	f.logger.Info("Extracted tweet ID: %s, username: %s", tweetID, username)
 
-	// Try to fetch using guest client approach
+	// Try to fetch using guest client approach (requires bearer token)
 	thread, err := f.fetchThreadViaGuest(ctx, tweetID, username)
 	if err != nil {
 		// Fallback to scraping
-		f.logger.Warn("Guest API failed, attempting HTML scraping fallback: %v", err)
+		f.logger.Warn("API fetch failed (no bearer token?), attempting fallback: %v", err)
 		thread, err = f.fetchThreadViaHTML(ctx, tweetURL)
 		if err != nil {
 			return nil, err
@@ -113,7 +114,14 @@ func (f *TwitterFetcher) fetchThreadViaGuest(ctx context.Context, tweetID, usern
 func (f *TwitterFetcher) fetchThreadViaHTML(ctx context.Context, tweetURL string) (*Thread, error) {
 	f.logger.Info("Scraping thread from URL: %s", tweetURL)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", tweetURL, nil)
+	// Try public API endpoint as alternative (doesn't need auth but returns minimal data)
+	thread, err := f.tryPublicAPIEndpoint(ctx, tweetURL)
+	if err == nil && len(thread.Tweets) > 0 {
+		return thread, nil
+	}
+
+	req, fetchErr := http.NewRequestWithContext(ctx, "GET", tweetURL, nil)
+	err = fetchErr
 	if err != nil {
 		return nil, err
 	}
@@ -126,13 +134,68 @@ func (f *TwitterFetcher) fetchThreadViaHTML(ctx context.Context, tweetURL string
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("failed to read response: %w", readErr)
 	}
 
-	thread := f.parseThreadFromHTML(string(body), tweetURL)
-	return thread, nil
+	parsedThread := f.parseThreadFromHTML(string(body), tweetURL)
+	return parsedThread, nil
+}
+
+// tryPublicAPIEndpoint tries to fetch from public oEmbed endpoint
+func (f *TwitterFetcher) tryPublicAPIEndpoint(ctx context.Context, tweetURL string) (*Thread, error) {
+	// X/Twitter oEmbed endpoint (public, no auth required)
+	oembedURL := fmt.Sprintf("https://publish.twitter.com/oembed?url=%s&hide_thread=false", tweetURL)
+
+	oembedReq, err := http.NewRequestWithContext(ctx, "GET", oembedURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	oembedResp, err := f.client.Do(oembedReq)
+	if err != nil {
+		return nil, err
+	}
+	defer oembedResp.Body.Close()
+
+	if oembedResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("oEmbed API returned status %d", oembedResp.StatusCode)
+	}
+
+	var oembedData map[string]interface{}
+	if err := json.NewDecoder(oembedResp.Body).Decode(&oembedData); err != nil {
+		return nil, err
+	}
+
+	// Parse the returned HTML
+	if html, ok := oembedData["html"].(string); ok {
+		_, username, _ := f.extractTweetID(tweetURL)
+		thread := &Thread{
+			Tweets: make([]*Tweet, 0),
+			URL:    tweetURL,
+			Author: User{
+				Username: username,
+			},
+		}
+
+		// Extract text from blockquote
+		textPattern := regexp.MustCompile(`<p lang="[^"]*" dir="[^"]*">([^<]+)</p>`)
+		if matches := textPattern.FindStringSubmatch(html); len(matches) > 1 {
+			tweet := &Tweet{
+				Text: matches[1],
+				Author: User{
+					Username: username,
+				},
+				CreatedAt: time.Now(),
+			}
+			thread.Tweets = append(thread.Tweets, tweet)
+		}
+
+		return thread, nil
+	}
+
+	return nil, fmt.Errorf("no html in oEmbed response")
 }
 
 // parseThreadFromHTML extracts thread data from HTML
@@ -188,7 +251,7 @@ func (f *TwitterFetcher) extractThreadFromNextJS(data map[string]interface{}, us
 	return thread
 }
 
-// extractThreadFromMeta extracts basic info from meta tags
+// extractThreadFromMeta extracts basic info from meta tags and page content
 func (f *TwitterFetcher) extractThreadFromMeta(html, username string, thread *Thread) *Thread {
 	// Extract title from og:title
 	titlePattern := regexp.MustCompile(`<meta property="og:title" content="([^"]+)"`)
@@ -196,24 +259,110 @@ func (f *TwitterFetcher) extractThreadFromMeta(html, username string, thread *Th
 		thread.Title = matches[1]
 	}
 
-	// Extract description
+	// Extract description from og:description
 	descPattern := regexp.MustCompile(`<meta property="og:description" content="([^"]+)"`)
+	var firstTweetText string
 	if matches := descPattern.FindStringSubmatch(html); len(matches) > 1 {
-		// Use first tweet text if available
+		firstTweetText = matches[1]
+	}
+
+	// Try to extract tweet data from the page
+	// Look for conversation threads in the markup
+	conversationPattern := regexp.MustCompile(`<article[^>]*>(.*?)</article>`)
+	articles := conversationPattern.FindAllStringSubmatch(html, -1)
+
+	if len(articles) > 0 {
+		// Process each article as a tweet
+		for _, article := range articles {
+			if len(article) > 1 {
+				tweet := f.extractTweetFromArticle(article[1], username)
+				if tweet.Text != "" || tweet.CreatedAt.Year() > 2000 {
+					thread.Tweets = append(thread.Tweets, tweet)
+				}
+			}
+		}
+	}
+
+	// If no tweets found from articles, create minimal tweet from meta description
+	if len(thread.Tweets) == 0 && firstTweetText != "" {
+		tweet := &Tweet{
+			ID:   "",
+			Text: firstTweetText,
+			Author: User{
+				Username: username,
+			},
+			CreatedAt: time.Now(),
+		}
+		thread.Tweets = append(thread.Tweets, tweet)
+	} else if len(thread.Tweets) == 0 {
+		// Fallback: empty tweet with username
+		tweet := &Tweet{
+			Author: User{
+				Username: username,
+			},
+			CreatedAt: time.Now(),
+		}
+		thread.Tweets = append(thread.Tweets, tweet)
 	}
 
 	thread.Author.Username = username
+	if len(thread.Tweets) > 0 {
+		thread.CreatedAt = thread.Tweets[0].CreatedAt
+	}
 
-	// Create a minimal tweet from what we could extract
+	return thread
+}
+
+// extractTweetFromArticle extracts tweet data from an article element
+func (f *TwitterFetcher) extractTweetFromArticle(articleHTML, username string) *Tweet {
 	tweet := &Tweet{
 		Author: User{
 			Username: username,
 		},
 		CreatedAt: time.Now(),
 	}
-	thread.Tweets = append(thread.Tweets, tweet)
 
-	return thread
+	// Extract tweet text from span elements with data-testid="tweetText"
+	textPattern := regexp.MustCompile(`<span[^>]*data-testid="tweetText"[^>]*>([^<]+)</span>`)
+	if matches := textPattern.FindStringSubmatch(articleHTML); len(matches) > 1 {
+		tweet.Text = matches[1]
+	}
+
+	// Extract time/date from time element
+	timePattern := regexp.MustCompile(`<time[^>]+datetime="([^"]+)"`)
+	if matches := timePattern.FindStringSubmatch(articleHTML); len(matches) > 1 {
+		if t, err := time.Parse(time.RFC3339, matches[1]); err == nil {
+			tweet.CreatedAt = t
+		}
+	}
+
+	// Extract author name
+	namePattern := regexp.MustCompile(`<a[^>]*>[^<]*<div[^>]*>([^<]+)</div>`)
+	if matches := namePattern.FindStringSubmatch(articleHTML); len(matches) > 1 {
+		tweet.Author.Name = matches[1]
+	}
+
+	// Extract images (simplified)
+	imgPattern := regexp.MustCompile(`<img[^>]+src="([^"]+)"[^>]*alt="([^"]*)"`)
+	for _, match := range imgPattern.FindAllStringSubmatch(articleHTML, -1) {
+		if len(match) > 1 && strings.Contains(match[1], "pbs.twimg.com") {
+			tweet.Attachments.Media = append(tweet.Attachments.Media, Media{
+				Type:    "photo",
+				URL:     match[1],
+				AltText: match[2],
+			})
+		}
+	}
+
+	// Extract URLs
+	linkPattern := regexp.MustCompile(`href="(https?://[^"]+)"`)
+	for _, match := range linkPattern.FindAllStringSubmatch(articleHTML, -1) {
+		if len(match) > 1 && !strings.Contains(match[1], "x.com") && !strings.Contains(match[1], "twitter.com") {
+			tweet.Attachments.URLs = append(tweet.Attachments.URLs, match[1])
+		}
+	}
+
+	return tweet
 }
 
 // buildThreadFromAPI builds a Thread from API response
