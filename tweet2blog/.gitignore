@@ -1,0 +1,29 @@
+# Binaries
+tweet2blog
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Build artifacts
+/bin/
+/dist/
+
+# Go build cache
+*.out
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test outputs
+*.html
+*.md
+coverage.out
+
+# Dependencies
+vendor/
