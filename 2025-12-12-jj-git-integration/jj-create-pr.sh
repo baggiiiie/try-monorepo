@@ -34,7 +34,9 @@ done
 
 # If branch not provided, use fzf to select
 if [[ -z $branch ]]; then
-    branch=$(git branch --column=never --no-color | fzf --prompt="Select branch to open PR with: " | xargs)
+    my_branches=$(git for-each-ref --format='%(authorname) %(refname:short)' refs/heads/ --sort=-committerdate |
+        grep "$(git config user.name)" | awk '{print($2)}')
+    branch=$(fzf --prompt="Select branch to open PR with: " <<<"$my_branches" | xargs)
 
     if [[ "$branch" =~ "no branch" ]]; then
         branch=$(jj git push -c @ -N 2>&1 | grep -oE 'yc/test-\w' | head -n 1)
