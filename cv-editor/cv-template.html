@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{NAME}} - Resume</title>
+<style>
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 10pt;
+    line-height: 1.15;
+    color: #000;
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .page {
+    width: 210mm;
+    height: 297mm;
+    padding: 10mm 13mm 10mm 13mm;
+    margin: 0 auto;
+    background: #fff;
+    overflow: hidden;
+  }
+
+  @media print {
+    body {
+      margin: 0;
+    }
+    .page {
+      padding: 10mm 13mm 10mm 13mm;
+      margin: 0;
+      width: 100%;
+      height: auto;
+      max-height: 297mm;
+    }
+  }
+
+  .header {
+    text-align: center;
+    margin-bottom: 2pt;
+  }
+
+  .header h1 {
+    font-size: 15pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1pt;
+    margin-bottom: 1pt;
+  }
+
+  .header .contact {
+    font-size: 9pt;
+    margin-bottom: 0pt;
+  }
+
+  .header .contact a {
+    color: #000;
+    text-decoration: underline;
+  }
+
+  .header .availability {
+    font-size: 9pt;
+  }
+
+  .section-title {
+    font-size: 10pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    border-bottom: 1pt solid #000;
+    padding-bottom: 0pt;
+    margin-top: 5pt;
+    margin-bottom: 2pt;
+  }
+
+  .entry {
+    margin-bottom: 3pt;
+  }
+
+  .entry-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  .entry-date {
+    min-width: 80pt;
+    font-size: 10pt;
+  }
+
+  .entry-middle {
+    flex: 1;
+  }
+
+  .entry-location {
+    text-align: right;
+    white-space: nowrap;
+    font-size: 10pt;
+  }
+
+  .institution {
+    font-weight: bold;
+    font-size: 10pt;
+  }
+
+  .degree {
+    font-weight: bold;
+    font-style: italic;
+    font-size: 10pt;
+  }
+
+  .italic {
+    font-style: italic;
+  }
+
+  .underline {
+    text-decoration: underline;
+  }
+
+  .bold {
+    font-weight: bold;
+  }
+
+  .entry-details {
+    padding-left: 80pt;
+  }
+
+  ul {
+    list-style: disc;
+    padding-left: 14pt;
+    margin-top: 0pt;
+  }
+
+  ul li {
+    margin-bottom: 0pt;
+    font-size: 10pt;
+  }
+
+  .skills-list {
+    padding-left: 14pt;
+  }
+
+  a.blue-link {
+    color: blue;
+    text-decoration: underline;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+{{CONTENT}}
+</div>
+</body>
+</html>
