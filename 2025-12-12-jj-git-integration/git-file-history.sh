@@ -15,14 +15,16 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+script_name=$(basename "$0")
 # Function to display usage
 usage() {
-    echo "Usage: $0 <file_path> [line_range]"
+    echo "Usage: $script_name <file_path> [line_range]"
     echo ""
     echo "Examples:"
-    echo "  $0 src/main.py                    # Show all commits for the file"
-    echo "  $0 src/main.py 42                 # Show commits affecting line 42"
-    echo "  $0 src/main.py 42,50              # Show commits affecting lines 42-50"
+    echo "  $script_name src/main.py                    # Show all commits for the file"
+    echo "  $script_name src/main.py 42                 # Show commits affecting line 42"
+    echo "  $script_name src/main.py 42,50              # Show commits affecting lines 42-50"
+    echo "  $script_name src/main.py :function_name     # Show commits affecting function_name"
     echo ""
     exit 1
 }
@@ -107,3 +109,6 @@ else
     # Line range specified
     show_line_commits_fzf "$FILE_PATH" "$LINE_RANGE"
 fi
+echo "if the commit history is not expected, maybe the local git is a shallow clone."
+echo "run 'git rev-parse --is-shallow-repository' to check"
+echo "and run Try 'git fetch --unshallow' to get full history."
