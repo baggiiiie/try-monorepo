@@ -7,8 +7,7 @@
 
 # Parse command line arguments
 branch_to_fetch="main"
-remote="origin"
-local_tree_root="$branch_to_fetch"
+remote=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -20,16 +19,12 @@ while [[ $# -gt 0 ]]; do
         remote="$2"
         shift 2
         ;;
-    --root)
-        local_tree_root="$2"
-        shift 2
-        ;;
     -h | --help)
         echo "Usage: $0 [OPTIONS]"
         echo ""
         echo "Options:"
         echo "  -b, --branch BRANCH    Branch to fetch (default: main)"
-        echo "  -R, --remote REMOTE    Remote to fetch from (default: origin)"
+        echo "  -R, --remote REMOTE    Remote to fetch from (default: from git config)"
         echo "  -h, --help             Show this help message"
         exit 0
         ;;
@@ -40,6 +35,22 @@ while [[ $# -gt 0 ]]; do
         ;;
     esac
 done
+
+# If remote not specified, detect from git config (respects upstream/origin setup)
+if [ -z "$remote" ]; then
+    # First check branch.<branch>.remote (e.g., branch.main.remote)
+    remote=$(git config --get "branch.${branch_to_fetch}.remote" 2>/dev/null)
+
+    # If not set, check if 'upstream' remote exists (common fork setup)
+    if [ -z "$remote" ]; then
+        if git remote get-url upstream &>/dev/null; then
+            remote="upstream"
+        else
+            remote="origin"
+        fi
+    fi
+    echo "Auto-detected fetch remote: $remote"
+fi
 
 jj bookmark track "$branch_to_fetch" --remote="$remote" || {
     echo "failed to track remote branch '$branch_to_fetch' from remote '$remote'"
