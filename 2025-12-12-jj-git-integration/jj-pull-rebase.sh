@@ -8,6 +8,7 @@
 # Parse command line arguments
 branch_to_fetch="main"
 remote=""
+do_rebase=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -19,12 +20,23 @@ while [[ $# -gt 0 ]]; do
         remote="$2"
         shift 2
         ;;
+    --rebase)
+        do_rebase="true"
+        shift
+        ;;
+    --no-rebase)
+        do_rebase="false"
+        shift
+        ;;
     -h | --help)
         echo "Usage: $0 [OPTIONS]"
         echo ""
         echo "Options:"
         echo "  -b, --branch BRANCH    Branch to fetch (default: main)"
         echo "  -R, --remote REMOTE    Remote to fetch from (default: from git config)"
+        echo "  --rebase               Rebase local changes onto fetched branch"
+        echo "  --no-rebase            Skip rebase step"
+        echo "                         (default: rebase if branch is 'main', skip otherwise)"
         echo "  -h, --help             Show this help message"
         exit 0
         ;;
@@ -35,6 +47,15 @@ while [[ $# -gt 0 ]]; do
         ;;
     esac
 done
+
+# Default rebase behavior: true for main, false otherwise
+if [ -z "$do_rebase" ]; then
+    if [ "$branch_to_fetch" = "main" ]; then
+        do_rebase="true"
+    else
+        do_rebase="false"
+    fi
+fi
 
 # If remote not specified, detect from git config (respects upstream/origin setup)
 if [ -z "$remote" ]; then
@@ -96,5 +117,9 @@ remote_bookmark_commit_id=$(jq -r "select(.remote == null).commit_id" <<<"$bookm
 }
 echo "bookmark info for '$branch_to_fetch' is: $bookmark_info"
 
-echo "3. rebase children of change id '$local_bookmark_commit_id' onto fetched branch '$branch_to_fetch'"
-jj rebase -r "children($local_bookmark_commit_id)::~..$remote_bookmark_commit_id&mine()" --onto "'$remote_bookmark_commit_id'" --ignore-immutable
+if [ "$do_rebase" = "true" ]; then
+    echo "3. rebase children of change id '$local_bookmark_commit_id' onto fetched branch '$branch_to_fetch'"
+    jj rebase -r "children($local_bookmark_commit_id)::~..$remote_bookmark_commit_id&mine()" --onto "'$remote_bookmark_commit_id'" --ignore-immutable
+else
+    echo "3. skipping rebase (use --rebase to enable)"
+fi
