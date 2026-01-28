@@ -120,6 +120,9 @@ echo "bookmark info for '$branch_to_fetch' is: $bookmark_info"
 if [ "$do_rebase" = "true" ]; then
     echo "3. rebase children of change id '$local_bookmark_commit_id' onto fetched branch '$branch_to_fetch'"
     jj rebase -r "children($local_bookmark_commit_id)::~..$remote_bookmark_commit_id&mine()" --onto "'$remote_bookmark_commit_id'" --ignore-immutable
+
+    echo "4. abandon empty commits that were already merged"
+    jj abandon "empty() & mine() & descendants($remote_bookmark_commit_id)" 2>/dev/null || true
 else
     echo "3. skipping rebase (use --rebase to enable)"
 fi
