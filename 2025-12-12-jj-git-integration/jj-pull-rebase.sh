@@ -118,11 +118,22 @@ remote_bookmark_commit_id=$(jq -r "select(.remote == null).commit_id" <<<"$bookm
 echo "bookmark info for '$branch_to_fetch' is: $bookmark_info"
 
 if [ "$do_rebase" = "true" ]; then
-    echo "3. rebase children of change id '$local_bookmark_commit_id' onto fetched branch '$branch_to_fetch'"
-    jj rebase -r "children($local_bookmark_commit_id)::~..$remote_bookmark_commit_id&mine()" --onto "'$remote_bookmark_commit_id'" --ignore-immutable
+    rebase_revset="children($local_bookmark_commit_id)::~..$remote_bookmark_commit_id&mine()"
 
-    echo "4. abandon empty commits that were already merged"
-    jj abandon "empty() & mine() & descendants($remote_bookmark_commit_id)" 2>/dev/null || true
+    # Capture change IDs of commits that will be rebased
+    commits_to_rebase=$(jj log -r "$rebase_revset" -T 'change_id ++ "\n"' --no-graph 2>/dev/null | grep -v '^$')
+
+    echo "3. rebase children of change id '$local_bookmark_commit_id' onto fetched branch '$branch_to_fetch'"
+    jj rebase -r "$rebase_revset" --onto "'$remote_bookmark_commit_id'" --ignore-immutable
+
+    if [ -n "$commits_to_rebase" ]; then
+        echo "4. abandon commits that became empty after rebase"
+        for change_id in $commits_to_rebase; do
+            if jj log -r "$change_id" -T 'if(empty, "empty", "")' --no-graph 2>/dev/null | grep -q "empty"; then
+                jj abandon "$change_id" 2>/dev/null || true
+            fi
+        done
+    fi
 else
     echo "3. skipping rebase (use --rebase to enable)"
 fi
