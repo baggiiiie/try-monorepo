@@ -10,6 +10,7 @@ Commands:
   /balance - Show current balances
 """
 
+import json
 import os
 import re
 import logging
@@ -83,37 +84,69 @@ class SpliitClient:
     def __init__(self, base_url: str, group_id: str):
         self.base_url = base_url.rstrip("/")
         self.group_id = group_id
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.client = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
+
+    def _extract_trpc_result(self, data: dict) -> Optional[dict]:
+        """Extract result from tRPC response, handling different formats."""
+        # Format 1: { result: { data: { json: {...} } } }
+        if "result" in data:
+            result = data["result"]
+            if "data" in result:
+                inner = result["data"]
+                if "json" in inner:
+                    return inner["json"]
+                return inner
+            return result
+
+        # Format 2: Direct response (batch mode returns array)
+        if isinstance(data, list) and len(data) > 0:
+            return self._extract_trpc_result(data[0])
+
+        return data
 
     async def get_group(self) -> Optional[GroupInfo]:
         """Fetch group information including participants."""
         try:
-            # Spliit uses tRPC, so we need to call the appropriate endpoint
+            # Spliit uses tRPC - try the groups.get endpoint
             url = f"{self.base_url}/api/trpc/groups.get"
-            params = {"input": f'{{"json":{{"groupId":"{self.group_id}"}}}}'}
+            input_data = {"json": {"groupId": self.group_id}}
+            params = {"input": json.dumps(input_data)}
+
+            logger.info(f"Fetching group from: {url}")
+            logger.info(f"Params: {params}")
 
             response = await self.client.get(url, params=params)
+            logger.info(f"Response status: {response.status_code}")
+            logger.info(f"Response body: {response.text[:500]}")
+
             response.raise_for_status()
 
             data = response.json()
-            result = data.get("result", {}).get("data", {}).get("json", {})
+            result = self._extract_trpc_result(data)
 
             if not result:
+                logger.error("No result extracted from response")
                 return None
+
+            # The group data might be nested under 'group' key
+            group_data = result.get("group", result)
 
             participants = [
                 Participant(id=p["id"], name=p["name"])
-                for p in result.get("participants", [])
+                for p in group_data.get("participants", [])
             ]
 
             return GroupInfo(
-                id=result.get("id", self.group_id),
-                name=result.get("name", "Unknown"),
-                currency=result.get("currency", "USD"),
+                id=group_data.get("id", self.group_id),
+                name=group_data.get("name", "Unknown"),
+                currency=group_data.get("currency", "USD"),
                 participants=participants,
             )
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error fetching group: {e.response.status_code} - {e.response.text[:200]}")
+            return None
         except Exception as e:
-            logger.error(f"Failed to fetch group: {e}")
+            logger.error(f"Failed to fetch group: {e}", exc_info=True)
             return None
 
     async def create_expense(
@@ -122,7 +155,7 @@ class SpliitClient:
         amount: float,
         paid_by_id: str,
         paid_for: list[dict],
-        category: str = "General",
+        category: int = 0,  # 0 = General category
     ) -> Optional[dict]:
         """Create a new expense in Spliit."""
         try:
@@ -146,28 +179,53 @@ class SpliitClient:
                 }
             }
 
+            logger.info(f"Creating expense at: {url}")
+            logger.info(f"Payload: {json.dumps(payload)}")
+
             response = await self.client.post(url, json=payload)
+            logger.info(f"Create expense response status: {response.status_code}")
+            logger.info(f"Create expense response body: {response.text[:500]}")
+
             response.raise_for_status()
 
             data = response.json()
-            return data.get("result", {}).get("data", {}).get("json")
+            return self._extract_trpc_result(data)
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error creating expense: {e.response.status_code} - {e.response.text[:200]}")
+            return None
         except Exception as e:
-            logger.error(f"Failed to create expense: {e}")
+            logger.error(f"Failed to create expense: {e}", exc_info=True)
             return None
 
     async def get_balances(self) -> Optional[list[dict]]:
         """Get group balances."""
         try:
             url = f"{self.base_url}/api/trpc/groups.balances.list"
-            params = {"input": f'{{"json":{{"groupId":"{self.group_id}"}}}}'}
+            input_data = {"json": {"groupId": self.group_id}}
+            params = {"input": json.dumps(input_data)}
+
+            logger.info(f"Fetching balances from: {url}")
 
             response = await self.client.get(url, params=params)
+            logger.info(f"Balances response status: {response.status_code}")
+            logger.info(f"Balances response body: {response.text[:500]}")
+
             response.raise_for_status()
 
             data = response.json()
-            return data.get("result", {}).get("data", {}).get("json")
+            result = self._extract_trpc_result(data)
+
+            # Result might be a list directly or nested
+            if isinstance(result, list):
+                return result
+            if isinstance(result, dict):
+                return result.get("balances", [])
+            return []
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error fetching balances: {e.response.status_code} - {e.response.text[:200]}")
+            return None
         except Exception as e:
-            logger.error(f"Failed to fetch balances: {e}")
+            logger.error(f"Failed to fetch balances: {e}", exc_info=True)
             return None
 
     async def close(self):
@@ -340,13 +398,25 @@ async def group_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
         return
 
-    await update.message.reply_text("Fetching group info...")
+    status_msg = await update.message.reply_text("Fetching group info...")
 
     group = await spliit_client.get_group()
 
     if not group:
-        await update.message.reply_text(
-            "Failed to fetch group info. Please check your configuration."
+        await status_msg.edit_text(
+            "Failed to fetch group info.\n\n"
+            "Please check:\n"
+            "1. Your SPLIIT_GROUP_ID is correct\n"
+            "2. The group exists at: " + f"{SPLIIT_BASE_URL}/groups/{SPLIIT_GROUP_ID}\n"
+            "3. Check bot logs for API errors"
+        )
+        return
+
+    if not group.participants:
+        await status_msg.edit_text(
+            f"Group '{group.name}' found but no participants loaded.\n"
+            "The Spliit API may not be publicly accessible.\n\n"
+            f"Group URL: {SPLIIT_BASE_URL}/groups/{SPLIIT_GROUP_ID}"
         )
         return
 
@@ -360,7 +430,7 @@ async def group_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 Group URL: {SPLIIT_BASE_URL}/groups/{SPLIIT_GROUP_ID}
     """
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await status_msg.edit_text(text, parse_mode="Markdown")
 
 
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -378,18 +448,21 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
-    await update.message.reply_text("Fetching balances...")
+    status_msg = await update.message.reply_text("Fetching balances...")
 
     balances = await spliit_client.get_balances()
 
     if balances is None:
-        await update.message.reply_text(
-            "Failed to fetch balances. Please check your configuration."
+        await status_msg.edit_text(
+            "Failed to fetch balances.\n\n"
+            "Please check:\n"
+            "1. Your SPLIIT_GROUP_ID is correct\n"
+            "2. Check bot logs for API errors"
         )
         return
 
     if not balances:
-        await update.message.reply_text("No balances to show.")
+        await status_msg.edit_text("No balances to show yet. Add some expenses first!")
         return
 
     # Format balances
@@ -398,7 +471,7 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     lines = ["**Current Balances:**\n"]
     for balance in balances:
-        participant_name = balance.get("participantName", "Unknown")
+        participant_name = balance.get("participantName", balance.get("name", "Unknown"))
         amount = balance.get("balance", 0) / 100  # Convert from cents
         if amount > 0:
             lines.append(f"  {participant_name}: +{amount:.2f} {currency} (is owed)")
@@ -407,7 +480,7 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         else:
             lines.append(f"  {participant_name}: 0.00 {currency} (settled)")
 
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    await status_msg.edit_text("\n".join(lines), parse_mode="Markdown")
 
 
 async def add_expense_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
