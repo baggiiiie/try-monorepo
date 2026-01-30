@@ -1,0 +1,149 @@
+# jjui custom commands - add to ~/.config/jjui/config.toml
+[custom_commands.create_pr]
+key = ["P"]
+lua = '''
+local me = "baggiiiie"
+
+-- Get current change's commit ID
+local commit_id = context.commit_id()
+if not commit_id then
+    flash("No revision selected")
+    return
+end
+
+-- Check if bookmark exists for this commit, or create one
+local bookmarks_output = jj("bookmark", "list", "-r", commit_id, "-T", "name ++ \"\\n\"", "--no-graph")
+local bookmarks = split_lines(bookmarks_output)
+
+local branch = nil
+if #bookmarks > 0 then
+    if #bookmarks == 1 then
+        branch = bookmarks[1]
+    else
+        branch = choose({options = bookmarks, title = "Select bookmark for PR"})
+    end
+end
+
+if not branch or branch == "" then
+    -- No bookmark, offer to create one
+    local new_branch = input({title = "Create Branch", prompt = "Branch name (or empty to push with -c @): "})
+    if new_branch and new_branch ~= "" then
+        local _, err = jj("bookmark", "create", new_branch, "-r", commit_id)
+        if err then
+            flash("Failed to create bookmark: " .. err)
+            return
+        end
+        branch = new_branch
+    else
+        -- Push with -c @ and extract branch name
+        local push_output, push_err = jj("git", "push", "-c", "@", "-N")
+        if push_err then
+            flash("Push failed: " .. push_err)
+            return
+        end
+        -- Try to extract branch name from output
+        branch = string.match(push_output, "yc/test%-%w+")
+        if not branch then
+            flash("Could not determine branch name from push output")
+            return
+        end
+    end
+end
+
+-- Track and push the bookmark
+jj("bookmark", "track", branch, "--remote=origin")
+local _, push_err = jj("git", "push", "-b", branch)
+if push_err then
+    flash("Push failed (probably private commit): " .. push_err)
+    return
+end
+
+-- Open PR in browser using gh
+exec_shell("gh pr view " .. branch .. " -w 2>/dev/null || gh pr create -B main -H " .. branch .. " -w --fill")
+flash("PR opened for " .. branch)
+revisions.refresh()
+'''
+
+[custom_commands.pull_rebase]
+key = ["ctrl+p"]
+lua = '''
+-- Pull and rebase workflow for jj
+
+-- Select branch to fetch
+local branch_to_fetch = choose({
+    options = {"main", "master", "develop"},
+    title = "Branch to fetch"
+})
+if not branch_to_fetch then
+    branch_to_fetch = "main"
+end
+
+-- Detect remote
+local remote_output = jj("config", "get", "revset-aliases.\"trunk()\"")
+local remote = "origin"
+if string.match(remote_output or "", "upstream") then
+    remote = "upstream"
+end
+
+flash("Fetching " .. branch_to_fetch .. " from " .. remote .. "...")
+
+-- Track the branch
+jj("bookmark", "track", branch_to_fetch, "--remote=" .. remote)
+
+-- Get current local bookmark commit ID before fetch
+local bookmark_info = jj("bookmark", "list", branch_to_fetch, "-T", "if(!remote, commit_id.shortest(12))", "--no-graph")
+local local_commit_id = split_lines(bookmark_info)[1]
+
+if not local_commit_id or local_commit_id == "" then
+    flash("No local bookmark " .. branch_to_fetch .. " tracking remote")
+    return
+end
+
+-- Fetch the remote branch
+local _, fetch_err = jj("git", "fetch", "--branch", branch_to_fetch, "--remote", remote)
+if fetch_err then
+    flash("Fetch failed: " .. fetch_err)
+    return
+end
+
+-- Get new commit ID after fetch
+local new_bookmark_info = jj("bookmark", "list", branch_to_fetch, "-T", "if(!remote, commit_id.shortest(12))", "--no-graph")
+local new_commit_id = split_lines(new_bookmark_info)[1]
+
+if local_commit_id == new_commit_id then
+    flash("Already up to date")
+    revisions.refresh()
+    return
+end
+
+-- Ask about rebase
+local do_rebase = choose({options = {"Yes", "No"}, title = "Rebase local changes onto " .. branch_to_fetch .. "?"})
+
+if do_rebase == "Yes" then
+    -- Rebase children of old bookmark onto new bookmark
+    local rebase_revset = "children(" .. local_commit_id .. ")::~.." .. new_commit_id .. "&mine()"
+    
+    -- Get commits to rebase for potential abandoning later
+    local commits_output = jj("log", "-r", rebase_revset, "-T", "change_id ++ \"\\n\"", "--no-graph")
+    local commits_to_rebase = split_lines(commits_output)
+    
+    local _, rebase_err = jj("rebase", "-r", rebase_revset, "--onto", new_commit_id, "--ignore-immutable")
+    if rebase_err then
+        flash("Rebase had issues: " .. rebase_err)
+    else
+        flash("Rebased onto " .. branch_to_fetch)
+    end
+    
+    -- Abandon empty commits
+    for _, change_id in ipairs(commits_to_rebase) do
+        local empty_check = jj("log", "-r", change_id, "-T", "if(empty, \"empty\", \"\")", "--no-graph")
+        if string.match(empty_check, "empty") then
+            jj("abandon", change_id)
+        end
+    end
+else
+    flash("Fetched " .. branch_to_fetch .. " (no rebase)")
+end
+
+revisions.refresh()
+'''
