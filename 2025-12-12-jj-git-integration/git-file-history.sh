@@ -51,8 +51,8 @@ FILE_PATH="$1"
 LINE_RANGE="$2"
 
 # Check if file exists or existed in history
-if [ ! -f "$FILE_PATH" ] && ! git ls-files --error-unmatch "$FILE_PATH" >/dev/null 2>&1; then
-    echo -e "${RED}Error: File '$FILE_PATH' not found in repository${NC}"
+if [ ! -f "$FILE_PATH" ] && ! git log --oneline -1 -- "$FILE_PATH" >/dev/null 2>&1 || [ -z "$(git log --oneline -1 -- "$FILE_PATH" 2>/dev/null)" ]; then
+    echo -e "${RED}Error: File '$FILE_PATH' not found in repository history${NC}"
     exit 1
 fi
 
@@ -68,7 +68,7 @@ show_file_commits_fzf() {
             --no-sort \
             --reverse \
             --tiebreak=index \
-            --preview "export GIT_EXTERNAL_DIFF='difft --color=always'; export DFT_WIDTH=\$FZF_PREVIEW_COLUMNS; echo {} | grep -o '^[a-f0-9]\+' | head -1 | xargs -I @ git show --color=always --ext-diff @ \"$file\"" \
+            --preview "export GIT_EXTERNAL_DIFF='difft --color=always'; export DFT_WIDTH=\$FZF_PREVIEW_COLUMNS; echo {} | grep -o '^[a-f0-9]\+' | head -1 | xargs -I @ git show --color=always --ext-diff @ -- \"$file\"" \
             --preview-window=right:80%:wrap \
             --bind "ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up" \
             --bind "enter:execute(echo {} | grep -o '^[a-f0-9]\+' | head -1 | xargs -I {} gh br $file --commit={})" \

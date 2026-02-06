@@ -87,7 +87,7 @@ else
 fi
 
 # Push branch if needed
-if [[ -d .jj ]]; then
+if jj root; then
     jj bookmark track "${branch#"$me":}" --remote=origin
     if ! jj git push -b "${branch#"$me":}"; then
         echo "probably a private commit, push failed"
