@@ -5,6 +5,7 @@
 # Usage:
 #   ./git-file-history.sh <file_path>
 #   ./git-file-history.sh <file_path> <start_line>[,<end_line>]
+#   ./git-file-history.sh -g <text>          # search all history for text
 
 set -e
 
@@ -18,13 +19,15 @@ NC='\033[0m' # No Color
 script_name=$(basename "$0")
 # Function to display usage
 usage() {
-    echo "Usage: $script_name [options] <file_path> [line_range]"
+    echo "Usage: $script_name [options] [file_path] [line_range]"
     echo ""
     echo "Options:"
     echo "  -g, --grep <text>           Only show commits where the diff contains <text>"
+    echo "                              If no file_path is given, searches all files"
     echo ""
     echo "Examples:"
     echo "  $script_name src/main.py                    # Show all commits for the file"
+    echo "  $script_name -g 'fix bug'                   # Show commits with 'fix bug' in any file"
     echo "  $script_name -g 'fix bug' src/main.py       # Show commits with 'fix bug' in diff"
     echo "  $script_name src/main.py 42                 # Show commits affecting line 42"
     echo "  $script_name src/main.py 42,50              # Show commits affecting lines 42-50"
@@ -84,14 +87,15 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [ -z "$FILE_PATH" ]; then
+if [ -z "$FILE_PATH" ] && [ -z "$GREP_TEXT" ]; then
     usage
 fi
 
-# Check if file exists or existed in history
-if [ ! -f "$FILE_PATH" ] && ! git log --oneline -1 -- "$FILE_PATH" >/dev/null 2>&1 || [ -z "$(git log --oneline -1 -- "$FILE_PATH" 2>/dev/null)" ]; then
-    echo -e "${RED}Error: File '$FILE_PATH' not found in repository history${NC}"
-    exit 1
+if [ -n "$FILE_PATH" ]; then
+    if [ ! -f "$FILE_PATH" ] && ! git log --oneline -1 -- "$FILE_PATH" >/dev/null 2>&1 || [ -z "$(git log --oneline -1 -- "$FILE_PATH" 2>/dev/null)" ]; then
+        echo -e "${RED}Error: File '$FILE_PATH' not found in repository history${NC}"
+        exit 1
+    fi
 fi
 
 # Function to show commits for entire file with fzf
@@ -149,15 +153,33 @@ show_line_commits_fzf() {
             --header="$range in $file | Enter: full commit"
 }
 
+show_grep_all_commits_fzf() {
+    local grep_text="$1"
+
+    echo -e "${GREEN}Searching all history for: ${YELLOW}$grep_text${NC}"
+    echo -e "${YELLOW}Use arrow keys to navigate, Enter to view full commit, Esc to exit${NC}\n"
+
+    git log "-G$grep_text" --color=always --format="%C(yellow)%h%C(reset) %C(cyan)%an%C(reset) %C(green)%ar%C(reset) %s" |
+        fzf --ansi \
+            --no-sort \
+            --reverse \
+            --tiebreak=index \
+            --preview "export GIT_EXTERNAL_DIFF='difft --color=always'; export DFT_WIDTH=\$FZF_PREVIEW_COLUMNS; echo {} | grep -o '^[a-f0-9]\+' | head -1 | xargs -I @ git show --color=always --ext-diff @" \
+            --preview-window=right:80%:wrap \
+            --bind "ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up" \
+            --bind "enter:execute(commit=\$(echo {} | grep -o '^[a-f0-9]\+' | head -1); git show --ext-diff \$commit)" \
+            --header="grep: $grep_text (all files) | Enter: full commit"
+}
+
 echo "if the commit history is not expected, maybe the local git is a shallow clone."
 echo "run 'git rev-parse --is-shallow-repository' to check"
 echo "and run Try 'git fetch --unshallow' to get full history."
 
 # Main logic
-if [ -z "$LINE_RANGE" ]; then
-    # No line range specified, show all commits for the file
+if [ -z "$FILE_PATH" ] && [ -n "$GREP_TEXT" ]; then
+    show_grep_all_commits_fzf "$GREP_TEXT"
+elif [ -z "$LINE_RANGE" ]; then
     show_file_commits_fzf "$FILE_PATH"
 else
-    # Line range specified
     show_line_commits_fzf "$FILE_PATH" "$LINE_RANGE"
 fi
