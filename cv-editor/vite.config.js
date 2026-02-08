@@ -7,5 +7,8 @@ export default defineConfig({
   assetsInclude: ['**/*.yaml'],
   server: {
     allowedHosts: ['sgwl-olm-053154.tail904199.ts.net'],
+    proxy: {
+      '/api': 'http://localhost:3001',
+    },
   },
 })
