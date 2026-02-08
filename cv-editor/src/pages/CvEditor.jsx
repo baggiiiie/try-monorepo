@@ -83,7 +83,7 @@ export default function CvEditor() {
         </button>
       </div>
       <div className="flex-1 grid grid-cols-2 gap-4 p-4 min-h-0">
-        <div className="bg-white rounded-lg shadow overflow-hidden min-h-0">
+        <div className="bg-gray-300 rounded-lg shadow overflow-hidden min-h-0">
           <iframe
             ref={iframeRef}
             srcDoc={getPreviewFrameHTML(CV_STYLES)}
