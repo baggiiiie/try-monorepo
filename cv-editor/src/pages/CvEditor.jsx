@@ -5,6 +5,7 @@ import { renderCV } from '../lib/cv-renderer'
 import { getPreviewFrameHTML } from '../lib/cv-preview-frame'
 import { CV_STYLES } from '../lib/cv-styles'
 import defaultYaml from '../../cv-data.yaml?raw'
+import ImportPdfButton from '../components/ImportPdfButton'
 import { EditorView } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
 import { basicSetup } from 'codemirror'
@@ -44,6 +45,19 @@ export default function CvEditor() {
       iframeRef.current.contentWindow.postMessage({ type: 'print' }, '*')
     }
   }
+
+  const handleImportYaml = useCallback((newYaml) => {
+    setYamlString(newYaml)
+    if (editorViewRef.current) {
+      editorViewRef.current.dispatch({
+        changes: {
+          from: 0,
+          to: editorViewRef.current.state.doc.length,
+          insert: newYaml,
+        },
+      })
+    }
+  }, [])
 
   useEffect(() => {
     const handler = (e) => {
@@ -111,12 +125,15 @@ export default function CvEditor() {
       )}
       <div className="flex items-center justify-between px-4 pt-4">
         <h1 className="text-lg font-semibold text-gray-700">CV Editor</h1>
-        <button
-          onClick={handleExportPdf}
-          className="px-4 py-1.5 bg-gray-800 text-white text-sm font-medium rounded-md hover:bg-gray-700 transition-colors cursor-pointer"
-        >
-          Export to PDF
-        </button>
+        <div className="flex items-center gap-2">
+          <ImportPdfButton onYamlGenerated={handleImportYaml} />
+          <button
+            onClick={handleExportPdf}
+            className="px-4 py-1.5 bg-gray-800 text-white text-sm font-medium rounded-md hover:bg-gray-700 transition-colors cursor-pointer"
+          >
+            Export to PDF
+          </button>
+        </div>
       </div>
       <div className="flex-1 grid grid-cols-2 gap-4 p-4 min-h-0">
         <div className="bg-gray-300 rounded-lg shadow overflow-hidden min-h-0">
