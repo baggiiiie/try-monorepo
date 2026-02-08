@@ -21,11 +21,10 @@ export const CV_STYLES = `  @page {
 
   .page {
     width: 210mm;
-    height: 297mm;
+    min-height: 297mm;
     padding: 10mm 13mm 10mm 13mm;
     margin: 0 auto;
     background: #fff;
-    overflow: hidden;
   }
 
   @media print {
