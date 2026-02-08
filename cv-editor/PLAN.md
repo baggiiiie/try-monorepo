@@ -28,6 +28,10 @@ Reference: `prd.md`
 
 **Verify**: Run `npm install && npm run dev`. Page loads at localhost with "CV Editor" text visible. No errors in terminal or browser console.
 
+**Status**: ✅ Done
+**Verified**: `npm install` succeeded (152 packages), `npm run build` succeeded with no errors (28 modules transformed).
+**Notes**: None
+
 ---
 
 ## Task 2: Extract Renderer Module
@@ -66,6 +70,10 @@ Reference: `prd.md`
 
 **Verify**: Run `node build-cv.js`. It must produce `cv.html`. Diff the output against the current `cv.html` — should be identical (or differ only in the `&amp;` → `&amp;` fix in the section title, which is a bugfix).
 
+**Status**: ✅ Done
+**Verified**: `node build-cv.js` succeeded. `diff cv.html.bak cv.html` shows zero differences — output is identical. The `&` fix is a no-op because the old code passed `&amp;` raw and the new code passes `&` through `esc()`, both producing the same HTML.
+**Notes**: None
+
 ---
 
 ## Task 3: Iframe Preview Skeleton
@@ -100,6 +108,10 @@ Reference: `prd.md`
 2. Extract the CSS from `cv-template.html` (lines 8-158, everything inside `<style>...</style>`) into `src/lib/cv-styles.js` as an exported string constant. This is the CSS that gets injected into the iframe.
 
 **Verify**: The exported function returns valid HTML. The CSS string matches the styles from `cv-template.html` exactly.
+
+**Status**: ✅ Done
+**Verified**: CSS extracted verbatim from cv-template.html lines 8-158. `getPreviewFrameHTML` returns well-formed HTML with postMessage listener and frame-ready signal.
+**Notes**: None
 
 ---
 
@@ -194,6 +206,10 @@ Reference: `prd.md`
 6. Refresh the page → textarea restores from localStorage with last edits
 7. Run `npm run build` — no build errors
 
+**Status**: ✅ Done
+**Verified**: `npm run build` succeeded — 36 modules transformed, no errors. CvEditor page created with split-pane layout, debounced YAML parsing, iframe preview via postMessage, localStorage persistence, and error banner.
+**Notes**: None
+
 ---
 
 ## Execution Order
@@ -201,3 +217,12 @@ Reference: `prd.md`
 Tasks 1 → 2 → 3 → 4 (strictly sequential — each depends on the previous).
 
 Task 1 and 2 could theoretically be parallelized (scaffolding + renderer extraction are independent), but verifying Task 2 requires `"type": "module"` in `package.json` from Task 1 (for ESM `build-cv.js`). So run them in order.
+
+---
+
+## Completion
+
+**All tasks complete.** Run `npm run dev` to start the editor.
+
+**Human review needed**:
+- Nothing
