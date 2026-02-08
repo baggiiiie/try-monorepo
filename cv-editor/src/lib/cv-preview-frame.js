@@ -12,6 +12,9 @@ export function getPreviewFrameHTML(cssString) {
       if (e.data?.type === 'update-content') {
         document.getElementById('cv-root').innerHTML = e.data.html;
       }
+      if (e.data?.type === 'print') {
+        window.print();
+      }
     });
     window.parent.postMessage({ type: 'frame-ready' }, '*');
   </script>
