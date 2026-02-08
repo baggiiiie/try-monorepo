@@ -5,6 +5,10 @@ import { renderCV } from '../lib/cv-renderer'
 import { getPreviewFrameHTML } from '../lib/cv-preview-frame'
 import { CV_STYLES } from '../lib/cv-styles'
 import defaultYaml from '../../cv-data.yaml?raw'
+import { EditorView } from '@codemirror/view'
+import { EditorState } from '@codemirror/state'
+import { basicSetup } from 'codemirror'
+import { yaml as yamlLang } from '@codemirror/lang-yaml'
 
 const LOCALSTORAGE_KEY = 'cv-editor-yaml'
 const DEBOUNCE_MS = 300
@@ -23,6 +27,8 @@ export default function CvEditor() {
   const [lastValidHtml, setLastValidHtml] = useState('')
   const iframeRef = useRef(null)
   const frameReady = useRef(false)
+  const editorContainerRef = useRef(null)
+  const editorViewRef = useRef(null)
 
   const sendToFrame = useCallback((html) => {
     if (frameReady.current && iframeRef.current?.contentWindow) {
@@ -66,6 +72,36 @@ export default function CvEditor() {
     return () => clearTimeout(timer)
   }, [yamlString, sendToFrame])
 
+  useEffect(() => {
+    if (!editorContainerRef.current || editorViewRef.current) return
+
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: yamlString,
+        extensions: [
+          basicSetup,
+          yamlLang(),
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) {
+              setYamlString(update.state.doc.toString())
+            }
+          }),
+          EditorView.theme({
+            '&': { height: '100%', flex: '1' },
+            '.cm-scroller': { overflow: 'auto' },
+          }),
+        ],
+      }),
+      parent: editorContainerRef.current,
+    })
+
+    editorViewRef.current = view
+    return () => {
+      view.destroy()
+      editorViewRef.current = null
+    }
+  }, [])
+
   return (
     <div className="h-screen flex flex-col bg-gray-100">
       {error && (
@@ -92,14 +128,10 @@ export default function CvEditor() {
             sandbox="allow-scripts allow-modals"
           />
         </div>
-        <div className="bg-white rounded-lg shadow overflow-hidden min-h-0">
-          <textarea
-            value={yamlString}
-            onChange={(e) => setYamlString(e.target.value)}
-            className="w-full h-full p-4 font-mono text-sm resize-none outline-none bg-transparent"
-            spellCheck={false}
-          />
-        </div>
+        <div
+          ref={editorContainerRef}
+          className="bg-white rounded-lg shadow overflow-hidden min-h-0 flex flex-col"
+        ></div>
       </div>
     </div>
   )
