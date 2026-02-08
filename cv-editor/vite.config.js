@@ -5,4 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   assetsInclude: ['**/*.yaml'],
+  server: {
+    allowedHosts: ['sgwl-olm-053154.tail904199.ts.net'],
+  },
 })

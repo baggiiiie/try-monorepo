@@ -33,6 +33,12 @@ export default function CvEditor() {
     }
   }, [])
 
+  const handleExportPdf = () => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({ type: 'print' }, '*')
+    }
+  }
+
   useEffect(() => {
     const handler = (e) => {
       if (e.data?.type === 'frame-ready') {
@@ -61,27 +67,36 @@ export default function CvEditor() {
   }, [yamlString, sendToFrame])
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-screen flex flex-col bg-gray-100">
       {error && (
         <div className="bg-red-100 border-b border-red-300 text-red-800 px-4 py-2 text-sm font-mono">
           YAML Error: {error}
         </div>
       )}
-      <div className="flex-1 grid grid-cols-2 min-h-0">
-        <div className="border-r border-gray-300 min-h-0">
+      <div className="flex items-center justify-between px-4 pt-4">
+        <h1 className="text-lg font-semibold text-gray-700">CV Editor</h1>
+        <button
+          onClick={handleExportPdf}
+          className="px-4 py-1.5 bg-gray-800 text-white text-sm font-medium rounded-md hover:bg-gray-700 transition-colors cursor-pointer"
+        >
+          Export to PDF
+        </button>
+      </div>
+      <div className="flex-1 grid grid-cols-2 gap-4 p-4 min-h-0">
+        <div className="bg-white rounded-lg shadow overflow-hidden min-h-0">
           <iframe
             ref={iframeRef}
             srcDoc={getPreviewFrameHTML(CV_STYLES)}
             className="w-full h-full border-0"
             title="CV Preview"
-            sandbox="allow-scripts"
+            sandbox="allow-scripts allow-modals"
           />
         </div>
-        <div className="min-h-0">
+        <div className="bg-white rounded-lg shadow overflow-hidden min-h-0">
           <textarea
             value={yamlString}
             onChange={(e) => setYamlString(e.target.value)}
-            className="w-full h-full p-4 font-mono text-sm resize-none outline-none"
+            className="w-full h-full p-4 font-mono text-sm resize-none outline-none bg-transparent"
             spellCheck={false}
           />
         </div>

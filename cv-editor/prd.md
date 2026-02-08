@@ -119,7 +119,7 @@ cv-editor/
 
 ## Other Ideas
 
-- Maybe [aidenybai/react-grab](https://github.com/aidenybai/react-grab) could be used on the preview panel to select element and ask LLM to update
+- Maybe [aidenybai/react-grab](https://github.com/aidenybai/react-grab) could be used on the preview panel to select element and ask LLM to update (evaluation needed)
 - Maybe we don't need react-grab at all? When user selects an element, just update the html tag with IDs
 - Later on, ditch YAML editing for non-tech users:
     - Mouse hover over a section in the preview pane highlights its background, the user should be able to click on it and edit its content in an input field on the left
