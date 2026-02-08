@@ -1,57 +1,57 @@
-name: Alexia Cazimajou
+name: Jane Doe
 
 contact:
-  phone: "+65 84303757"
-  email: alexia.cazimajou@essec.edu
+  phone: "+1 555-0123"
+  email: jane.doe@university.edu
   linkedin:
-    url: http://www.linkedin.com/in/alexia-cazimajou
-    label: www.linkedin.com/in/alexia-cazimajou
+    url: http://www.linkedin.com/in/jane-doe
+    label: www.linkedin.com/in/jane-doe
 
-availability: "Period of Availability for Internship: 2026-05-01 to 2026-12-31 (Valid Singapore Student Pass until Dec'26)"
+availability: "Period of Availability for Internship: 2026-05-01 to 2026-12-31 (Valid Work Authorization until Dec'26)"
 
 education:
   - dates: "2025-2026"
-    institution: ESSEC Business School
+    institution: Lorem Business School
     location: Singapore
     degree: Msc in Marketing Management and Digital (MMD)
     details:
       - italic: "Ranked by QS as #1 Master in Marketing in Asia and #2 Worldwide in 2024/2025"
-      - coursework: "L'Oréal Brandstorm, Social Media Marketing, Luxury Brand Management, Retail Management in the Luxury Industry, Consumer Based Marketing Thinking"
+      - coursework: "Brand Strategy, Social Media Marketing, Luxury Brand Management, Retail Management, Consumer Behaviour"
 
   - dates: "2024-2025"
-    institution: "Sogang University – KLEC (Korean Language Education Center)"
+    institution: "Ipsum University – Language Center"
     location: Seoul, South Korea
     details:
       - italic: "Completed 600+ hours of Korean – Level 1 to 3 (Beginner to Intermediate)"
-      - text: "Gained firsthand insights into K-beauty innovations, consumer culture and retail landscape through immersion in Seoul, global epicenter of skincare and cosmetics trends"
+      - text: "Gained firsthand insights into beauty innovations, consumer culture and retail landscape through cultural immersion"
 
   - dates: "2020-2024"
-    institution: HEC Montréal
+    institution: Dolor University
     location: Montréal, Canada
     degree: "Bachelor of Business Administration (B.B.A.) – Marketing Specialization"
     details:
       - text: "GPA 3.7/4.3 | 6 Academic Excellence Mentions"
-      - coursework: "Marketing Strategy Management, Managing Products and Brands, Marketing Research, International Marketing, Customer Experience, Digital Marketing"
+      - coursework: "Marketing Strategy, Brand Management, Marketing Research, International Marketing, Digital Marketing"
 
   - dates: Feb-June 2023
-    institution: Sogang University
+    institution: Ipsum University
     location: Seoul, South Korea
     details:
       - italic: University exchange semester
-      - text: "GPA 3.86/4.3 | Relevant Coursework : International Business, Korean Arts and Culture"
+      - text: "GPA 3.86/4.3 | Relevant Coursework: International Business, Arts and Culture"
 
 experience:
   - dates: June-Aug 2024
-    institution: "SODEXO Live !"
+    institution: "Acme Corp"
     location: Paris, France
-    role: "Timesquare Deployment Assistant - HRIS Team (Fixed term contract), Paris 2024 Olympic Games"
+    role: "Platform Deployment Assistant - HRIS Team (Fixed term contract), Summer 2024 Project"
     bullets:
-      - "Supported deployment of a workforce management platform across 6 competition venues and the Olympic Village, impacting hundreds of employees during the world's largest sporting event"
-      - "Monitored and resolved daily technical anomalies between Timesquare and payroll, reinforcing data accuracy and reliability"
+      - "Supported deployment of a workforce management platform across 6 sites, impacting hundreds of employees during a major organizational event"
+      - "Monitored and resolved daily technical anomalies between scheduling and payroll systems, reinforcing data accuracy and reliability"
       - "Collaborated with on-site teams, strengthening cross-functional coordination and demonstrating agility under high pressure"
 
   - dates: Sept-Dec 2023
-    institution: HEC Montréal
+    institution: Dolor University
     location: Montréal, Canada
     role: "Grader – Consumer Behaviour Course (Part-time job)"
     bullets:
@@ -59,36 +59,36 @@ experience:
 
 other_experience:
   - dates: Jan-May 2024
-    institution: "Marketing Competition \"Relève Marketing\" – StratHaus Team"
+    institution: "Marketing Competition \"Lorem Challenge\" – StratTeam"
     location: Montréal, Canada
     details:
-      - italic: "4-month interuniversity competition organized by A2C (Association of Creative Communications Agencies)"
+      - italic: "4-month interuniversity competition organized by a national advertising association"
     bullets:
-      - "Developed a strategic omnichannel marketing plan for Uniprix, a major retailer with 350+ parapharmacies across Quebec"
+      - "Developed a strategic omnichannel marketing plan for a major retailer with 350+ locations"
       - "Applied critical thinking and analytical skills (secondary research, consumer journey analysis and expert interviews) to present a strategy that optimizes touchpoints and enhances brand loyalty"
       - "Proposed innovative tactics within strict budget constraints to drive brand engagement and maximize campaign performance"
 
   - dates: "2022-2023"
-    institution: NOVA HEC Montréal - President
+    institution: Volunteer Club - President
     location: Montréal, Canada
     details:
       - italic: "The committee raises student awareness of career opportunities in nonprofit organizations and community support"
     bullets:
-      - "Led team of 13 members in planning and executing campus-wide events as Volunteer Fair and Breast Cancer Awareness Week"
-      - "Established strategic partnerships with organizations (WWF, Oxfam, La Vie En Rose, LOOP Mission) to enhance event impact and student engagement"
+      - "Led team of 13 members in planning and executing campus-wide events such as Volunteer Fair and Awareness Week"
+      - "Established strategic partnerships with organizations (WWF, Oxfam, LOOP Mission) to enhance event impact and student engagement"
       - "Developed leadership, team management, and external stakeholder relationship skills"
 
   - dates: "2021-2022"
-    institution: "NOVA HEC Montréal - VP Communications & Communications Squad"
+    institution: "Volunteer Club - VP Communications"
     location: Montréal, Canada
     bullets:
-      - "Managed social media strategy and visual content creation, raising $1,520 CAD in 3 days for Breast Cancer Foundation"
+      - "Managed social media strategy and visual content creation, raising $1,520 CAD in 3 days for a charitable foundation"
       - "Designed promotional materials for 7 campus events while maintaining brand consistency and partner requirements"
 
 skills:
-  - "<b>French</b> (Native), <b>English</b> (Fluent), <b>Korean</b> (Intermediate – Level Sogang 3B), <b>Spanish</b> (Notions)"
+  - "<b>French</b> (Native), <b>English</b> (Fluent), <b>Korean</b> (Intermediate), <b>Spanish</b> (Notions)"
   - "<b>Technical skills</b>: Microsoft Office, Canva, Google Ads Search certification, Facebook, Instagram, TikTok and YouTube"
 
 distinctions:
-  - "Passionate about makeup & skincare (<a class=\"blue-link\" href=\"#\">Substack Blog</a>) | Travel (visited 30 countries) | Gastronomy"
-  - "<b>Patrick Yoo Scholarship recipient (2023)</b> – awarded for leadership and community involvement"
+  - "Passionate about skincare (<a class=\"blue-link\" href=\"#\">Blog</a>) | Travel (visited 30 countries) | Gastronomy"
+  - "<b>Merit Scholarship recipient (2023)</b> – awarded for leadership and community involvement"
