@@ -61,29 +61,29 @@ GREP_TEXT=""
 # Manual argument parsing
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -g|--grep)
-            if [ -n "$2" ]; then
-                GREP_TEXT="$2"
-                shift 2
-            else
-                echo -e "${RED}Error: --grep requires an argument${NC}"
-                exit 1
-            fi
-            ;;
-        -h|--help)
+    -g | --grep)
+        if [ -n "$2" ]; then
+            GREP_TEXT="$2"
+            shift 2
+        else
+            echo -e "${RED}Error: --grep requires an argument${NC}"
+            exit 1
+        fi
+        ;;
+    -h | --help)
+        usage
+        ;;
+    *)
+        if [ -z "$FILE_PATH" ]; then
+            FILE_PATH="$1"
+        elif [ -z "$LINE_RANGE" ]; then
+            LINE_RANGE="$1"
+        else
+            echo -e "${RED}Error: Unknown argument '$1'${NC}"
             usage
-            ;;
-        *)
-            if [ -z "$FILE_PATH" ]; then
-                FILE_PATH="$1"
-            elif [ -z "$LINE_RANGE" ]; then
-                LINE_RANGE="$1"
-            else
-                echo -e "${RED}Error: Unknown argument '$1'${NC}"
-                usage
-            fi
-            shift
-            ;;
+        fi
+        shift
+        ;;
     esac
 done
 
@@ -110,6 +110,13 @@ show_file_commits_fzf() {
     [ -n "$GREP_TEXT" ] && echo -e "${GREEN}Filtering by diff containing: ${YELLOW}$GREP_TEXT${NC}"
     echo -e "${YELLOW}Use arrow keys to navigate, Enter to view full commit, Esc to exit${NC}\n"
 
+    local grep_binds=()
+    local header="$file | Enter: full commit"
+    if [ -n "$GREP_TEXT" ]; then
+        grep_binds=(--bind "ctrl-g:preview(echo {} | grep -o '^[a-f0-9]\+' | head -1 | xargs -I @ git show --no-ext-diff --color=always @ -- \"$file\" | grep -C5 --color=always '$GREP_TEXT')")
+        header="$file | Enter: full commit | ctrl-g: grep context | ctrl-d/u: scroll"
+    fi
+
     git log --follow "${grep_args[@]}" --color=always --format="%C(yellow)%h%C(reset) %C(cyan)%an%C(reset) %C(green)%ar%C(reset)" -- "$file" |
         fzf --ansi \
             --no-sort \
@@ -118,8 +125,9 @@ show_file_commits_fzf() {
             --preview "export GIT_EXTERNAL_DIFF='difft --color=always'; export DFT_WIDTH=\$FZF_PREVIEW_COLUMNS; echo {} | grep -o '^[a-f0-9]\+' | head -1 | xargs -I @ git show --color=always --ext-diff @ -- \"$file\"" \
             --preview-window=right:80%:wrap \
             --bind "ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up" \
+            "${grep_binds[@]}" \
             --bind "enter:execute(commit=\$(echo {} | grep -o '^[a-f0-9]\+' | head -1); echo \"Running: gh br $file --commit=\$commit\"; gh br $file --commit=\$commit)" \
-            --header="$file | Enter: full commit"
+            --header="$header"
     # --bind "enter:become(echo {} | grep -o '^[a-f0-9]\+' | head -1 | xargs -I {} git show --ext-diff {} -- $file)"
 }
 
@@ -140,6 +148,13 @@ show_line_commits_fzf() {
     [ -n "$GREP_TEXT" ] && echo -e "${GREEN}Filtering by diff containing: ${YELLOW}$GREP_TEXT${NC}"
     echo -e "${YELLOW}Use arrow keys to navigate, Enter to view full commit, Esc to exit${NC}\n"
 
+    local grep_binds=()
+    local header="$range in $file | Enter: full commit"
+    if [ -n "$GREP_TEXT" ]; then
+        grep_binds=(--bind "ctrl-g:preview(echo {} | grep -o '^[a-f0-9]\+' | head -1 | xargs -I @ git show --no-ext-diff --color=always @ -L $range:$file | grep -C5 --color=always '$GREP_TEXT')")
+        header="$range in $file | Enter: full commit | ctrl-g: grep context | ctrl-d/u: scroll"
+    fi
+
     # Get commits that touched the line range
     git log "${grep_args[@]}" -L "$range":"$file" --format="%C(yellow)%h%C(reset) %C(cyan)%an%C(reset) %C(green)%ar%C(reset)" --no-patch 2>/dev/null |
         fzf --ansi \
@@ -149,8 +164,9 @@ show_line_commits_fzf() {
             --preview "export GIT_EXTERNAL_DIFF='difft --color=always'; export DFT_WIDTH=\$FZF_PREVIEW_COLUMNS; echo {} | grep -o '^[a-f0-9]\+' | head -1 | xargs -I @ git show --ext-diff --color=always @ -L $range:$file" \
             --preview-window=right:60%:wrap \
             --bind "ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up" \
+            "${grep_binds[@]}" \
             --bind "enter:execute(commit=\$(echo {} | grep -o '^[a-f0-9]\+' | head -1); echo \"Running: gh br $file --commit=\$commit\"; gh br $file --commit=\$commit)" \
-            --header="$range in $file | Enter: full commit"
+            --header="$header"
 }
 
 show_grep_all_commits_fzf() {
@@ -167,8 +183,9 @@ show_grep_all_commits_fzf() {
             --preview "export GIT_EXTERNAL_DIFF='difft --color=always'; export DFT_WIDTH=\$FZF_PREVIEW_COLUMNS; echo {} | grep -o '^[a-f0-9]\+' | head -1 | xargs -I @ git show --color=always --ext-diff @" \
             --preview-window=right:80%:wrap \
             --bind "ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up" \
+            --bind "ctrl-g:preview(echo {} | grep -o '^[a-f0-9]\+' | head -1 | xargs -I @ git show --no-ext-diff --color=always @ | grep -C5 --color=always '$grep_text')" \
             --bind "enter:execute(commit=\$(echo {} | grep -o '^[a-f0-9]\+' | head -1); git show --ext-diff \$commit)" \
-            --header="grep: $grep_text (all files) | Enter: full commit"
+            --header="grep: $grep_text (all files) | Enter: full commit | ctrl-g: grep context | ctrl-d/u: scroll"
 }
 
 echo "if the commit history is not expected, maybe the local git is a shallow clone."
