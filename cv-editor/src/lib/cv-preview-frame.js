@@ -135,6 +135,17 @@ export function getPreviewFrameHTML(cssString) {
         document.getElementById('cv-styles').textContent = e.data.css;
         if (lastHtml) paginateContent(lastHtml);
       }
+      if (e.data?.type === 'highlight-path') {
+        var prev = document.querySelector('[data-yaml-path].hover-highlight');
+        if (prev) prev.classList.remove('hover-highlight');
+        if (e.data.path) {
+          var target = document.querySelector('[data-yaml-path="' + e.data.path + '"]');
+          if (target) {
+            target.classList.add('hover-highlight');
+            target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        }
+      }
       if (e.data?.type === 'print') {
         window.print();
       }

@@ -48,6 +48,48 @@ export function findYamlLineRange(yamlString, path) {
   return null
 }
 
+const SECTION_KEYS = ['education', 'experience', 'other_experience', 'skills', 'distinctions']
+const HEADER_KEYS = ['name', 'contact', 'availability']
+
+export function findYamlPathAtLine(yamlString, lineIdx) {
+  const lines = yamlString.split('\n')
+  if (lineIdx < 0 || lineIdx >= lines.length) return null
+
+  const line = lines[lineIdx]
+  const trimmedKey = line.replace(/:.*$/, '').trim()
+  if (HEADER_KEYS.includes(trimmedKey)) return 'header'
+
+  let sectionKey = null
+  let entryIndex = -1
+  let insideEntry = false
+
+  for (let i = 0; i <= lineIdx; i++) {
+    const l = lines[i]
+    const key = l.replace(/:.*$/, '').trim()
+    if (l.match(/^\S/) && l.trim() !== '') {
+      if (SECTION_KEYS.includes(key)) {
+        sectionKey = key
+        entryIndex = -1
+        insideEntry = false
+      } else if (HEADER_KEYS.includes(key)) {
+        sectionKey = 'header'
+        insideEntry = false
+      } else {
+        sectionKey = null
+        insideEntry = false
+      }
+    } else if (sectionKey && sectionKey !== 'header' && l.match(/^\s{1,4}-\s/)) {
+      entryIndex++
+      insideEntry = true
+    }
+  }
+
+  if (!sectionKey) return null
+  if (sectionKey === 'header') return 'header'
+  if (insideEntry && entryIndex >= 0) return `${sectionKey}[${entryIndex}]`
+  return sectionKey
+}
+
 function findBlockEnd(lines, startIdx) {
   const startIndent = lines[startIdx].search(/\S/)
   let end = startIdx
