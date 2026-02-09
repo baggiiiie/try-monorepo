@@ -11,7 +11,7 @@ import { EditorState, StateEffect, StateField } from '@codemirror/state'
 import { basicSetup } from 'codemirror'
 import { yaml as yamlLang } from '@codemirror/lang-yaml'
 import { css as cssLang } from '@codemirror/lang-css'
-import { findYamlLineRange } from '../lib/yaml-source-map'
+import { findYamlLineRange, findYamlPathAtLine } from '../lib/yaml-source-map'
 
 const setHoverHighlight = StateEffect.define()
 
@@ -100,6 +100,17 @@ export default function CvEditor() {
     }
   }, [])
 
+  const sendHighlightToFrame = useCallback((path) => {
+    if (frameReady.current && iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        { type: 'highlight-path', path },
+        '*'
+      )
+    }
+  }, [])
+
+  const lastEditorHoverPath = useRef(null)
+
   const sendCssToFrame = useCallback((css) => {
     if (frameReady.current && iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage(
@@ -179,6 +190,28 @@ export default function CvEditor() {
             if (update.docChanged) {
               setYamlString(update.state.doc.toString())
             }
+          }),
+          EditorView.domEventHandlers({
+            mousemove(e, view) {
+              const pos = view.posAtCoords({ x: e.clientX, y: e.clientY })
+              if (pos === null) return
+              const lineIdx = view.state.doc.lineAt(pos).number - 1
+              const yamlText = view.state.doc.toString()
+              const path = findYamlPathAtLine(yamlText, lineIdx)
+              if (path !== lastEditorHoverPath.current) {
+                lastEditorHoverPath.current = path
+                const range = path ? findYamlLineRange(yamlText, path) : null
+                view.dispatch({ effects: setHoverHighlight.of(range) })
+                sendHighlightToFrame(path)
+              }
+            },
+            mouseleave(e, view) {
+              if (lastEditorHoverPath.current !== null) {
+                lastEditorHoverPath.current = null
+                view.dispatch({ effects: setHoverHighlight.of(null) })
+                sendHighlightToFrame(null)
+              }
+            },
           }),
           EditorView.theme({
             '&': { height: '100%', flex: '1' },
