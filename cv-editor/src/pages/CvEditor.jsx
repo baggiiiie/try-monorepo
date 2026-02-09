@@ -6,11 +6,44 @@ import { getPreviewFrameHTML } from '../lib/cv-preview-frame'
 import { CV_STYLES } from '../lib/cv-styles'
 import defaultYaml from '../../cv-data.yaml?raw'
 import ImportPdfButton from '../components/ImportPdfButton'
-import { EditorView } from '@codemirror/view'
-import { EditorState } from '@codemirror/state'
+import { EditorView, Decoration } from '@codemirror/view'
+import { EditorState, StateEffect, StateField } from '@codemirror/state'
 import { basicSetup } from 'codemirror'
 import { yaml as yamlLang } from '@codemirror/lang-yaml'
 import { css as cssLang } from '@codemirror/lang-css'
+import { findYamlLineRange } from '../lib/yaml-source-map'
+
+const setHoverHighlight = StateEffect.define()
+
+const hoverHighlightField = StateField.define({
+  create() {
+    return Decoration.none
+  },
+  update(decorations, tr) {
+    for (const e of tr.effects) {
+      if (e.is(setHoverHighlight)) {
+        if (!e.value) return Decoration.none
+        const { from, to } = e.value
+        const builder = []
+        for (let line = from; line <= to; line++) {
+          const lineObj = tr.state.doc.line(line + 1)
+          builder.push(
+            hoverLineDeco.range(lineObj.from)
+          )
+        }
+        return Decoration.set(builder)
+      }
+    }
+    return decorations
+  },
+  provide: (f) => EditorView.decorations.from(f),
+})
+
+const hoverLineDeco = Decoration.line({ class: 'cm-hover-highlight' })
+
+const hoverHighlightTheme = EditorView.theme({
+  '.cm-hover-highlight': { background: 'rgba(255, 213, 79, 0.3)' },
+})
 
 const LOCALSTORAGE_KEY = 'cv-editor-yaml'
 const LOCALSTORAGE_CSS_KEY = 'cv-editor-css'
@@ -89,6 +122,25 @@ export default function CvEditor() {
   }, [lastValidHtml, cssString, sendToFrame, sendCssToFrame])
 
   useEffect(() => {
+    const handler = (e) => {
+      if (e.source !== iframeRef.current?.contentWindow) return
+      if (e.data?.type !== 'hover-path') return
+      const view = editorViewRef.current
+      if (!view) return
+      const range = findYamlLineRange(view.state.doc.toString(), e.data.path)
+      view.dispatch({ effects: setHoverHighlight.of(range) })
+      if (range && activeTab === 'yaml') {
+        const line = view.state.doc.line(range.from + 1)
+        view.dispatch({
+          effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+        })
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [activeTab])
+
+  useEffect(() => {
     const timer = setTimeout(() => {
       localStorage.setItem(LOCALSTORAGE_KEY, yamlString)
       try {
@@ -121,6 +173,8 @@ export default function CvEditor() {
         extensions: [
           basicSetup,
           yamlLang(),
+          hoverHighlightField,
+          hoverHighlightTheme,
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               setYamlString(update.state.doc.toString())

@@ -25,7 +25,17 @@ export function getPreviewFrameHTML(cssString) {
       top: 0;
       left: -9999px;
     }
+    [data-yaml-path] {
+      transition: background 0.15s;
+    }
+    [data-yaml-path].hover-highlight {
+      background: rgba(255, 213, 79, 0.25);
+      border-radius: 2px;
+    }
     @media print {
+      [data-yaml-path].hover-highlight {
+        background: none;
+      }
       body {
         background: #fff;
         padding: 0;
@@ -94,6 +104,28 @@ export function getPreviewFrameHTML(cssString) {
     }
 
     let lastHtml = '';
+    let lastHoverEl = null;
+    let lastHoverPath = null;
+    document.addEventListener('mouseover', (e) => {
+      const el = e.target.closest('[data-yaml-path]');
+      const path = el ? el.getAttribute('data-yaml-path') : null;
+      if (path !== lastHoverPath) {
+        if (lastHoverEl) lastHoverEl.classList.remove('hover-highlight');
+        lastHoverPath = path;
+        lastHoverEl = el;
+        if (el) el.classList.add('hover-highlight');
+        window.parent.postMessage({ type: 'hover-path', path }, '*');
+      }
+    });
+    document.addEventListener('mouseleave', () => {
+      if (lastHoverEl) lastHoverEl.classList.remove('hover-highlight');
+      lastHoverEl = null;
+      if (lastHoverPath !== null) {
+        lastHoverPath = null;
+        window.parent.postMessage({ type: 'hover-path', path: null }, '*');
+      }
+    });
+
     window.addEventListener('message', (e) => {
       if (e.data?.type === 'update-content') {
         lastHtml = e.data.html;
