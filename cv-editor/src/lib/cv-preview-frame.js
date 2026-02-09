@@ -3,7 +3,7 @@ export function getPreviewFrameHTML(cssString) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <style>${cssString}</style>
+  <style id="cv-styles">${cssString}</style>
   <style>
     body {
       background: #e5e7eb;
@@ -93,9 +93,15 @@ export function getPreviewFrameHTML(cssString) {
       measure.innerHTML = '';
     }
 
+    let lastHtml = '';
     window.addEventListener('message', (e) => {
       if (e.data?.type === 'update-content') {
-        paginateContent(e.data.html);
+        lastHtml = e.data.html;
+        paginateContent(lastHtml);
+      }
+      if (e.data?.type === 'update-styles') {
+        document.getElementById('cv-styles').textContent = e.data.css;
+        if (lastHtml) paginateContent(lastHtml);
       }
       if (e.data?.type === 'print') {
         window.print();
