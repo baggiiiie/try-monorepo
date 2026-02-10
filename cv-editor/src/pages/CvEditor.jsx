@@ -72,12 +72,9 @@ export default function CvEditor() {
   const cssEditorContainerRef = useRef(null)
   const cssEditorViewRef = useRef(null)
 
-  const sendToFrame = useCallback((html) => {
+  const postToFrame = useCallback((message) => {
     if (frameReady.current && iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(
-        { type: 'update-content', html },
-        '*'
-      )
+      iframeRef.current.contentWindow.postMessage(message, '*')
     }
   }, [])
 
@@ -100,37 +97,19 @@ export default function CvEditor() {
     }
   }, [])
 
-  const sendHighlightToFrame = useCallback((path) => {
-    if (frameReady.current && iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(
-        { type: 'highlight-path', path },
-        '*'
-      )
-    }
-  }, [])
-
   const lastEditorHoverPath = useRef(null)
-
-  const sendCssToFrame = useCallback((css) => {
-    if (frameReady.current && iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(
-        { type: 'update-styles', css },
-        '*'
-      )
-    }
-  }, [])
 
   useEffect(() => {
     const handler = (e) => {
       if (e.data?.type === 'frame-ready') {
         frameReady.current = true
-        sendToFrame(lastValidHtml)
-        sendCssToFrame(cssString)
+        postToFrame({ type: 'update-content', html: lastValidHtml })
+        postToFrame({ type: 'update-styles', css: cssString })
       }
     }
     window.addEventListener('message', handler)
     return () => window.removeEventListener('message', handler)
-  }, [lastValidHtml, cssString, sendToFrame, sendCssToFrame])
+  }, [lastValidHtml, cssString, postToFrame])
 
   useEffect(() => {
     const handler = (e) => {
@@ -159,21 +138,21 @@ export default function CvEditor() {
         setError(null)
         const html = renderCV(data, sanitize)
         setLastValidHtml(html)
-        sendToFrame(html)
+        postToFrame({ type: 'update-content', html })
       } catch (e) {
         setError(e.message)
       }
     }, DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [yamlString, sendToFrame])
+  }, [yamlString, postToFrame])
 
   useEffect(() => {
     const timer = setTimeout(() => {
       localStorage.setItem(LOCALSTORAGE_CSS_KEY, cssString)
-      sendCssToFrame(cssString)
+      postToFrame({ type: 'update-styles', css: cssString })
     }, DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [cssString, sendCssToFrame])
+  }, [cssString, postToFrame])
 
   useEffect(() => {
     if (!editorContainerRef.current || editorViewRef.current) return
@@ -202,14 +181,14 @@ export default function CvEditor() {
                 lastEditorHoverPath.current = path
                 const range = path ? findYamlLineRange(yamlText, path) : null
                 view.dispatch({ effects: setHoverHighlight.of(range) })
-                sendHighlightToFrame(path)
+                postToFrame({ type: 'highlight-path', path })
               }
             },
             mouseleave(e, view) {
               if (lastEditorHoverPath.current !== null) {
                 lastEditorHoverPath.current = null
                 view.dispatch({ effects: setHoverHighlight.of(null) })
-                sendHighlightToFrame(null)
+                postToFrame({ type: 'highlight-path', path: null })
               }
             },
           }),
