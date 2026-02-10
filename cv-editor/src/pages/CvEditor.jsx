@@ -6,6 +6,7 @@ import { getPreviewFrameHTML } from '../lib/cv-preview-frame'
 import { CV_STYLES, CV_TEMPLATES } from '../lib/cv-styles'
 import defaultYaml from '../../cv-data.yaml?raw'
 import ImportPdfButton from '../components/ImportPdfButton'
+import FormEditor from '../components/FormEditor'
 import { EditorView, Decoration } from '@codemirror/view'
 import { EditorState, StateEffect, StateField } from '@codemirror/state'
 import { basicSetup } from 'codemirror'
@@ -48,6 +49,7 @@ const hoverHighlightTheme = EditorView.theme({
 const LOCALSTORAGE_KEY = 'cv-editor-yaml'
 const LOCALSTORAGE_CSS_KEY = 'cv-editor-css'
 const LOCALSTORAGE_TEMPLATE_KEY = 'cv-editor-template'
+const LOCALSTORAGE_MODE_KEY = 'cv-editor-mode'
 const DEBOUNCE_MS = 300
 
 const sanitize = (html) =>
@@ -68,6 +70,9 @@ export default function CvEditor() {
     () => localStorage.getItem(LOCALSTORAGE_CSS_KEY) || initialTemplate.css || CV_STYLES
   )
   const [selectedTemplateId, setSelectedTemplateId] = useState(initialTemplate.id)
+  const [editorMode, setEditorMode] = useState(
+    () => localStorage.getItem(LOCALSTORAGE_MODE_KEY) || 'visual'
+  )
   const [activeTab, setActiveTab] = useState('yaml')
   const [error, setError] = useState(null)
   const [lastValidHtml, setLastValidHtml] = useState('')
@@ -91,6 +96,19 @@ export default function CvEditor() {
   }
 
   const handleImportYaml = useCallback((newYaml) => {
+    setYamlString(newYaml)
+    if (editorViewRef.current) {
+      editorViewRef.current.dispatch({
+        changes: {
+          from: 0,
+          to: editorViewRef.current.state.doc.length,
+          insert: newYaml,
+        },
+      })
+    }
+  }, [])
+
+  const handleFormYamlChange = useCallback((newYaml) => {
     setYamlString(newYaml)
     if (editorViewRef.current) {
       editorViewRef.current.dispatch({
@@ -179,6 +197,10 @@ export default function CvEditor() {
   useEffect(() => {
     localStorage.setItem(LOCALSTORAGE_TEMPLATE_KEY, selectedTemplateId)
   }, [selectedTemplateId])
+
+  useEffect(() => {
+    localStorage.setItem(LOCALSTORAGE_MODE_KEY, editorMode)
+  }, [editorMode])
 
   useEffect(() => {
     if (!editorContainerRef.current || editorViewRef.current) return
@@ -310,28 +332,50 @@ export default function CvEditor() {
           />
         </div>
         <div className="bg-white rounded-lg shadow overflow-hidden min-h-0 flex flex-col">
-          <div className="flex border-b border-gray-200 shrink-0">
-            {['yaml', 'css'].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 text-sm font-medium cursor-pointer transition-colors ${
-                  activeTab === tab
-                    ? 'text-gray-900 border-b-2 border-gray-800'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {tab.toUpperCase()}
-              </button>
-            ))}
+          <div className="flex items-center border-b border-gray-200 shrink-0">
+            <div className="flex items-center border-r border-gray-200">
+              {['visual', 'code'].map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setEditorMode(mode)}
+                  className={`px-3 py-2 text-xs font-semibold uppercase tracking-wide cursor-pointer transition-colors ${
+                    editorMode === mode
+                      ? 'text-white bg-gray-800'
+                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {mode === 'visual' ? '✏ Visual' : '⟨/⟩ Code'}
+                </button>
+              ))}
+            </div>
+            {editorMode === 'code' && (
+              <div className="flex">
+                {['yaml', 'css'].map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-4 py-2 text-sm font-medium cursor-pointer transition-colors ${
+                      activeTab === tab
+                        ? 'text-gray-900 border-b-2 border-gray-800'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {tab.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+          {editorMode === 'visual' && (
+            <FormEditor yamlString={yamlString} onYamlChange={handleFormYamlChange} />
+          )}
           <div
             ref={editorContainerRef}
-            className={`flex-1 overflow-hidden flex flex-col ${activeTab !== 'yaml' ? 'hidden' : ''}`}
+            className={`flex-1 overflow-hidden flex flex-col ${editorMode !== 'code' || activeTab !== 'yaml' ? 'hidden' : ''}`}
           />
           <div
             ref={cssEditorContainerRef}
-            className={`flex-1 overflow-hidden flex flex-col ${activeTab !== 'css' ? 'hidden' : ''}`}
+            className={`flex-1 overflow-hidden flex flex-col ${editorMode !== 'code' || activeTab !== 'css' ? 'hidden' : ''}`}
           />
         </div>
       </div>
