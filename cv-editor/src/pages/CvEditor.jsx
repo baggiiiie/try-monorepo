@@ -173,26 +173,59 @@ export default function CvEditor() {
 
   useEffect(() => {
     const handler = (e) => {
-      if (e.data?.type !== 'inline-edit') return
-      const { path, value } = e.data
-      setYamlString((prev) => {
-        try {
-          const updated = applyInlineEdit(prev, path, value)
-          if (editorViewRef.current) {
-            editorViewRef.current.dispatch({
-              changes: {
-                from: 0,
-                to: editorViewRef.current.state.doc.length,
-                insert: updated,
-              },
-            })
+      if (e.data?.type === 'inline-edit') {
+        const { path, value } = e.data
+        setYamlString((prev) => {
+          try {
+            const updated = applyInlineEdit(prev, path, value)
+            if (editorViewRef.current) {
+              editorViewRef.current.dispatch({
+                changes: {
+                  from: 0,
+                  to: editorViewRef.current.state.doc.length,
+                  insert: updated,
+                },
+              })
+            }
+            return updated
+          } catch (err) {
+            console.error('Inline edit failed:', err)
+            return prev
           }
-          return updated
-        } catch (err) {
-          console.error('Inline edit failed:', err)
-          return prev
-        }
-      })
+        })
+      }
+      if (e.data?.type === 'reorder-section') {
+        const { fromIndex, toIndex } = e.data
+        setYamlString((prev) => {
+          try {
+            const data = yaml.load(prev)
+            const sections = [...(data.sections || [])]
+            const [moved] = sections.splice(fromIndex, 1)
+            const insertAt = toIndex > fromIndex ? toIndex - 1 : toIndex
+            sections.splice(insertAt, 0, moved)
+            data.sections = sections
+            const updated = yaml.dump(data, {
+              lineWidth: -1,
+              quotingType: '"',
+              forceQuotes: false,
+              noRefs: true,
+            })
+            if (editorViewRef.current) {
+              editorViewRef.current.dispatch({
+                changes: {
+                  from: 0,
+                  to: editorViewRef.current.state.doc.length,
+                  insert: updated,
+                },
+              })
+            }
+            return updated
+          } catch (err) {
+            console.error('Reorder failed:', err)
+            return prev
+          }
+        })
+      }
     }
     window.addEventListener('message', handler)
     return () => window.removeEventListener('message', handler)
@@ -346,6 +379,15 @@ export default function CvEditor() {
             className="px-4 py-1.5 bg-gray-800 text-white text-sm font-medium rounded-md hover:bg-gray-700 transition-colors cursor-pointer"
           >
             Export to PDF
+          </button>
+          <button
+            disabled
+            onClick={() => {
+              // TODO: Implement feedback functionality in the future
+            }}
+            className="px-4 py-1.5 bg-gray-200 text-gray-500 text-sm font-medium rounded-md cursor-not-allowed"
+          >
+            Feedback
           </button>
         </div>
       </div>
