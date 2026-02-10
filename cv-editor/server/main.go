@@ -154,7 +154,7 @@ RESUME TEXT:
 }
 
 var fencedRe = regexp.MustCompile("(?s)```(?:ya?ml)?\\s*\n(.*?)```")
-var yamlStartRe = regexp.MustCompile(`^(name|contact|education|experience|skills):`)
+var yamlStartRe = regexp.MustCompile(`^(name|contact|sections):`)
 
 func extractYaml(output string) string {
 	if m := fencedRe.FindStringSubmatch(output); len(m) > 1 {

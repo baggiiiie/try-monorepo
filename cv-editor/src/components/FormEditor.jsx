@@ -46,11 +46,20 @@ function FormField({ label, value, onChange, multiline }) {
   )
 }
 
-function SectionHeading({ title }) {
+function SectionHeading({ title, onChange }) {
+  if (!onChange) {
+    return (
+      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200 pb-1 mt-2">
+        {title}
+      </h3>
+    )
+  }
   return (
-    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200 pb-1 mt-2">
-      {title}
-    </h3>
+    <input
+      value={title}
+      onChange={(e) => onChange(e.target.value)}
+      className="block w-full text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200 pb-1 mt-2 bg-transparent focus:text-gray-600 focus:outline-none"
+    />
   )
 }
 
@@ -242,7 +251,9 @@ function EntryCard({ entry, onChange, onRemove, showRole }) {
   )
 }
 
-function SectionForm({ title, sectionKey, entries, onChange, showRole }) {
+function SectionForm({ title, onTitleChange, entries, onChange }) {
+  const showRole = entries.some(e => e.role !== undefined)
+
   const updateEntry = (idx, entry) => {
     const next = [...entries]
     next[idx] = entry
@@ -270,7 +281,7 @@ function SectionForm({ title, sectionKey, entries, onChange, showRole }) {
 
   return (
     <div className="space-y-2">
-      <SectionHeading title={title} />
+      <SectionHeading title={title} onChange={onTitleChange} />
       {entries.map((entry, i) => (
         <div key={i} className="flex gap-1">
           <div className="flex flex-col justify-center shrink-0 gap-0.5">
@@ -297,7 +308,7 @@ function SectionForm({ title, sectionKey, entries, onChange, showRole }) {
   )
 }
 
-function SimpleListForm({ title, items, onChange }) {
+function SimpleListForm({ title, onTitleChange, items, onChange }) {
   const updateItem = (idx, value) => {
     const next = [...items]
     next[idx] = value
@@ -314,7 +325,7 @@ function SimpleListForm({ title, items, onChange }) {
 
   return (
     <div className="space-y-2">
-      <SectionHeading title={title} />
+      <SectionHeading title={title} onChange={onTitleChange} />
       <p className="text-xs text-gray-400">HTML tags like &lt;b&gt;, &lt;i&gt;, &lt;a&gt; are supported.</p>
       {items.map((item, i) => (
         <div key={i} className="flex gap-2 items-start">
@@ -384,6 +395,36 @@ export default function FormEditor({ yamlString, onYamlChange }) {
     })
   }
 
+  const sections = data.sections || []
+
+  const updateSection = (idx, updated) => {
+    const next = [...sections]
+    next[idx] = { ...next[idx], ...updated }
+    emit({ ...data, sections: next })
+  }
+
+  const moveSection = (idx, dir) => {
+    const next = [...sections]
+    const newIdx = idx + dir
+    if (newIdx < 0 || newIdx >= next.length) return
+    ;[next[idx], next[newIdx]] = [next[newIdx], next[idx]]
+    emit({ ...data, sections: next })
+  }
+
+  const removeSection = (idx) => {
+    const section = sections[idx]
+    const hasContent = section.entries?.length > 0 || section.items?.some(item => item.trim() !== '')
+    if (hasContent && !window.confirm(`Remove section "${section.title}"? This cannot be undone.`)) return
+    emit({ ...data, sections: sections.filter((_, i) => i !== idx) })
+  }
+
+  const addSection = (type) => {
+    const newSection = type === 'entries'
+      ? { title: 'New Section', entries: [{ dates: '', institution: '', location: '', degree: '' }] }
+      : { title: 'New Section', items: [''] }
+    emit({ ...data, sections: [...sections, newSection] })
+  }
+
   return (
     <div className="p-4 space-y-4 overflow-y-auto h-full">
       <HeaderForm
@@ -391,41 +432,45 @@ export default function FormEditor({ yamlString, onYamlChange }) {
         onChange={updateHeader}
       />
 
-      <SectionForm
-        title="Education"
-        sectionKey="education"
-        entries={data.education || []}
-        onChange={(entries) => emit({ ...data, education: entries })}
-        showRole={false}
-      />
+      {sections.map((section, i) => (
+        <div key={section.title + '-' + (section.entries ? 'e' : 'i') + '-' + i} className="relative">
+          <div className="flex items-center gap-1 mb-1">
+            <div className="flex flex-col shrink-0">
+              <button onClick={() => moveSection(i, -1)} className="text-gray-400 hover:text-gray-600 text-xs cursor-pointer" disabled={i === 0}>↑</button>
+              <button onClick={() => moveSection(i, 1)} className="text-gray-400 hover:text-gray-600 text-xs cursor-pointer" disabled={i === sections.length - 1}>↓</button>
+            </div>
+            <div className="flex-1">
+              {section.entries ? (
+                <SectionForm
+                  title={section.title}
+                  onTitleChange={(title) => updateSection(i, { title })}
+                  entries={section.entries}
+                  onChange={(entries) => updateSection(i, { entries })}
+                />
+              ) : (
+                <SimpleListForm
+                  title={section.title}
+                  onTitleChange={(title) => updateSection(i, { title })}
+                  items={section.items || []}
+                  onChange={(items) => updateSection(i, { items })}
+                />
+              )}
+            </div>
+            <button
+              onClick={() => removeSection(i)}
+              className="shrink-0 text-gray-400 hover:text-red-500 text-xs cursor-pointer self-start mt-2"
+              title="Remove section"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      ))}
 
-      <SectionForm
-        title="Professional Experience"
-        sectionKey="experience"
-        entries={data.experience || []}
-        onChange={(entries) => emit({ ...data, experience: entries })}
-        showRole={true}
-      />
-
-      <SectionForm
-        title="Other Experience"
-        sectionKey="other_experience"
-        entries={data.other_experience || []}
-        onChange={(entries) => emit({ ...data, other_experience: entries })}
-        showRole={false}
-      />
-
-      <SimpleListForm
-        title="Skills"
-        items={data.skills || []}
-        onChange={(items) => emit({ ...data, skills: items })}
-      />
-
-      <SimpleListForm
-        title="Distinctions"
-        items={data.distinctions || []}
-        onChange={(items) => emit({ ...data, distinctions: items })}
-      />
+      <div className="flex gap-2 pt-2 border-t border-gray-200">
+        <button onClick={() => addSection('entries')} className="text-xs text-blue-600 hover:text-blue-800 cursor-pointer">+ Add entry section</button>
+        <button onClick={() => addSection('items')} className="text-xs text-blue-600 hover:text-blue-800 cursor-pointer">+ Add list section</button>
+      </div>
     </div>
   )
 }

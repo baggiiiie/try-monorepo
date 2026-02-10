@@ -47,6 +47,21 @@ export function getPreviewFrameHTML(cssString) {
       background: rgba(59, 130, 246, 0.05);
       cursor: text;
     }
+    .section[draggable="true"] {
+      cursor: grab;
+    }
+    .section[draggable="true"]:active {
+      cursor: grabbing;
+    }
+    .section.drag-over-above {
+      border-top: 2px solid rgba(59, 130, 246, 0.8);
+    }
+    .section.drag-over-below {
+      border-bottom: 2px solid rgba(59, 130, 246, 0.8);
+    }
+    .section.dragging {
+      opacity: 0.4;
+    }
     @media print {
       [data-yaml-path].hover-highlight {
         background: none;
@@ -218,14 +233,80 @@ export function getPreviewFrameHTML(cssString) {
       }
     });
 
+    // Drag-and-reorder sections
+    let dragSrcIdx = null;
+
+    function getSectionIndex(el) {
+      const path = el.getAttribute('data-yaml-path');
+      const m = path && path.match(/^sections\\[(\\d+)\\]$/);
+      return m ? parseInt(m[1], 10) : null;
+    }
+
+    function setupDrag() {
+      document.querySelectorAll('.section[data-yaml-path^="sections["]').forEach(el => {
+        if (getSectionIndex(el) === null) return;
+        el.setAttribute('draggable', 'true');
+
+        el.addEventListener('dragstart', (e) => {
+          dragSrcIdx = getSectionIndex(el);
+          el.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+        });
+
+        el.addEventListener('dragend', () => {
+          el.classList.remove('dragging');
+          document.querySelectorAll('.drag-over-above, .drag-over-below').forEach(
+            x => { x.classList.remove('drag-over-above', 'drag-over-below'); }
+          );
+          dragSrcIdx = null;
+        });
+
+        el.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          const rect = el.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          el.classList.remove('drag-over-above', 'drag-over-below');
+          if (e.clientY < midY) {
+            el.classList.add('drag-over-above');
+          } else {
+            el.classList.add('drag-over-below');
+          }
+        });
+
+        el.addEventListener('dragleave', () => {
+          el.classList.remove('drag-over-above', 'drag-over-below');
+        });
+
+        el.addEventListener('drop', (e) => {
+          e.preventDefault();
+          el.classList.remove('drag-over-above', 'drag-over-below');
+          const targetIdx = getSectionIndex(el);
+          if (dragSrcIdx === null || targetIdx === null || dragSrcIdx === targetIdx) return;
+          const rect = el.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          const insertBefore = e.clientY < midY;
+          window.parent.postMessage({
+            type: 'reorder-section',
+            fromIndex: dragSrcIdx,
+            toIndex: insertBefore ? targetIdx : targetIdx + 1,
+          }, '*');
+        });
+      });
+    }
+
     window.addEventListener('message', (e) => {
       if (e.data?.type === 'update-content') {
         lastHtml = e.data.html;
         paginateContent(lastHtml);
+        setupDrag();
       }
       if (e.data?.type === 'update-styles') {
         document.getElementById('cv-styles').textContent = e.data.css;
-        if (lastHtml) paginateContent(lastHtml);
+        if (lastHtml) {
+          paginateContent(lastHtml);
+          setupDrag();
+        }
       }
       if (e.data?.type === 'highlight-path') {
         var prev = document.querySelector('[data-yaml-path].hover-highlight');

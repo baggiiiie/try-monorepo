@@ -32,19 +32,21 @@ export function renderEntry(entry, path) {
   return html;
 }
 
-export function renderSection(title, entries, sectionKey) {
-  let html = `\n  <div class="section-title" data-yaml-path="${sectionKey}">${esc(title)}</div>\n\n`;
-  html += entries.map((entry, i) => renderEntry(entry, `${sectionKey}[${i}]`)).join('\n\n');
+export function renderSection(title, entries, sectionPath) {
+  let html = `\n  <div class="section" data-yaml-path="${sectionPath}">\n`;
+  html += `  <div class="section-title" data-yaml-path="${sectionPath}.title" data-editable="true">${esc(title)}</div>\n\n`;
+  html += entries.map((entry, i) => renderEntry(entry, `${sectionPath}.entries[${i}]`)).join('\n\n');
+  html += '\n  </div>';
   return html;
 }
 
-export function renderSimpleList(title, items, sanitize, sectionKey) {
-  let html = `\n  <div data-yaml-path="${sectionKey}">\n`;
-  html += `  <div class="section-title">${esc(title)}</div>\n`;
+export function renderSimpleList(title, items, sanitize, sectionPath) {
+  let html = `\n  <div class="section" data-yaml-path="${sectionPath}">\n`;
+  html += `  <div class="section-title" data-yaml-path="${sectionPath}.title" data-editable="true">${esc(title)}</div>\n`;
   html += '  <ul class="skills-list">\n';
   items.forEach((item, i) => {
     const content = sanitize ? sanitize(item) : item;
-    html += `    <li data-yaml-path="${sectionKey}[${i}]" data-editable="html">${content}</li>\n`;
+    html += `    <li data-yaml-path="${sectionPath}.items[${i}]" data-editable="html">${content}</li>\n`;
   });
   html += '  </ul>\n';
   html += '  </div>';
@@ -63,10 +65,13 @@ export function renderHeader(data) {
 export function renderCV(data, sanitize) {
   let content = '';
   content += renderHeader(data);
-  content += renderSection('Education', data.education, 'education');
-  content += renderSection('Professional Experience', data.experience, 'experience');
-  content += renderSection('Other Significant Experience', data.other_experience, 'other_experience');
-  content += renderSimpleList('Language & Technical Skills', data.skills, sanitize, 'skills');
-  content += renderSimpleList('Distinction & Interests', data.distinctions, sanitize, 'distinctions');
+  (data.sections || []).forEach((section, i) => {
+    const sectionPath = `sections[${i}]`;
+    if (section.entries) {
+      content += renderSection(section.title, section.entries, sectionPath);
+    } else if (section.items) {
+      content += renderSimpleList(section.title, section.items, sanitize, sectionPath);
+    }
+  });
   return content;
 }

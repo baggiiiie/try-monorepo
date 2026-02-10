@@ -9,86 +9,92 @@ contact:
 
 availability: "Period of Availability for Internship: 2026-05-01 to 2026-12-31 (Valid Work Authorization until Dec'26)"
 
-education:
-  - dates: "2025-2026"
-    institution: Lorem Business School
-    location: Singapore
-    degree: Msc in Marketing Management and Digital (MMD)
-    details:
-      - italic: "Ranked by QS as #1 Master in Marketing in Asia and #2 Worldwide in 2024/2025"
-      - coursework: "Brand Strategy, Social Media Marketing, Luxury Brand Management, Retail Management, Consumer Behaviour"
+sections:
+  - title: Education
+    entries:
+      - dates: "2025-2026"
+        institution: Lorem Business School
+        location: Singapore
+        degree: Msc in Marketing Management and Digital (MMD)
+        details:
+          - italic: "Ranked by QS as #1 Master in Marketing in Asia and #2 Worldwide in 2024/2025"
+          - coursework: "Brand Strategy, Social Media Marketing, Luxury Brand Management, Retail Management, Consumer Behaviour"
 
-  - dates: "2024-2025"
-    institution: "Ipsum University – Language Center"
-    location: Seoul, South Korea
-    details:
-      - italic: "Completed 600+ hours of Korean – Level 1 to 3 (Beginner to Intermediate)"
-      - text: "Gained firsthand insights into beauty innovations, consumer culture and retail landscape through cultural immersion"
+      - dates: "2024-2025"
+        institution: "Ipsum University – Language Center"
+        location: Seoul, South Korea
+        details:
+          - italic: "Completed 600+ hours of Korean – Level 1 to 3 (Beginner to Intermediate)"
+          - text: "Gained firsthand insights into beauty innovations, consumer culture and retail landscape through cultural immersion"
 
-  - dates: "2020-2024"
-    institution: Dolor University
-    location: Montréal, Canada
-    degree: "Bachelor of Business Administration (B.B.A.) – Marketing Specialization"
-    details:
-      - text: "GPA 3.7/4.3 | 6 Academic Excellence Mentions"
-      - coursework: "Marketing Strategy, Brand Management, Marketing Research, International Marketing, Digital Marketing"
+      - dates: "2020-2024"
+        institution: Dolor University
+        location: Montréal, Canada
+        degree: "Bachelor of Business Administration (B.B.A.) – Marketing Specialization"
+        details:
+          - text: "GPA 3.7/4.3 | 6 Academic Excellence Mentions"
+          - coursework: "Marketing Strategy, Brand Management, Marketing Research, International Marketing, Digital Marketing"
 
-  - dates: Feb-June 2023
-    institution: Ipsum University
-    location: Seoul, South Korea
-    details:
-      - italic: University exchange semester
-      - text: "GPA 3.86/4.3 | Relevant Coursework: International Business, Arts and Culture"
+      - dates: Feb-June 2023
+        institution: Ipsum University
+        location: Seoul, South Korea
+        details:
+          - italic: University exchange semester
+          - text: "GPA 3.86/4.3 | Relevant Coursework: International Business, Arts and Culture"
 
-experience:
-  - dates: June-Aug 2024
-    institution: "Acme Corp"
-    location: Paris, France
-    role: "Platform Deployment Assistant - HRIS Team (Fixed term contract), Summer 2024 Project"
-    bullets:
-      - "Supported deployment of a workforce management platform across 6 sites, impacting hundreds of employees during a major organizational event"
-      - "Monitored and resolved daily technical anomalies between scheduling and payroll systems, reinforcing data accuracy and reliability"
-      - "Collaborated with on-site teams, strengthening cross-functional coordination and demonstrating agility under high pressure"
+  - title: Professional Experience
+    entries:
+      - dates: June-Aug 2024
+        institution: "Acme Corp"
+        location: Paris, France
+        role: "Platform Deployment Assistant - HRIS Team (Fixed term contract), Summer 2024 Project"
+        bullets:
+          - "Supported deployment of a workforce management platform across 6 sites, impacting hundreds of employees during a major organizational event"
+          - "Monitored and resolved daily technical anomalies between scheduling and payroll systems, reinforcing data accuracy and reliability"
+          - "Collaborated with on-site teams, strengthening cross-functional coordination and demonstrating agility under high pressure"
 
-  - dates: Sept-Dec 2023
-    institution: Dolor University
-    location: Montréal, Canada
-    role: "Grader – Consumer Behaviour Course (Part-time job)"
-    bullets:
-      - "Ensured consistent grading standards and provided detailed feedback for 150+ students, demonstrating analytical rigor and attention to detail"
+      - dates: Sept-Dec 2023
+        institution: Dolor University
+        location: Montréal, Canada
+        role: "Grader – Consumer Behaviour Course (Part-time job)"
+        bullets:
+          - "Ensured consistent grading standards and provided detailed feedback for 150+ students, demonstrating analytical rigor and attention to detail"
 
-other_experience:
-  - dates: Jan-May 2024
-    institution: "Marketing Competition \"Lorem Challenge\" – StratTeam"
-    location: Montréal, Canada
-    details:
-      - italic: "4-month interuniversity competition organized by a national advertising association"
-    bullets:
-      - "Developed a strategic omnichannel marketing plan for a major retailer with 350+ locations"
-      - "Applied critical thinking and analytical skills (secondary research, consumer journey analysis and expert interviews) to present a strategy that optimizes touchpoints and enhances brand loyalty"
-      - "Proposed innovative tactics within strict budget constraints to drive brand engagement and maximize campaign performance"
+  - title: Other Significant Experience
+    entries:
+      - dates: Jan-May 2024
+        institution: "Marketing Competition \"Lorem Challenge\" – StratTeam"
+        location: Montréal, Canada
+        details:
+          - italic: "4-month interuniversity competition organized by a national advertising association"
+        bullets:
+          - "Developed a strategic omnichannel marketing plan for a major retailer with 350+ locations"
+          - "Applied critical thinking and analytical skills (secondary research, consumer journey analysis and expert interviews) to present a strategy that optimizes touchpoints and enhances brand loyalty"
+          - "Proposed innovative tactics within strict budget constraints to drive brand engagement and maximize campaign performance"
 
-  - dates: "2022-2023"
-    institution: Volunteer Club - President
-    location: Montréal, Canada
-    details:
-      - italic: "The committee raises student awareness of career opportunities in nonprofit organizations and community support"
-    bullets:
-      - "Led team of 13 members in planning and executing campus-wide events such as Volunteer Fair and Awareness Week"
-      - "Established strategic partnerships with organizations (WWF, Oxfam, LOOP Mission) to enhance event impact and student engagement"
-      - "Developed leadership, team management, and external stakeholder relationship skills"
+      - dates: "2022-2023"
+        institution: Volunteer Club - President
+        location: Montréal, Canada
+        details:
+          - italic: "The committee raises student awareness of career opportunities in nonprofit organizations and community support"
+        bullets:
+          - "Led team of 13 members in planning and executing campus-wide events such as Volunteer Fair and Awareness Week"
+          - "Established strategic partnerships with organizations (WWF, Oxfam, LOOP Mission) to enhance event impact and student engagement"
+          - "Developed leadership, team management, and external stakeholder relationship skills"
 
-  - dates: "2021-2022"
-    institution: "Volunteer Club - VP Communications"
-    location: Montréal, Canada
-    bullets:
-      - "Managed social media strategy and visual content creation, raising $1,520 CAD in 3 days for a charitable foundation"
-      - "Designed promotional materials for 7 campus events while maintaining brand consistency and partner requirements"
+      - dates: "2021-2022"
+        institution: "Volunteer Club - VP Communications"
+        location: Montréal, Canada
+        bullets:
+          - "Managed social media strategy and visual content creation, raising $1,520 CAD in 3 days for a charitable foundation"
+          - "Designed promotional materials for 7 campus events while maintaining brand consistency and partner requirements"
 
-skills:
-  - "<b>French</b> (Native), <b>English</b> (Fluent), <b>Korean</b> (Intermediate), <b>Spanish</b> (Notions)"
-  - "<b>Technical skills</b>: Microsoft Office, Canva, Google Ads Search certification, Facebook, Instagram, TikTok and YouTube"
+  - title: Language & Technical Skills
+    items:
+      - "<b>French</b> (Native), <b>English</b> (Fluent), <b>Korean</b> (Intermediate), <b>Spanish</b> (Notions)"
+      - "<b>Technical skills</b>: Microsoft Office, Canva, Google Ads Search certification, Facebook, Instagram, TikTok and YouTube"
 
-distinctions:
-  - "Passionate about skincare (<a class=\"blue-link\" href=\"#\">Blog</a>) | Travel (visited 30 countries) | Gastronomy"
-  - "<b>Merit Scholarship recipient (2023)</b> – awarded for leadership and community involvement"
+  - title: Distinction & Interests
+    items:
+      - "Passionate about skincare (<a class=\"blue-link\" href=\"#\">Blog</a>) | Travel (visited 30 countries) | Gastronomy"
+      - "<b>Merit Scholarship recipient (2023)</b> – awarded for leadership and community involvement"
