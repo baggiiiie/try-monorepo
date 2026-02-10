@@ -3,7 +3,7 @@ import yaml from 'js-yaml'
 import DOMPurify from 'dompurify'
 import { renderCV } from '../lib/cv-renderer'
 import { getPreviewFrameHTML } from '../lib/cv-preview-frame'
-import { CV_STYLES } from '../lib/cv-styles'
+import { CV_STYLES, CV_TEMPLATES } from '../lib/cv-styles'
 import defaultYaml from '../../cv-data.yaml?raw'
 import ImportPdfButton from '../components/ImportPdfButton'
 import { EditorView, Decoration } from '@codemirror/view'
@@ -47,6 +47,7 @@ const hoverHighlightTheme = EditorView.theme({
 
 const LOCALSTORAGE_KEY = 'cv-editor-yaml'
 const LOCALSTORAGE_CSS_KEY = 'cv-editor-css'
+const LOCALSTORAGE_TEMPLATE_KEY = 'cv-editor-template'
 const DEBOUNCE_MS = 300
 
 const sanitize = (html) =>
@@ -56,12 +57,17 @@ const sanitize = (html) =>
   })
 
 export default function CvEditor() {
+  const storedTemplateId = localStorage.getItem(LOCALSTORAGE_TEMPLATE_KEY)
+  const initialTemplate =
+    CV_TEMPLATES.find((template) => template.id === storedTemplateId) ||
+    CV_TEMPLATES[0]
   const [yamlString, setYamlString] = useState(
     () => localStorage.getItem(LOCALSTORAGE_KEY) || defaultYaml
   )
   const [cssString, setCssString] = useState(
-    () => localStorage.getItem(LOCALSTORAGE_CSS_KEY) || CV_STYLES
+    () => localStorage.getItem(LOCALSTORAGE_CSS_KEY) || initialTemplate.css || CV_STYLES
   )
+  const [selectedTemplateId, setSelectedTemplateId] = useState(initialTemplate.id)
   const [activeTab, setActiveTab] = useState('yaml')
   const [error, setError] = useState(null)
   const [lastValidHtml, setLastValidHtml] = useState('')
@@ -92,6 +98,22 @@ export default function CvEditor() {
           from: 0,
           to: editorViewRef.current.state.doc.length,
           insert: newYaml,
+        },
+      })
+    }
+  }, [])
+
+  const handleTemplateChange = useCallback((templateId) => {
+    const template = CV_TEMPLATES.find((item) => item.id === templateId)
+    if (!template) return
+    setSelectedTemplateId(templateId)
+    setCssString(template.css)
+    if (cssEditorViewRef.current) {
+      cssEditorViewRef.current.dispatch({
+        changes: {
+          from: 0,
+          to: cssEditorViewRef.current.state.doc.length,
+          insert: template.css,
         },
       })
     }
@@ -153,6 +175,10 @@ export default function CvEditor() {
     }, DEBOUNCE_MS)
     return () => clearTimeout(timer)
   }, [cssString, postToFrame])
+
+  useEffect(() => {
+    localStorage.setItem(LOCALSTORAGE_TEMPLATE_KEY, selectedTemplateId)
+  }, [selectedTemplateId])
 
   useEffect(() => {
     if (!editorContainerRef.current || editorViewRef.current) return
@@ -246,7 +272,23 @@ export default function CvEditor() {
         </div>
       )}
       <div className="flex items-center justify-between px-4 pt-4">
-        <h1 className="text-lg font-semibold text-gray-700">CV Editor</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-lg font-semibold text-gray-700">CV Editor</h1>
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-600">
+            Template
+            <select
+              value={selectedTemplateId}
+              onChange={(e) => handleTemplateChange(e.target.value)}
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700 shadow-sm focus:border-gray-500 focus:outline-none"
+            >
+              {CV_TEMPLATES.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <div className="flex items-center gap-2">
           <ImportPdfButton onYamlGenerated={handleImportYaml} />
           <button
