@@ -32,9 +32,28 @@ export function getPreviewFrameHTML(cssString) {
       background: rgba(255, 213, 79, 0.25);
       border-radius: 2px;
     }
+    [data-editable] {
+      cursor: pointer;
+      border-radius: 2px;
+      transition: outline 0.15s, background 0.15s;
+    }
+    [data-editable]:hover {
+      outline: 1.5px dashed rgba(59, 130, 246, 0.5);
+      outline-offset: 2px;
+    }
+    [data-editable].editing {
+      outline: 2px solid rgba(59, 130, 246, 0.8);
+      outline-offset: 2px;
+      background: rgba(59, 130, 246, 0.05);
+      cursor: text;
+    }
     @media print {
       [data-yaml-path].hover-highlight {
         background: none;
+      }
+      [data-editable] {
+        outline: none !important;
+        cursor: default;
       }
       body {
         background: #fff;
@@ -106,6 +125,79 @@ export function getPreviewFrameHTML(cssString) {
     let lastHtml = '';
     let lastHoverEl = null;
     let lastHoverPath = null;
+    let activeEditEl = null;
+    let originalText = '';
+
+    function startEditing(el) {
+      if (activeEditEl) finishEditing(activeEditEl);
+      activeEditEl = el;
+      const isHtml = el.getAttribute('data-editable') === 'html';
+      originalText = isHtml ? el.innerHTML : el.textContent;
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.focus();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+
+    function finishEditing(el) {
+      if (!el) return;
+      el.contentEditable = 'false';
+      el.classList.remove('editing');
+      const isHtml = el.getAttribute('data-editable') === 'html';
+      const newText = isHtml ? el.innerHTML : el.textContent;
+      if (newText !== originalText) {
+        const path = el.getAttribute('data-yaml-path');
+        window.parent.postMessage({
+          type: 'inline-edit',
+          path: path,
+          value: newText,
+          isHtml: isHtml,
+        }, '*');
+      }
+      activeEditEl = null;
+      originalText = '';
+    }
+
+    function cancelEditing(el) {
+      if (!el) return;
+      const isHtml = el.getAttribute('data-editable') === 'html';
+      if (isHtml) el.innerHTML = originalText;
+      else el.textContent = originalText;
+      el.contentEditable = 'false';
+      el.classList.remove('editing');
+      activeEditEl = null;
+      originalText = '';
+    }
+
+    document.addEventListener('click', (e) => {
+      const editable = e.target.closest('[data-editable]');
+      if (editable) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (editable !== activeEditEl) {
+          startEditing(editable);
+        }
+      } else if (activeEditEl) {
+        finishEditing(activeEditEl);
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (!activeEditEl) return;
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        finishEditing(activeEditEl);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelEditing(activeEditEl);
+      }
+    });
+
     document.addEventListener('mouseover', (e) => {
       const el = e.target.closest('[data-yaml-path]');
       const path = el ? el.getAttribute('data-yaml-path') : null;

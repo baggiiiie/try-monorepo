@@ -13,6 +13,7 @@ import { basicSetup } from 'codemirror'
 import { yaml as yamlLang } from '@codemirror/lang-yaml'
 import { css as cssLang } from '@codemirror/lang-css'
 import { findYamlLineRange, findYamlPathAtLine } from '../lib/yaml-source-map'
+import { applyInlineEdit } from '../lib/yaml-inline-edit'
 
 const setHoverHighlight = StateEffect.define()
 
@@ -169,6 +170,33 @@ export default function CvEditor() {
     window.addEventListener('message', handler)
     return () => window.removeEventListener('message', handler)
   }, [activeTab])
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.data?.type !== 'inline-edit') return
+      const { path, value } = e.data
+      setYamlString((prev) => {
+        try {
+          const updated = applyInlineEdit(prev, path, value)
+          if (editorViewRef.current) {
+            editorViewRef.current.dispatch({
+              changes: {
+                from: 0,
+                to: editorViewRef.current.state.doc.length,
+                insert: updated,
+              },
+            })
+          }
+          return updated
+        } catch (err) {
+          console.error('Inline edit failed:', err)
+          return prev
+        }
+      })
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
 
   useEffect(() => {
     const timer = setTimeout(() => {
