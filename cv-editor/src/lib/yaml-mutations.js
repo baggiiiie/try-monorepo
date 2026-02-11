@@ -7,6 +7,17 @@ export const YAML_DUMP_OPTIONS = {
   noRefs: true,
 }
 
+export function parsePath(path) {
+  const parts = []
+  const re = /([^.\[\]]+)|\[(\d+)\]/g
+  let m
+  while ((m = re.exec(path)) !== null) {
+    if (m[1] !== undefined) parts.push(m[1])
+    else if (m[2] !== undefined) parts.push(parseInt(m[2], 10))
+  }
+  return parts
+}
+
 export function reorderSections(yamlString, fromIndex, toIndex) {
   const data = yaml.load(yamlString)
   const sections = [...(data.sections || [])]
@@ -19,13 +30,7 @@ export function reorderSections(yamlString, fromIndex, toIndex) {
 
 export function reorderBullets(yamlString, bulletsPath, fromIndex, toIndex) {
   const data = yaml.load(yamlString)
-  const parts = []
-  const re = /([^.\[\]]+)|\[(\d+)\]/g
-  let m
-  while ((m = re.exec(bulletsPath)) !== null) {
-    if (m[1] !== undefined) parts.push(m[1])
-    else if (m[2] !== undefined) parts.push(parseInt(m[2], 10))
-  }
+  const parts = parsePath(bulletsPath)
   let target = data
   for (const part of parts) {
     target = target[part]

@@ -197,17 +197,3 @@ function findBlockEnd(lines, startIdx) {
   return end
 }
 
-function findEntryEnd(lines, startIdx) {
-  let end = startIdx
-  for (let i = startIdx + 1; i < lines.length; i++) {
-    const line = lines[i]
-    if (line.trim() === '') {
-      end = i
-      continue
-    }
-    if (line.match(/^\S/)) break
-    if (line.match(/^\s{1,4}-\s/)) break
-    end = i
-  }
-  return end
-}
