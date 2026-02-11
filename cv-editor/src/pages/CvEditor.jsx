@@ -4,16 +4,19 @@ import DOMPurify from 'dompurify'
 import { renderCV } from '../lib/cv-renderer'
 import { getPreviewFrameHTML } from '../lib/cv-preview-frame'
 import { CV_STYLES, CV_TEMPLATES } from '../lib/cv-styles'
+import { reorderSections, reorderBullets } from '../lib/yaml-mutations'
 import defaultYaml from '../../cv-data.yaml?raw'
 import ImportPdfButton from '../components/ImportPdfButton'
 import FormEditor from '../components/FormEditor'
-import { EditorView, Decoration } from '@codemirror/view'
-import { EditorState, StateEffect, StateField } from '@codemirror/state'
+import { Decoration } from '@codemirror/view'
+import { StateEffect, StateField } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
 import { basicSetup } from 'codemirror'
 import { yaml as yamlLang } from '@codemirror/lang-yaml'
 import { css as cssLang } from '@codemirror/lang-css'
 import { findYamlLineRange, findYamlPathAtLine } from '../lib/yaml-source-map'
 import { applyInlineEdit } from '../lib/yaml-inline-edit'
+import useCodeMirror from '../hooks/useCodeMirror'
 
 const setHoverHighlight = StateEffect.define()
 
@@ -29,9 +32,7 @@ const hoverHighlightField = StateField.define({
         const builder = []
         for (let line = from; line <= to; line++) {
           const lineObj = tr.state.doc.line(line + 1)
-          builder.push(
-            hoverLineDeco.range(lineObj.from)
-          )
+          builder.push(hoverLineDeco.range(lineObj.from))
         }
         return Decoration.set(builder)
       }
@@ -59,11 +60,18 @@ const sanitize = (html) =>
     ALLOWED_ATTR: ['class', 'href'],
   })
 
+function syncToEditor(viewRef, text) {
+  if (viewRef.current) {
+    viewRef.current.dispatch({
+      changes: { from: 0, to: viewRef.current.state.doc.length, insert: text },
+    })
+  }
+}
+
 export default function CvEditor() {
   const storedTemplateId = localStorage.getItem(LOCALSTORAGE_TEMPLATE_KEY)
   const initialTemplate =
-    CV_TEMPLATES.find((template) => template.id === storedTemplateId) ||
-    CV_TEMPLATES[0]
+    CV_TEMPLATES.find((t) => t.id === storedTemplateId) || CV_TEMPLATES[0]
   const [yamlString, setYamlString] = useState(
     () => localStorage.getItem(LOCALSTORAGE_KEY) || defaultYaml
   )
@@ -80,9 +88,8 @@ export default function CvEditor() {
   const iframeRef = useRef(null)
   const frameReady = useRef(false)
   const editorContainerRef = useRef(null)
-  const editorViewRef = useRef(null)
   const cssEditorContainerRef = useRef(null)
-  const cssEditorViewRef = useRef(null)
+  const lastEditorHoverPath = useRef(null)
 
   const postToFrame = useCallback((message) => {
     if (frameReady.current && iframeRef.current?.contentWindow) {
@@ -90,55 +97,65 @@ export default function CvEditor() {
     }
   }, [])
 
-  const handleExportPdf = () => {
-    if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage({ type: 'print' }, '*')
-    }
-  }
-
-  const handleImportYaml = useCallback((newYaml) => {
-    setYamlString(newYaml)
-    if (editorViewRef.current) {
-      editorViewRef.current.dispatch({
-        changes: {
-          from: 0,
-          to: editorViewRef.current.state.doc.length,
-          insert: newYaml,
+  const yamlEditorRef = useCodeMirror({
+    containerRef: editorContainerRef,
+    initialDoc: yamlString,
+    extensions: [
+      basicSetup,
+      yamlLang(),
+      hoverHighlightField,
+      hoverHighlightTheme,
+      EditorView.domEventHandlers({
+        mousemove(e, view) {
+          const pos = view.posAtCoords({ x: e.clientX, y: e.clientY })
+          if (pos === null) return
+          const lineIdx = view.state.doc.lineAt(pos).number - 1
+          const yamlText = view.state.doc.toString()
+          const path = findYamlPathAtLine(yamlText, lineIdx)
+          if (path !== lastEditorHoverPath.current) {
+            lastEditorHoverPath.current = path
+            const range = path ? findYamlLineRange(yamlText, path) : null
+            view.dispatch({ effects: setHoverHighlight.of(range) })
+            postToFrame({ type: 'highlight-path', path })
+          }
         },
-      })
-    }
-  }, [])
-
-  const handleFormYamlChange = useCallback((newYaml) => {
-    setYamlString(newYaml)
-    if (editorViewRef.current) {
-      editorViewRef.current.dispatch({
-        changes: {
-          from: 0,
-          to: editorViewRef.current.state.doc.length,
-          insert: newYaml,
+        mouseleave(e, view) {
+          if (lastEditorHoverPath.current !== null) {
+            lastEditorHoverPath.current = null
+            view.dispatch({ effects: setHoverHighlight.of(null) })
+            postToFrame({ type: 'highlight-path', path: null })
+          }
         },
-      })
-    }
-  }, [])
+      }),
+    ],
+    onDocChange: setYamlString,
+  })
+
+  const cssEditorRef = useCodeMirror({
+    containerRef: cssEditorContainerRef,
+    initialDoc: cssString,
+    extensions: [basicSetup, cssLang()],
+    onDocChange: setCssString,
+  })
+
+  const updateYamlWithEditor = useCallback((newYaml) => {
+    setYamlString(newYaml)
+    syncToEditor(yamlEditorRef, newYaml)
+  }, [yamlEditorRef])
 
   const handleTemplateChange = useCallback((templateId) => {
     const template = CV_TEMPLATES.find((item) => item.id === templateId)
     if (!template) return
     setSelectedTemplateId(templateId)
     setCssString(template.css)
-    if (cssEditorViewRef.current) {
-      cssEditorViewRef.current.dispatch({
-        changes: {
-          from: 0,
-          to: cssEditorViewRef.current.state.doc.length,
-          insert: template.css,
-        },
-      })
-    }
-  }, [])
+    syncToEditor(cssEditorRef, template.css)
+  }, [cssEditorRef])
 
-  const lastEditorHoverPath = useRef(null)
+  const handleExportPdf = () => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({ type: 'print' }, '*')
+    }
+  }
 
   useEffect(() => {
     const handler = (e) => {
@@ -146,127 +163,59 @@ export default function CvEditor() {
         frameReady.current = true
         postToFrame({ type: 'update-content', html: lastValidHtml })
         postToFrame({ type: 'update-styles', css: cssString })
+        return
       }
-    }
-    window.addEventListener('message', handler)
-    return () => window.removeEventListener('message', handler)
-  }, [lastValidHtml, cssString, postToFrame])
 
-  useEffect(() => {
-    const handler = (e) => {
       if (e.source !== iframeRef.current?.contentWindow) return
-      if (e.data?.type !== 'hover-path') return
-      const view = editorViewRef.current
-      if (!view) return
-      const range = findYamlLineRange(view.state.doc.toString(), e.data.path)
-      view.dispatch({ effects: setHoverHighlight.of(range) })
-      if (range && activeTab === 'yaml') {
-        const line = view.state.doc.line(range.from + 1)
-        view.dispatch({
-          effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
-        })
-      }
-    }
-    window.addEventListener('message', handler)
-    return () => window.removeEventListener('message', handler)
-  }, [activeTab])
 
-  useEffect(() => {
-    const handler = (e) => {
+      if (e.data?.type === 'hover-path') {
+        const view = yamlEditorRef.current
+        if (!view) return
+        const range = findYamlLineRange(view.state.doc.toString(), e.data.path)
+        view.dispatch({ effects: setHoverHighlight.of(range) })
+        if (range && activeTab === 'yaml') {
+          const line = view.state.doc.line(range.from + 1)
+          view.dispatch({
+            effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+          })
+        }
+        return
+      }
+
       if (e.data?.type === 'inline-edit') {
         const { path, value } = e.data
         setYamlString((prev) => {
           try {
             const updated = applyInlineEdit(prev, path, value)
-            if (editorViewRef.current) {
-              editorViewRef.current.dispatch({
-                changes: {
-                  from: 0,
-                  to: editorViewRef.current.state.doc.length,
-                  insert: updated,
-                },
-              })
-            }
+            syncToEditor(yamlEditorRef, updated)
             return updated
           } catch (err) {
             console.error('Inline edit failed:', err)
             return prev
           }
         })
+        return
       }
+
       if (e.data?.type === 'reorder-section') {
-        const { fromIndex, toIndex } = e.data
         setYamlString((prev) => {
           try {
-            const data = yaml.load(prev)
-            const sections = [...(data.sections || [])]
-            const [moved] = sections.splice(fromIndex, 1)
-            const insertAt = toIndex > fromIndex ? toIndex - 1 : toIndex
-            sections.splice(insertAt, 0, moved)
-            data.sections = sections
-            const updated = yaml.dump(data, {
-              lineWidth: -1,
-              quotingType: '"',
-              forceQuotes: false,
-              noRefs: true,
-            })
-            if (editorViewRef.current) {
-              editorViewRef.current.dispatch({
-                changes: {
-                  from: 0,
-                  to: editorViewRef.current.state.doc.length,
-                  insert: updated,
-                },
-              })
-            }
+            const updated = reorderSections(prev, e.data.fromIndex, e.data.toIndex)
+            syncToEditor(yamlEditorRef, updated)
             return updated
           } catch (err) {
             console.error('Reorder failed:', err)
             return prev
           }
         })
+        return
       }
+
       if (e.data?.type === 'reorder-bullet') {
-        const { bulletsPath, fromIndex, toIndex } = e.data
         setYamlString((prev) => {
           try {
-            const data = yaml.load(prev)
-            const parts = []
-            const re = /([^.\[\]]+)|\[(\d+)\]/g
-            let m
-            while ((m = re.exec(bulletsPath)) !== null) {
-              if (m[1] !== undefined) parts.push(m[1])
-              else if (m[2] !== undefined) parts.push(parseInt(m[2], 10))
-            }
-            let target = data
-            for (const part of parts) {
-              target = target[part]
-              if (!target) return prev
-            }
-            const bullets = [...target]
-            const [moved] = bullets.splice(fromIndex, 1)
-            const insertAt = toIndex > fromIndex ? toIndex - 1 : toIndex
-            bullets.splice(insertAt, 0, moved)
-            let parent = data
-            for (let i = 0; i < parts.length - 1; i++) {
-              parent = parent[parts[i]]
-            }
-            parent[parts[parts.length - 1]] = bullets
-            const updated = yaml.dump(data, {
-              lineWidth: -1,
-              quotingType: '"',
-              forceQuotes: false,
-              noRefs: true,
-            })
-            if (editorViewRef.current) {
-              editorViewRef.current.dispatch({
-                changes: {
-                  from: 0,
-                  to: editorViewRef.current.state.doc.length,
-                  insert: updated,
-                },
-              })
-            }
+            const updated = reorderBullets(prev, e.data.bulletsPath, e.data.fromIndex, e.data.toIndex)
+            syncToEditor(yamlEditorRef, updated)
             return updated
           } catch (err) {
             console.error('Bullet reorder failed:', err)
@@ -277,7 +226,7 @@ export default function CvEditor() {
     }
     window.addEventListener('message', handler)
     return () => window.removeEventListener('message', handler)
-  }, [])
+  }, [lastValidHtml, cssString, postToFrame, activeTab, yamlEditorRef])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -311,90 +260,6 @@ export default function CvEditor() {
     localStorage.setItem(LOCALSTORAGE_MODE_KEY, editorMode)
   }, [editorMode])
 
-  useEffect(() => {
-    if (!editorContainerRef.current || editorViewRef.current) return
-
-    const view = new EditorView({
-      state: EditorState.create({
-        doc: yamlString,
-        extensions: [
-          basicSetup,
-          yamlLang(),
-          hoverHighlightField,
-          hoverHighlightTheme,
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) {
-              setYamlString(update.state.doc.toString())
-            }
-          }),
-          EditorView.domEventHandlers({
-            mousemove(e, view) {
-              const pos = view.posAtCoords({ x: e.clientX, y: e.clientY })
-              if (pos === null) return
-              const lineIdx = view.state.doc.lineAt(pos).number - 1
-              const yamlText = view.state.doc.toString()
-              const path = findYamlPathAtLine(yamlText, lineIdx)
-              if (path !== lastEditorHoverPath.current) {
-                lastEditorHoverPath.current = path
-                const range = path ? findYamlLineRange(yamlText, path) : null
-                view.dispatch({ effects: setHoverHighlight.of(range) })
-                postToFrame({ type: 'highlight-path', path })
-              }
-            },
-            mouseleave(e, view) {
-              if (lastEditorHoverPath.current !== null) {
-                lastEditorHoverPath.current = null
-                view.dispatch({ effects: setHoverHighlight.of(null) })
-                postToFrame({ type: 'highlight-path', path: null })
-              }
-            },
-          }),
-          EditorView.theme({
-            '&': { height: '100%', flex: '1' },
-            '.cm-scroller': { overflow: 'auto' },
-          }),
-        ],
-      }),
-      parent: editorContainerRef.current,
-    })
-
-    editorViewRef.current = view
-    return () => {
-      view.destroy()
-      editorViewRef.current = null
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!cssEditorContainerRef.current || cssEditorViewRef.current) return
-
-    const view = new EditorView({
-      state: EditorState.create({
-        doc: cssString,
-        extensions: [
-          basicSetup,
-          cssLang(),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) {
-              setCssString(update.state.doc.toString())
-            }
-          }),
-          EditorView.theme({
-            '&': { height: '100%', flex: '1' },
-            '.cm-scroller': { overflow: 'auto' },
-          }),
-        ],
-      }),
-      parent: cssEditorContainerRef.current,
-    })
-
-    cssEditorViewRef.current = view
-    return () => {
-      view.destroy()
-      cssEditorViewRef.current = null
-    }
-  }, [])
-
   return (
     <div className="h-screen flex flex-col bg-gray-100">
       {error && (
@@ -421,7 +286,7 @@ export default function CvEditor() {
           </label>
         </div>
         <div className="flex items-center gap-2">
-          <ImportPdfButton onYamlGenerated={handleImportYaml} />
+          <ImportPdfButton onYamlGenerated={updateYamlWithEditor} />
           <button
             onClick={handleExportPdf}
             className="px-4 py-1.5 bg-gray-800 text-white text-sm font-medium rounded-md hover:bg-gray-700 transition-colors cursor-pointer"
@@ -430,9 +295,7 @@ export default function CvEditor() {
           </button>
           <button
             disabled
-            onClick={() => {
-              // TODO: Implement feedback functionality in the future
-            }}
+            onClick={() => {}}
             className="px-4 py-1.5 bg-gray-200 text-gray-500 text-sm font-medium rounded-md cursor-not-allowed"
           >
             Feedback
@@ -485,7 +348,7 @@ export default function CvEditor() {
             )}
           </div>
           {editorMode === 'visual' && (
-            <FormEditor yamlString={yamlString} onYamlChange={handleFormYamlChange} />
+            <FormEditor yamlString={yamlString} onYamlChange={updateYamlWithEditor} />
           )}
           <div
             ref={editorContainerRef}
