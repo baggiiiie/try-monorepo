@@ -7,10 +7,6 @@ export default function ImportPdfButton({ onYamlGenerated }) {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
 
-    const handleClick = () => {
-        fileInputRef.current?.click()
-    }
-
     const handleFileChange = async (e) => {
         const file = e.target.files?.[0]
         if (!file) return

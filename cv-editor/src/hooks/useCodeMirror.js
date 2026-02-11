@@ -35,6 +35,7 @@ function useCodeMirror({ containerRef, initialDoc, extensions, onDocChange }) {
       view.destroy()
       viewRef.current = null
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return viewRef

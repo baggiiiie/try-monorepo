@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import yaml from 'js-yaml'
 
 function HeaderForm({ data, onChange }) {

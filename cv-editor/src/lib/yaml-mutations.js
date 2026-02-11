@@ -9,7 +9,7 @@ export const YAML_DUMP_OPTIONS = {
 
 export function parsePath(path) {
   const parts = []
-  const re = /([^.\[\]]+)|\[(\d+)\]/g
+  const re = /([^.[\]]+)|\[(\d+)\]/g
   let m
   while ((m = re.exec(path)) !== null) {
     if (m[1] !== undefined) parts.push(m[1])

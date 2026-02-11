@@ -34,7 +34,7 @@ export function findYamlLineRange(yamlString, path) {
 
   for (let i = sectionsKeyLine + 1; i < lines.length; i++) {
     if (lines[i].match(/^\S/) && lines[i].trim() !== '') break // next top-level key
-    if (lines[i].match(/^  - /)) {
+    if (lines[i].match(/^ {2}- /)) {
       currentSection++
       if (currentSection === sectionIdx) {
         sectionStart = i
@@ -53,7 +53,7 @@ export function findYamlLineRange(yamlString, path) {
     sectionEnd = sectionStart
     for (let i = sectionStart + 1; i < lines.length; i++) {
       if (lines[i].match(/^\S/) && lines[i].trim() !== '') break
-      if (lines[i].match(/^  - /)) break
+      if (lines[i].match(/^ {2}- /)) break
       sectionEnd = i
     }
   }
@@ -64,7 +64,7 @@ export function findYamlLineRange(yamlString, path) {
   // sections[i].title — find the title line within the section
   if (rest === '.title') {
     for (let i = sectionStart; i <= sectionEnd; i++) {
-      if (lines[i].match(/^\s+title\s*:/) || lines[i].match(/^  - title\s*:/)) {
+      if (lines[i].match(/^\s+title\s*:/) || lines[i].match(/^ {2}- title\s*:/)) {
         return { from: i, to: i }
       }
     }

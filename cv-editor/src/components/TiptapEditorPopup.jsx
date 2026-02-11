@@ -2,7 +2,7 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import Underline from '@tiptap/extension-underline'
-import { useEffect, useCallback, useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 
 const menuButtonClass = (isActive) =>
     `px-2 py-1 text-xs font-medium rounded transition-colors cursor-pointer ${isActive
@@ -60,15 +60,17 @@ function LinkPopover({ editor, onClose }) {
 }
 
 function MenuBar({ editor }) {
-    if (!editor) return null
-
     const [showLinkPopover, setShowLinkPopover] = useState(false)
     const [, forceUpdate] = useState(0)
+
     useEffect(() => {
+        if (!editor) return
         const handler = () => forceUpdate(n => n + 1)
         editor.on('transaction', handler)
         return () => editor.off('transaction', handler)
     }, [editor])
+
+    if (!editor) return null
 
     return (
         <div className="flex items-center gap-1 p-2 border-b border-gray-200 bg-gray-50 rounded-t-lg flex-wrap relative">
@@ -106,7 +108,7 @@ function MenuBar({ editor }) {
     )
 }
 
-export default function TiptapEditorPopup({ isOpen, initialContent, isHtml, onSave, onClose }) {
+export default function TiptapEditorPopup({ isOpen, initialContent, onSave, onClose }) {
     const editor = useEditor({
         extensions: [
             StarterKit,

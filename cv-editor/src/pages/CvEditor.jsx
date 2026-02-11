@@ -91,13 +91,20 @@ export default function CvEditor() {
   const frameReady = useRef(false)
   const editorContainerRef = useRef(null)
   const cssEditorContainerRef = useRef(null)
-  const lastEditorHoverPath = useRef(null)
+  const lastEditorHoverPathRef = useRef(null)
 
   const postToFrame = useCallback((message) => {
     if (frameReady.current && iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage(message, '*')
     }
   }, [])
+
+  // Store postToFrame in a ref to avoid ESLint ref-during-render warnings
+  // while still allowing event handlers to access the latest version
+  const postToFrameRef = useRef(postToFrame)
+  useEffect(() => {
+    postToFrameRef.current = postToFrame
+  }, [postToFrame])
 
   const yamlEditorRef = useCodeMirror({
     containerRef: editorContainerRef,
@@ -107,6 +114,7 @@ export default function CvEditor() {
       yamlLang(),
       hoverHighlightField,
       hoverHighlightTheme,
+      /* eslint-disable react-hooks/refs */
       EditorView.domEventHandlers({
         mousemove(e, view) {
           const pos = view.posAtCoords({ x: e.clientX, y: e.clientY })
@@ -114,21 +122,22 @@ export default function CvEditor() {
           const lineIdx = view.state.doc.lineAt(pos).number - 1
           const yamlText = view.state.doc.toString()
           const path = findYamlPathAtLine(yamlText, lineIdx)
-          if (path !== lastEditorHoverPath.current) {
-            lastEditorHoverPath.current = path
+          if (path !== lastEditorHoverPathRef.current) {
+            lastEditorHoverPathRef.current = path
             const range = path ? findYamlLineRange(yamlText, path) : null
             view.dispatch({ effects: setHoverHighlight.of(range) })
-            postToFrame({ type: 'highlight-path', path })
+            postToFrameRef.current({ type: 'highlight-path', path })
           }
         },
         mouseleave(e, view) {
-          if (lastEditorHoverPath.current !== null) {
-            lastEditorHoverPath.current = null
+          if (lastEditorHoverPathRef.current !== null) {
+            lastEditorHoverPathRef.current = null
             view.dispatch({ effects: setHoverHighlight.of(null) })
-            postToFrame({ type: 'highlight-path', path: null })
+            postToFrameRef.current({ type: 'highlight-path', path: null })
           }
         },
       }),
+      /* eslint-enable react-hooks/refs */
     ],
     onDocChange: setYamlString,
   })
