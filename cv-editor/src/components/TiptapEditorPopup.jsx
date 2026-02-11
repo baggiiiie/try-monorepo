@@ -1,6 +1,8 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { useEffect } from 'react'
+import Link from '@tiptap/extension-link'
+import Underline from '@tiptap/extension-underline'
+import { useEffect, useCallback, useState, useRef } from 'react'
 
 const menuButtonClass = (isActive) =>
     `px-2 py-1 text-xs font-medium rounded transition-colors cursor-pointer ${isActive
@@ -8,26 +10,91 @@ const menuButtonClass = (isActive) =>
         : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-300'
     }`
 
+function LinkPopover({ editor, onClose }) {
+    const [url, setUrl] = useState(editor.getAttributes('link').href || '')
+    const inputRef = useRef(null)
+
+    useEffect(() => {
+        inputRef.current?.focus()
+    }, [])
+
+    const apply = () => {
+        if (url === '') {
+            editor.chain().focus().extendMarkRange('link').unsetLink().run()
+        } else {
+            editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
+        }
+        onClose()
+    }
+
+    return (
+        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-white border border-gray-300 rounded-lg shadow-lg">
+            <input
+                ref={inputRef}
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') apply()
+                    if (e.key === 'Escape') { onClose(); editor.commands.focus() }
+                }}
+                placeholder="https://..."
+                className="w-48 px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:border-gray-400"
+            />
+            <button onClick={apply} className="px-2 py-1 text-xs font-medium text-white bg-gray-800 rounded hover:bg-gray-700 cursor-pointer">
+                Apply
+            </button>
+            {editor.isActive('link') && (
+                <button
+                    onClick={() => {
+                        editor.chain().focus().extendMarkRange('link').unsetLink().run()
+                        onClose()
+                    }}
+                    className="px-2 py-1 text-xs font-medium text-red-600 bg-white border border-red-200 rounded hover:bg-red-50 cursor-pointer"
+                >
+                    Remove
+                </button>
+            )}
+        </div>
+    )
+}
+
 function MenuBar({ editor }) {
     if (!editor) return null
+
+    const [showLinkPopover, setShowLinkPopover] = useState(false)
+    const [, forceUpdate] = useState(0)
+    useEffect(() => {
+        const handler = () => forceUpdate(n => n + 1)
+        editor.on('transaction', handler)
+        return () => editor.off('transaction', handler)
+    }, [editor])
+
     return (
-        <div className="flex items-center gap-1 p-2 border-b border-gray-200 bg-gray-50 rounded-t-lg flex-wrap">
+        <div className="flex items-center gap-1 p-2 border-b border-gray-200 bg-gray-50 rounded-t-lg flex-wrap relative">
             <button onClick={() => editor.chain().focus().toggleBold().run()} className={menuButtonClass(editor.isActive('bold'))}>
                 <strong>B</strong>
             </button>
             <button onClick={() => editor.chain().focus().toggleItalic().run()} className={menuButtonClass(editor.isActive('italic'))}>
                 <em>I</em>
             </button>
+            <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={menuButtonClass(editor.isActive('underline'))}>
+                <u>U</u>
+            </button>
             <button onClick={() => editor.chain().focus().toggleStrike().run()} className={menuButtonClass(editor.isActive('strike'))}>
                 <s>S</s>
             </button>
             <div className="w-px h-5 bg-gray-300 mx-1" />
-            <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={menuButtonClass(editor.isActive('bulletList'))}>
-                • List
-            </button>
-            <button onClick={() => editor.chain().focus().toggleOrderedList().run()} className={menuButtonClass(editor.isActive('orderedList'))}>
-                1. List
-            </button>
+            <div className="relative">
+                <button onClick={() => setShowLinkPopover(!showLinkPopover)} className={menuButtonClass(editor.isActive('link'))}>
+                    Link
+                </button>
+                {showLinkPopover && (
+                    <div className="absolute top-full left-0 mt-1 z-10">
+                        <LinkPopover editor={editor} onClose={() => setShowLinkPopover(false)} />
+                    </div>
+                )}
+            </div>
             <div className="w-px h-5 bg-gray-300 mx-1" />
             <button onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} className={menuButtonClass(false)}>
                 ↩
@@ -41,7 +108,14 @@ function MenuBar({ editor }) {
 
 export default function TiptapEditorPopup({ isOpen, initialContent, isHtml, onSave, onClose }) {
     const editor = useEditor({
-        extensions: [StarterKit],
+        extensions: [
+            StarterKit,
+            Underline,
+            Link.configure({
+                openOnClick: false,
+                HTMLAttributes: { class: 'text-blue-600 underline' },
+            }),
+        ],
         content: '',
         editorProps: {
             attributes: {
