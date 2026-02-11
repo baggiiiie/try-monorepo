@@ -62,6 +62,23 @@ export function getPreviewFrameHTML(cssString) {
     .section.dragging {
       opacity: 0.4;
     }
+    li[data-yaml-path][draggable="true"] {
+      cursor: grab;
+    }
+    li[data-yaml-path][draggable="true"]:active {
+      cursor: grabbing;
+    }
+    li.drag-over-above {
+      border-top: 2px solid rgba(59, 130, 246, 0.8);
+      margin-top: -2px;
+    }
+    li.drag-over-below {
+      border-bottom: 2px solid rgba(59, 130, 246, 0.8);
+      margin-bottom: -2px;
+    }
+    li.dragging {
+      opacity: 0.4;
+    }
     @media print {
       [data-yaml-path].hover-highlight {
         background: none;
@@ -235,11 +252,20 @@ export function getPreviewFrameHTML(cssString) {
 
     // Drag-and-reorder sections
     let dragSrcIdx = null;
+    let dragType = null;
 
     function getSectionIndex(el) {
       const path = el.getAttribute('data-yaml-path');
       const m = path && path.match(/^sections\\[(\\d+)\\]$/);
       return m ? parseInt(m[1], 10) : null;
+    }
+
+    function parseBulletPath(el) {
+      const path = el.getAttribute('data-yaml-path');
+      if (!path) return null;
+      const m = path.match(/^(.*\\.bullets)\\[(\\d+)\\]$/);
+      if (!m) return null;
+      return { bulletsPath: m[1], index: parseInt(m[2], 10) };
     }
 
     function setupDrag() {
@@ -249,6 +275,7 @@ export function getPreviewFrameHTML(cssString) {
 
         el.addEventListener('dragstart', (e) => {
           dragSrcIdx = getSectionIndex(el);
+          dragType = 'section';
           el.classList.add('dragging');
           e.dataTransfer.effectAllowed = 'move';
         });
@@ -259,9 +286,11 @@ export function getPreviewFrameHTML(cssString) {
             x => { x.classList.remove('drag-over-above', 'drag-over-below'); }
           );
           dragSrcIdx = null;
+          dragType = null;
         });
 
         el.addEventListener('dragover', (e) => {
+          if (dragType !== 'section') return;
           e.preventDefault();
           e.dataTransfer.dropEffect = 'move';
           const rect = el.getBoundingClientRect();
@@ -279,6 +308,7 @@ export function getPreviewFrameHTML(cssString) {
         });
 
         el.addEventListener('drop', (e) => {
+          if (dragType !== 'section') return;
           e.preventDefault();
           el.classList.remove('drag-over-above', 'drag-over-below');
           const targetIdx = getSectionIndex(el);
@@ -290,6 +320,73 @@ export function getPreviewFrameHTML(cssString) {
             type: 'reorder-section',
             fromIndex: dragSrcIdx,
             toIndex: insertBefore ? targetIdx : targetIdx + 1,
+          }, '*');
+        });
+      });
+
+      // Drag-and-reorder bullet points
+      let bulletDragSrc = null;
+
+      document.querySelectorAll('li[data-yaml-path]').forEach(li => {
+        const info = parseBulletPath(li);
+        if (!info) return;
+        li.setAttribute('draggable', 'true');
+
+        li.addEventListener('dragstart', (e) => {
+          e.stopPropagation();
+          bulletDragSrc = info;
+          dragType = 'bullet';
+          li.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+        });
+
+        li.addEventListener('dragend', () => {
+          li.classList.remove('dragging');
+          document.querySelectorAll('li.drag-over-above, li.drag-over-below').forEach(
+            x => { x.classList.remove('drag-over-above', 'drag-over-below'); }
+          );
+          bulletDragSrc = null;
+          dragType = null;
+        });
+
+        li.addEventListener('dragover', (e) => {
+          if (dragType !== 'bullet') return;
+          const targetInfo = parseBulletPath(li);
+          if (!targetInfo || targetInfo.bulletsPath !== bulletDragSrc.bulletsPath) return;
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = 'move';
+          const rect = li.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          li.classList.remove('drag-over-above', 'drag-over-below');
+          if (e.clientY < midY) {
+            li.classList.add('drag-over-above');
+          } else {
+            li.classList.add('drag-over-below');
+          }
+        });
+
+        li.addEventListener('dragleave', () => {
+          li.classList.remove('drag-over-above', 'drag-over-below');
+        });
+
+        li.addEventListener('drop', (e) => {
+          if (dragType !== 'bullet') return;
+          e.preventDefault();
+          e.stopPropagation();
+          li.classList.remove('drag-over-above', 'drag-over-below');
+          const targetInfo = parseBulletPath(li);
+          if (!bulletDragSrc || !targetInfo) return;
+          if (bulletDragSrc.bulletsPath !== targetInfo.bulletsPath) return;
+          if (bulletDragSrc.index === targetInfo.index) return;
+          const rect = li.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          const insertBefore = e.clientY < midY;
+          window.parent.postMessage({
+            type: 'reorder-bullet',
+            bulletsPath: bulletDragSrc.bulletsPath,
+            fromIndex: bulletDragSrc.index,
+            toIndex: insertBefore ? targetInfo.index : targetInfo.index + 1,
           }, '*');
         });
       });

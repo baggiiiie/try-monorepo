@@ -226,6 +226,54 @@ export default function CvEditor() {
           }
         })
       }
+      if (e.data?.type === 'reorder-bullet') {
+        const { bulletsPath, fromIndex, toIndex } = e.data
+        setYamlString((prev) => {
+          try {
+            const data = yaml.load(prev)
+            const parts = []
+            const re = /([^.\[\]]+)|\[(\d+)\]/g
+            let m
+            while ((m = re.exec(bulletsPath)) !== null) {
+              if (m[1] !== undefined) parts.push(m[1])
+              else if (m[2] !== undefined) parts.push(parseInt(m[2], 10))
+            }
+            let target = data
+            for (const part of parts) {
+              target = target[part]
+              if (!target) return prev
+            }
+            const bullets = [...target]
+            const [moved] = bullets.splice(fromIndex, 1)
+            const insertAt = toIndex > fromIndex ? toIndex - 1 : toIndex
+            bullets.splice(insertAt, 0, moved)
+            let parent = data
+            for (let i = 0; i < parts.length - 1; i++) {
+              parent = parent[parts[i]]
+            }
+            parent[parts[parts.length - 1]] = bullets
+            const updated = yaml.dump(data, {
+              lineWidth: -1,
+              quotingType: '"',
+              forceQuotes: false,
+              noRefs: true,
+            })
+            if (editorViewRef.current) {
+              editorViewRef.current.dispatch({
+                changes: {
+                  from: 0,
+                  to: editorViewRef.current.state.doc.length,
+                  insert: updated,
+                },
+              })
+            }
+            return updated
+          } catch (err) {
+            console.error('Bullet reorder failed:', err)
+            return prev
+          }
+        })
+      }
     }
     window.addEventListener('message', handler)
     return () => window.removeEventListener('message', handler)
