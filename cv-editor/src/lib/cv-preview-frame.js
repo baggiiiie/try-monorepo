@@ -27,6 +27,7 @@ export function getPreviewFrameHTML(cssString) {
     }
     [data-yaml-path] {
       transition: background 0.15s;
+      position: relative;
     }
     [data-yaml-path].hover-highlight {
       background: rgba(255, 213, 79, 0.25);
@@ -40,6 +41,35 @@ export function getPreviewFrameHTML(cssString) {
     [data-editable]:hover {
       outline: 1.5px dashed rgba(59, 130, 246, 0.5);
       outline-offset: 2px;
+    }
+    .cv-edit-icon {
+      position: absolute;
+      z-index: 9999;
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      border: 1px solid rgba(0,0,0,0.12);
+      background: #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      line-height: 1;
+      opacity: 0;
+      transform: scale(0.8);
+      transition: opacity 0.15s, transform 0.15s;
+      pointer-events: none;
+    }
+    .cv-edit-icon.visible {
+      opacity: 1;
+      transform: scale(1);
+      pointer-events: auto;
+    }
+    .cv-edit-icon:hover {
+      background: #f3f4f6;
+      border-color: rgba(0,0,0,0.2);
     }
     [data-editable].editing {
       outline: 2px solid rgba(59, 130, 246, 0.8);
@@ -230,20 +260,61 @@ export function getPreviewFrameHTML(cssString) {
       }
     });
 
+    // Create floating edit icon
+    const editIcon = document.createElement('button');
+    editIcon.className = 'cv-edit-icon';
+    editIcon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+    editIcon.title = 'Edit';
+    document.body.appendChild(editIcon);
+
+    function positionEditIcon(el) {
+      const rect = el.getBoundingClientRect();
+      editIcon.style.top = (rect.top + window.scrollY + 2) + 'px';
+      editIcon.style.left = (rect.right + window.scrollX - 30) + 'px';
+      editIcon.classList.add('visible');
+    }
+
+    function hideEditIcon() {
+      editIcon.classList.remove('visible');
+    }
+
+    editIcon.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!lastHoverEl) return;
+      const el = lastHoverEl;
+      const path = el.getAttribute('data-yaml-path');
+      const isHtml = el.getAttribute('data-editable') === 'html';
+      const value = isHtml ? el.innerHTML : el.textContent;
+      window.parent.postMessage({ type: 'open-editor', path, value, isHtml }, '*');
+    });
+
     document.addEventListener('mouseover', (e) => {
+      if (e.target === editIcon || editIcon.contains(e.target)) return;
       const el = e.target.closest('[data-yaml-path]');
       const path = el ? el.getAttribute('data-yaml-path') : null;
       if (path !== lastHoverPath) {
         if (lastHoverEl) lastHoverEl.classList.remove('hover-highlight');
         lastHoverPath = path;
         lastHoverEl = el;
-        if (el) el.classList.add('hover-highlight');
+        if (el) {
+          el.classList.add('hover-highlight');
+          if (el.hasAttribute('data-editable')) {
+            positionEditIcon(el);
+          } else {
+            hideEditIcon();
+          }
+        } else {
+          hideEditIcon();
+        }
         window.parent.postMessage({ type: 'hover-path', path }, '*');
       }
     });
-    document.addEventListener('mouseleave', () => {
+    document.addEventListener('mouseleave', (e) => {
+      if (e.relatedTarget === editIcon || (editIcon && editIcon.contains(e.relatedTarget))) return;
       if (lastHoverEl) lastHoverEl.classList.remove('hover-highlight');
       lastHoverEl = null;
+      hideEditIcon();
       if (lastHoverPath !== null) {
         lastHoverPath = null;
         window.parent.postMessage({ type: 'hover-path', path: null }, '*');

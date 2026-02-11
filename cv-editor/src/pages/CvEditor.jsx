@@ -8,6 +8,7 @@ import { reorderSections, reorderBullets } from '../lib/yaml-mutations'
 import defaultYaml from '../../cv-data.yaml?raw'
 import ImportPdfButton from '../components/ImportPdfButton'
 import FormEditor from '../components/FormEditor'
+import TiptapEditorPopup from '../components/TiptapEditorPopup'
 import { Decoration } from '@codemirror/view'
 import { StateEffect, StateField } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
@@ -56,8 +57,8 @@ const DEBOUNCE_MS = 300
 
 const sanitize = (html) =>
   DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['b', 'i', 'a', 'span'],
-    ALLOWED_ATTR: ['class', 'href'],
+    ALLOWED_TAGS: ['b', 'i', 'a', 'span', 'strong', 'em', 's', 'p', 'br', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'hr'],
+    ALLOWED_ATTR: ['class', 'href', 'target', 'rel'],
   })
 
 function syncToEditor(viewRef, text) {
@@ -85,6 +86,7 @@ export default function CvEditor() {
   const [activeTab, setActiveTab] = useState('yaml')
   const [error, setError] = useState(null)
   const [lastValidHtml, setLastValidHtml] = useState('')
+  const [editorPopup, setEditorPopup] = useState({ isOpen: false, path: '', content: '', isHtml: false })
   const iframeRef = useRef(null)
   const frameReady = useRef(false)
   const editorContainerRef = useRef(null)
@@ -211,6 +213,16 @@ export default function CvEditor() {
         return
       }
 
+      if (e.data?.type === 'open-editor') {
+        setEditorPopup({
+          isOpen: true,
+          path: e.data.path,
+          content: e.data.value,
+          isHtml: !!e.data.isHtml,
+        })
+        return
+      }
+
       if (e.data?.type === 'reorder-bullet') {
         setYamlString((prev) => {
           try {
@@ -295,7 +307,7 @@ export default function CvEditor() {
           </button>
           <button
             disabled
-            onClick={() => {}}
+            onClick={() => { }}
             className="px-4 py-1.5 bg-gray-200 text-gray-500 text-sm font-medium rounded-md cursor-not-allowed"
           >
             Feedback
@@ -319,11 +331,10 @@ export default function CvEditor() {
                 <button
                   key={mode}
                   onClick={() => setEditorMode(mode)}
-                  className={`px-3 py-2 text-xs font-semibold uppercase tracking-wide cursor-pointer transition-colors ${
-                    editorMode === mode
-                      ? 'text-white bg-gray-800'
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                  }`}
+                  className={`px-3 py-2 text-xs font-semibold uppercase tracking-wide cursor-pointer transition-colors ${editorMode === mode
+                    ? 'text-white bg-gray-800'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    }`}
                 >
                   {mode === 'visual' ? '✏ Visual' : '⟨/⟩ Code'}
                 </button>
@@ -335,11 +346,10 @@ export default function CvEditor() {
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`px-4 py-2 text-sm font-medium cursor-pointer transition-colors ${
-                      activeTab === tab
-                        ? 'text-gray-900 border-b-2 border-gray-800'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
+                    className={`px-4 py-2 text-sm font-medium cursor-pointer transition-colors ${activeTab === tab
+                      ? 'text-gray-900 border-b-2 border-gray-800'
+                      : 'text-gray-500 hover:text-gray-700'
+                      }`}
                   >
                     {tab.toUpperCase()}
                   </button>
@@ -360,6 +370,25 @@ export default function CvEditor() {
           />
         </div>
       </div>
+      <TiptapEditorPopup
+        isOpen={editorPopup.isOpen}
+        initialContent={editorPopup.content}
+        isHtml={editorPopup.isHtml}
+        onSave={(newContent) => {
+          setYamlString((prev) => {
+            try {
+              const updated = applyInlineEdit(prev, editorPopup.path, newContent)
+              syncToEditor(yamlEditorRef, updated)
+              return updated
+            } catch (err) {
+              console.error('Tiptap edit failed:', err)
+              return prev
+            }
+          })
+          setEditorPopup({ isOpen: false, path: '', content: '', isHtml: false })
+        }}
+        onClose={() => setEditorPopup({ isOpen: false, path: '', content: '', isHtml: false })}
+      />
     </div>
   )
 }
