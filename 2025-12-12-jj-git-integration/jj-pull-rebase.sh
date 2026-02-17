@@ -120,20 +120,25 @@ echo "bookmark info for '$branch_to_fetch' is: $bookmark_info"
 if [ "$do_rebase" = "true" ]; then
     rebase_revset="children($local_bookmark_commit_id)::~..$remote_bookmark_commit_id&mine()"
 
-    # Capture change IDs of commits that will be rebased
-    # commits_to_rebase=$(jj log -r "$rebase_revset" -T 'change_id ++ "\n"' --no-graph 2>/dev/null | grep -v '^$')
+    # Capture empty commits before rebase
+    empty_commits_before=$(jj log -r "$rebase_revset" -T 'if(empty, change_id++"\n", "")' --no-graph --color never 2>/dev/null)
 
     echo "3. rebase children of change id '$local_bookmark_commit_id' onto fetched branch '$branch_to_fetch'"
     jj rebase -r "$rebase_revset" --onto "'$remote_bookmark_commit_id'" --ignore-immutable
 
-    # if [ -n "$commits_to_rebase" ]; then
-    #     echo "4. abandon commits that became empty after rebase"
-    #     for change_id in $commits_to_rebase; do
-    #         if jj log -r "$change_id" -T 'if(empty, "empty", "")' --no-graph 2>/dev/null | grep -q "empty"; then
-    #             jj abandon "$change_id" 2>/dev/null || true
-    #         fi
-    #     done
-    # fi
+    # Get empty commits after rebase and abandon those that weren't empty before
+    empty_commits_after=$(jj log -r "$rebase_revset" -T 'if(empty, change_id++"\n", "")' --no-graph --color never 2>/dev/null)
+
+    if [ -n "$empty_commits_after" ]; then
+        echo "4. abandon commits that became empty after rebase"
+        for change_id in $empty_commits_after; do
+            # Only abandon if it wasn't empty before the rebase
+            if ! echo "$empty_commits_before" | grep -q "^${change_id}$"; then
+                echo "   abandoning newly empty commit: $change_id"
+                jj abandon "$change_id" 2>/dev/null || true
+            fi
+        done
+    fi
 else
     echo "3. skipping rebase (use --rebase to enable)"
 fi
