@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -82,36 +81,31 @@ func runInSandbox(workDir, input string, timeout time.Duration) Result {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, cmdName, parts[1:]...)
-	cmd.Dir = workDir
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		res.Err = err
-		return res
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		res.Err = err
-		return res
-	}
-
-	if err := cmd.Start(); err != nil {
-		res.Err = err
-		return res
+	args := []string{
+		"run", "--rm",
+		"--network", "none",
+		"--memory", "128m",
+		"--cpus", "0.5",
+		"--pids-limit", "64",
+		"--read-only",
+		"--cap-drop", "ALL",
+		"--security-opt", "no-new-privileges",
+		"--tmpfs", "/tmp:rw,noexec,nosuid,size=16m",
+		"-v", workDir + ":/workspace:rw",
+		"-w", "/workspace",
+		"alpine:3.20",
+		"sh", "-lc", input,
 	}
 
-	outBytes, _ := io.ReadAll(stdout)
-	errBytes, _ := io.ReadAll(stderr)
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	out, err := cmd.CombinedOutput()
 
-	waitErr := cmd.Wait()
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		res.Timeout = true
 	}
 
-	res.Stdout = string(outBytes)
-	res.Stderr = string(errBytes)
-	res.Err = waitErr
+	res.Stdout = string(out)
+	res.Err = err
 	return res
 }
 
