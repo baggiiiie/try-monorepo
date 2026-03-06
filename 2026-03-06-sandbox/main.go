@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,11 +17,13 @@ import (
 )
 
 type Result struct {
-	Command string
-	Stdout  string
-	Stderr  string
-	Err     error
-	Timeout bool
+	Command       string
+	Stdout        string
+	Stderr        string
+	Err           error
+	Timeout       bool
+	PolicyBlocked bool
+	PolicyReason  string
 }
 
 type Config struct {
@@ -28,9 +31,25 @@ type Config struct {
 	AllowedHosts map[string]bool
 }
 
+type AuditEntry struct {
+	Timestamp  string `json:"ts"`
+	Command    string `json:"command"`
+	Decision   string `json:"decision"`
+	Reason     string `json:"reason,omitempty"`
+	ExitCode   int    `json:"exit_code,omitempty"`
+	Timeout    bool   `json:"timeout,omitempty"`
+	DurationMs int64  `json:"duration_ms"`
+}
+
+type Auditor struct {
+	file *os.File
+	enc  *json.Encoder
+}
+
 func main() {
 	networkMode := flag.String("network-mode", "none", "network mode: none or allowlist")
 	networkAllow := flag.String("network-allow", "", "comma-separated allowed hosts for allowlist mode")
+	auditLogPath := flag.String("audit-log", "", "path to JSONL audit log (optional)")
 	flag.Parse()
 
 	cfg, err := parseConfig(*networkMode, *networkAllow)
@@ -38,6 +57,13 @@ func main() {
 		fmt.Println("config error:", err)
 		return
 	}
+
+	auditor, err := newAuditor(*auditLogPath)
+	if err != nil {
+		fmt.Println("audit logger error:", err)
+		return
+	}
+	defer auditor.Close()
 
 	fmt.Println("Mini Agent Sandbox (Go)")
 	fmt.Println("Type commands. Type 'exit' to quit.")
@@ -83,11 +109,39 @@ func main() {
 		if ok {
 			if !askForApproval(scanner, reason) {
 				fmt.Println("skipped.")
+				auditor.Log(AuditEntry{
+					Timestamp:  time.Now().UTC().Format(time.RFC3339Nano),
+					Command:    line,
+					Decision:   "denied",
+					Reason:     "approval_rejected: " + reason,
+					DurationMs: 0,
+				})
 				continue
 			}
 		}
 
+		start := time.Now()
 		res := runInSandbox(containerName, line, 3*time.Second, cfg)
+		durationMs := time.Since(start).Milliseconds()
+		entry := AuditEntry{
+			Timestamp:  time.Now().UTC().Format(time.RFC3339Nano),
+			Command:    line,
+			Decision:   "executed",
+			ExitCode:   exitCode(res.Err),
+			Timeout:    res.Timeout,
+			DurationMs: durationMs,
+		}
+		if res.PolicyBlocked {
+			entry.Decision = "blocked"
+			entry.Reason = res.PolicyReason
+			entry.ExitCode = 0
+		} else if res.Timeout {
+			entry.Decision = "timeout"
+		} else if res.Err != nil {
+			entry.Decision = "failed"
+			entry.Reason = res.Err.Error()
+		}
+		auditor.Log(entry)
 		printResult(res)
 	}
 }
@@ -169,16 +223,22 @@ func runInSandbox(containerName, input string, timeout time.Duration, cfg Config
 
 	cmdName := parts[0]
 	if !allowed[cmdName] {
-		res.Err = fmt.Errorf("command not allowed: %s", cmdName)
+		res.PolicyBlocked = true
+		res.PolicyReason = fmt.Sprintf("command not allowed: %s", cmdName)
+		res.Err = errors.New(res.PolicyReason)
 		return res
 	}
 
 	if err := validatePaths(parts); err != nil {
+		res.PolicyBlocked = true
+		res.PolicyReason = err.Error()
 		res.Err = err
 		return res
 	}
 
 	if err := validateNetwork(parts, cfg); err != nil {
+		res.PolicyBlocked = true
+		res.PolicyReason = err.Error()
 		res.Err = err
 		return res
 	}
@@ -293,6 +353,44 @@ func askForApproval(scanner *bufio.Scanner, reason string) bool {
 	}
 	answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
 	return answer == "y" || answer == "yes"
+}
+
+func newAuditor(path string) (*Auditor, error) {
+	if strings.TrimSpace(path) == "" {
+		return &Auditor{}, nil
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	return &Auditor{
+		file: f,
+		enc:  json.NewEncoder(f),
+	}, nil
+}
+
+func (a *Auditor) Log(entry AuditEntry) {
+	if a == nil || a.enc == nil {
+		return
+	}
+	_ = a.enc.Encode(entry)
+}
+
+func (a *Auditor) Close() error {
+	if a == nil || a.file == nil {
+		return nil
+	}
+	return a.file.Close()
+}
+
+func exitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	if ee, ok := errors.AsType[*exec.ExitError](err); ok {
+		return ee.ExitCode()
+	}
+	return -1
 }
 
 func printResult(r Result) {
