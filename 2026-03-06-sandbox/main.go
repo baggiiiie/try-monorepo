@@ -186,7 +186,8 @@ func runInSandbox(containerName, input string, timeout time.Duration, cfg Config
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	args := []string{"exec", containerName, "sh", "-lc", input}
+	args := []string{"exec", containerName, cmdName}
+	args = append(args, parts[1:]...)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	out, err := cmd.CombinedOutput()
