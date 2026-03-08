@@ -18,7 +18,6 @@ type PolicyDecision struct {
 	RequiresApproval bool
 	ApprovalReason   string
 	Parts            []string
-	CommandName      string
 }
 
 var allowedCommands = map[string]bool{
@@ -51,63 +50,51 @@ func parseConfig(mode, allowCSV string) (Config, error) {
 func evaluatePolicy(input string, cfg Config) PolicyDecision {
 	parts := strings.Fields(input)
 	if len(parts) == 0 {
-		return PolicyDecision{Allowed: false, BlockReason: "empty command"}
+		return PolicyDecision{BlockReason: "empty command"}
 	}
 
 	cmdName := parts[0]
-	decision := PolicyDecision{
-		Allowed:     true,
-		Parts:       parts,
-		CommandName: cmdName,
-	}
 
 	if !allowedCommands[cmdName] {
-		decision.Allowed = false
-		decision.BlockReason = fmt.Sprintf("command not allowed: %s", cmdName)
-		return decision
-	}
-
-	if err := validatePaths(parts); err != nil {
-		decision.Allowed = false
-		decision.BlockReason = err.Error()
-		return decision
-	}
-
-	if err := validateNetwork(parts, cfg); err != nil {
-		decision.Allowed = false
-		decision.BlockReason = err.Error()
-		return decision
+		return PolicyDecision{BlockReason: fmt.Sprintf("command not allowed: %s", cmdName)}
 	}
 
 	if strings.ContainsAny(input, ";|&<>`") || strings.Contains(input, "$(") {
-		decision.RequiresApproval = true
-		decision.ApprovalReason = "contains shell metacharacters"
-		return decision
+		return PolicyDecision{BlockReason: "shell metacharacters not allowed"}
 	}
 
-	if cmdName == "curl" {
-		decision.RequiresApproval = true
-		decision.ApprovalReason = "network command"
+	if outsidePaths := pathsOutsideWorkspace(parts); len(outsidePaths) > 0 {
+		return PolicyDecision{
+			Allowed:          true,
+			RequiresApproval: true,
+			ApprovalReason:   fmt.Sprintf("accesses path outside /workspace: %s", strings.Join(outsidePaths, ", ")),
+			Parts:            parts,
+		}
 	}
 
-	return decision
+	if err := validateNetwork(parts, cfg); err != nil {
+		return PolicyDecision{BlockReason: err.Error()}
+	}
+
+	return PolicyDecision{Allowed: true, Parts: parts}
 }
 
-func validatePaths(parts []string) error {
+func pathsOutsideWorkspace(parts []string) []string {
 	cmdName := parts[0]
 	if cmdName != "ls" && cmdName != "cat" {
 		return nil
 	}
 
+	var outside []string
 	for _, arg := range parts[1:] {
 		if arg == "" || strings.HasPrefix(arg, "-") {
 			continue
 		}
 		if !isPathWithinWorkspace(arg) {
-			return fmt.Errorf("path not allowed: %s (only /workspace)", arg)
+			outside = append(outside, arg)
 		}
 	}
-	return nil
+	return outside
 }
 
 func isPathWithinWorkspace(arg string) bool {

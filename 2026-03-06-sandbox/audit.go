@@ -9,23 +9,12 @@ import (
 	"time"
 )
 
-type Decision string
-
-const (
-	DecisionExecuted Decision = "executed"
-	DecisionFailed   Decision = "failed"
-	DecisionBlocked  Decision = "blocked"
-	DecisionDenied   Decision = "denied"
-	DecisionTimeout  Decision = "timeout"
-)
-
 type AuditEntry struct {
 	Timestamp  string `json:"ts"`
 	Command    string `json:"command"`
 	Decision   string `json:"decision"`
 	Reason     string `json:"reason,omitempty"`
 	ExitCode   int    `json:"exit_code,omitempty"`
-	Timeout    bool   `json:"timeout,omitempty"`
 	DurationMs int64  `json:"duration_ms"`
 }
 
@@ -48,31 +37,34 @@ func newAuditor(path string) (*Auditor, error) {
 	}, nil
 }
 
-func (a *Auditor) LogEvent(command string, decision Decision, reason string, start time.Time, res *Result) {
+func (a *Auditor) LogBlocked(command, reason string) {
+	if a == nil || a.enc == nil {
+		return
+	}
+	_ = a.enc.Encode(AuditEntry{
+		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
+		Command:   command,
+		Decision:  "blocked",
+		Reason:    reason,
+	})
+}
+
+func (a *Auditor) LogExecution(command string, start time.Time, res Result) {
 	if a == nil || a.enc == nil {
 		return
 	}
 	entry := AuditEntry{
 		Timestamp:  time.Now().UTC().Format(time.RFC3339Nano),
 		Command:    command,
-		Decision:   string(decision),
-		Reason:     reason,
-		DurationMs: 0,
+		Decision:   "executed",
+		DurationMs: time.Since(start).Milliseconds(),
+		ExitCode:   exitCode(res.Err),
 	}
-	if !start.IsZero() {
-		entry.DurationMs = time.Since(start).Milliseconds()
-	}
-	if res != nil {
-		entry.ExitCode = exitCode(res.Err)
-		entry.Timeout = res.Timeout
-	}
-	if reason == "" && res != nil {
-		if res.Timeout {
-			entry.Decision = string(DecisionTimeout)
-		} else if res.Err != nil {
-			entry.Decision = string(DecisionFailed)
-			entry.Reason = res.Err.Error()
-		}
+	if res.Timeout {
+		entry.Decision = "timeout"
+	} else if res.Err != nil {
+		entry.Decision = "failed"
+		entry.Reason = res.Err.Error()
 	}
 	_ = a.enc.Encode(entry)
 }

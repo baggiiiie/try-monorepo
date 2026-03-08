@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/rand"
 	"os/exec"
@@ -11,13 +10,9 @@ import (
 )
 
 type Result struct {
-	Command       string
-	Stdout        string
-	Stderr        string
-	Err           error
-	Timeout       bool
-	PolicyBlocked bool
-	PolicyReason  string
+	Output  string
+	Err     error
+	Timeout bool
 }
 
 func startSandboxContainer(workDir string, cfg Config) (string, error) {
@@ -60,23 +55,19 @@ func cleanupSandboxContainer(containerName string) {
 	_ = exec.Command("docker", "rm", "-f", containerName).Run()
 }
 
-func runInSandbox(containerName, input string, parts []string, timeout time.Duration) Result {
-	res := Result{Command: input}
-
+func runInSandbox(containerName string, parts []string, timeout time.Duration) Result {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	args := []string{"exec", containerName, parts[0]}
-	args = append(args, parts[1:]...)
+	args := []string{"exec", containerName}
+	args = append(args, parts...)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	out, err := cmd.CombinedOutput()
 
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		res.Timeout = true
+	return Result{
+		Output:  string(out),
+		Err:     err,
+		Timeout: ctx.Err() == context.DeadlineExceeded,
 	}
-
-	res.Stdout = string(out)
-	res.Err = err
-	return res
 }
