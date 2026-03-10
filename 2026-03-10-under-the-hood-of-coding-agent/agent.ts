@@ -2,7 +2,36 @@ import Groq from "groq-sdk";
 import * as fs from "fs";
 import * as path from "path";
 
-const groq = new Groq(); // uses GROQ_API_KEY env var
+const HTTP_LOG = path.resolve("http-requests.log");
+fs.writeFileSync(HTTP_LOG, ""); // clear on each run
+
+let requestCount = 0;
+
+const groq = new Groq({
+  fetch: async (url: RequestInfo, init?: RequestInit) => {
+    requestCount++;
+    const entry = [
+      `\n${"=".repeat(80)}`,
+      `REQUEST #${requestCount} — ${new Date().toISOString()}`,
+      `URL: ${url}`,
+      `Headers: ${JSON.stringify(Object.fromEntries(new Headers(init?.headers).entries()), null, 2)}`,
+      `Body:\n${init?.body?.toString()}`,
+      `${"=".repeat(80)}\n`,
+    ].join("\n");
+    fs.appendFileSync(HTTP_LOG, entry);
+    const res = await fetch(url, init);
+    const cloned = res.clone();
+    const responseBody = await cloned.text();
+    const resEntry = [
+      `\n${"─".repeat(80)}`,
+      `RESPONSE #${requestCount} — Status: ${res.status} ${res.statusText}`,
+      `Body:\n${responseBody}`,
+      `${"─".repeat(80)}\n`,
+    ].join("\n");
+    fs.appendFileSync(HTTP_LOG, resEntry);
+    return res;
+  },
+}); // uses GROQ_API_KEY env var
 
 const MODEL = "openai/gpt-oss-20b";
 

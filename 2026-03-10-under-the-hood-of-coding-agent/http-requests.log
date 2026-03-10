@@ -1,0 +1,54 @@
+
+================================================================================
+REQUEST #1 — 2026-03-12T07:51:41.618Z
+URL: https://api.groq.com/openai/v1/chat/completions
+Headers: {
+  "accept": "application/json",
+  "authorization": "Bearer groq_api_key",
+  "content-type": "application/json",
+  "user-agent": "Groq/JS 1.1.1",
+  "x-stainless-arch": "arm64",
+  "x-stainless-lang": "js",
+  "x-stainless-os": "MacOS",
+  "x-stainless-package-version": "1.1.1",
+  "x-stainless-retry-count": "0",
+  "x-stainless-runtime": "node",
+  "x-stainless-runtime-version": "v24.3.0"
+}
+Body:
+{"model":"openai/gpt-oss-20b","messages":[{"role":"system","content":"You are a helpful coding assistant. You have access to read_file and write_file tools to interact with the local filesystem. Use them when the user asks you to read, write, or modify files."},{"role":"user","content":"guess what files are in the current directory. read 1 of them"}],"tools":[{"type":"function","function":{"name":"read_file","description":"Read the contents of a file at the given path. Returns the file contents as a string.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative file path to read"}},"required":["path"]}}},{"type":"function","function":{"name":"write_file","description":"Write content to a file at the given path. Creates the file if it doesn't exist, overwrites if it does.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative file path to write to"},"content":{"type":"string","description":"The content to write to the file"}},"required":["path","content"]}}}],"tool_choice":"auto","temperature":0.6,"max_completion_tokens":4096}
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+RESPONSE #1 — Status: 200 OK
+Body:
+{"id":"chatcmpl-8936e0e5-2255-4dd6-9caa-5d150fba15fe","object":"chat.completion","created":1773301902,"model":"openai/gpt-oss-20b","choices":[{"index":0,"message":{"role":"assistant","reasoning":"The user says: \"guess what files are in the current directory. read 1 of them\". So we need to guess what files are in current directory. We can read a file. But we don't know the file names. We need to guess. We can try to list files? There's no tool for listing. But we can guess a file name. Maybe \"README.md\" or \"main.py\" or \"index.html\". We can attempt to read \"README.md\". If it fails, we might try another. But the instructions: \"guess what files are in the current directory. read 1 of them\". So we need to guess a file name and read it. Let's try \"README.md\". If that fails, we might try \"main.py\". We'll attempt to read \"README.md\".","tool_calls":[{"id":"fc_4ed6792b-2897-49e8-a3af-be23778d0f68","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"README.md\"}"}}]},"logprobs":null,"finish_reason":"tool_calls"}],"usage":{"queue_time":0.043214194,"prompt_tokens":257,"prompt_time":0.012584985,"completion_tokens":187,"completion_time":0.191259715,"total_tokens":444,"total_time":0.2038447,"completion_tokens_details":{"reasoning_tokens":163}},"usage_breakdown":null,"system_fingerprint":"fp_deb540145b","x_groq":{"id":"req_01kkggfaeefcntnvkcn8m1edy0","seed":2085820817},"service_tier":"on_demand"}
+
+────────────────────────────────────────────────────────────────────────────────
+
+================================================================================
+REQUEST #2 — 2026-03-12T07:51:41.989Z
+URL: https://api.groq.com/openai/v1/chat/completions
+Headers: {
+  "accept": "application/json",
+  "authorization": "Bearer groq_api_key",
+  "content-type": "application/json",
+  "user-agent": "Groq/JS 1.1.1",
+  "x-stainless-arch": "arm64",
+  "x-stainless-lang": "js",
+  "x-stainless-os": "MacOS",
+  "x-stainless-package-version": "1.1.1",
+  "x-stainless-retry-count": "0",
+  "x-stainless-runtime": "node",
+  "x-stainless-runtime-version": "v24.3.0"
+}
+Body:
+{"model":"openai/gpt-oss-20b","messages":[{"role":"system","content":"You are a helpful coding assistant. You have access to read_file and write_file tools to interact with the local filesystem. Use them when the user asks you to read, write, or modify files."},{"role":"user","content":"guess what files are in the current directory. read 1 of them"},{"role":"assistant","reasoning":"The user says: \"guess what files are in the current directory. read 1 of them\". So we need to guess what files are in current directory. We can read a file. But we don't know the file names. We need to guess. We can try to list files? There's no tool for listing. But we can guess a file name. Maybe \"README.md\" or \"main.py\" or \"index.html\". We can attempt to read \"README.md\". If it fails, we might try another. But the instructions: \"guess what files are in the current directory. read 1 of them\". So we need to guess a file name and read it. Let's try \"README.md\". If that fails, we might try \"main.py\". We'll attempt to read \"README.md\".","tool_calls":[{"id":"fc_4ed6792b-2897-49e8-a3af-be23778d0f68","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"README.md\"}"}}]},{"role":"tool","tool_call_id":"fc_4ed6792b-2897-49e8-a3af-be23778d0f68","content":"## just a program to show what's under the hood when we send a prompt to a coding agent\n\nto run:\n```bash\nGROQ_API_KEY=<GROQ_API_KEY> bunx tsx agent.ts\n```\n\n## request\n\nI know that for each request to model it contains all the information of the previous messages. \n\nWhat I didn't realize is, even between each two calls it models reasoning, this is happening too.  \nEvery iteration of the while loop sends the **entire `messages` array** plus the full tools definition to the Groq API. \n\n```ts\n  while (iterations++ < MAX_ITERATIONS) {\n    const response = await groq.chat.completions.create({\n      model: MODEL,\n      messages,\n      tools,\n      tool_choice: \"auto\",\n      temperature: 0.6,\n      max_completion_tokens: 4096,\n    });\n    // other code\n```\n\nThis is how the Chat Completions API works, it's stateless. The server doesn't remember prior turns, so the client must send the full conversation history and tool schema on every request. The cost (in tokens and latency) grows with each iteration.\n\n### visualize it\n\nadded a logger to capture all inbound/outbound http request with a [http-requests.log](./http-requests.log) generated by a `bun run agent.ts \"read main.py\"`\nit's much clearer now why we have `const choice = response.choices[0];` in `agent.ts`, because that's literally the http response we received \n\n"}],"tools":[{"type":"function","function":{"name":"read_file","description":"Read the contents of a file at the given path. Returns the file contents as a string.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative file path to read"}},"required":["path"]}}},{"type":"function","function":{"name":"write_file","description":"Write content to a file at the given path. Creates the file if it doesn't exist, overwrites if it does.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative file path to write to"},"content":{"type":"string","description":"The content to write to the file"}},"required":["path","content"]}}}],"tool_choice":"auto","temperature":0.6,"max_completion_tokens":4096}
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+RESPONSE #2 — Status: 200 OK
+Body:
+{"id":"chatcmpl-06cb73bc-e4dd-4563-aed2-473af7450e46","object":"chat.completion","created":1773301902,"model":"openai/gpt-oss-20b","choices":[{"index":0,"message":{"role":"assistant","content":"I guessed that a file called **`README.md`** might be in the current directory and read it for you. Here’s what it contains:\n\n```\n## just a program to show what's under the hood when we send a prompt to a coding agent\n\nto run:\n```bash\nGROQ_API_KEY=\u003cGROQ_API_KEY\u003e bunx tsx agent.ts\n```\n\n## request\n\nI know that for each request to model it contains all the information of the previous messages. \n\nWhat I didn't realize is, even between each two calls it models reasoning, this is happening too.  \nEvery iteration of the while loop sends the **entire `messages` array** plus the full tools definition to the Groq API. \n\n```ts\n  while (iterations++ \u003c MAX_ITERATIONS) {\n    const response = await groq.chat.completions.create({\n      model: MODEL,\n      messages,\n      tools,\n      tool_choice: \"auto\",\n      temperature: 0.6,\n      max_completion_tokens: 4096,\n    });\n    // other code\n```\n\nThis is how the Chat Completions API works, it's stateless. The server doesn't remember prior turns, so the client must send the full conversation history and tool schema on every request. The cost (in tokens and latency) grows with each iteration.\n\n### visualize it\n\nadded a logger to capture all inbound/outbound http request with a [http-requests.log](./http-requests.log) generated by a `bun run agent.ts \"read main.py\"`\nit's much clearer now why we have `const choice = response.choices[0];` in `agent.ts`, because that's literally the http response we received \n```\n\nIf you’d like me to read another file or list what else might be in the directory, just let me know!","reasoning":"We read README.md. The user wants us to guess files. We guessed README.md. It exists. Good. Now we can read it. We have the content. The user likely expects us to guess the files. We can respond: \"I guessed README.md and read it.\" And maybe mention other possible files. The user asked \"guess what files are in the current directory. read 1 of them\". We guessed and read README.md. So we should respond accordingly."},"logprobs":null,"finish_reason":"stop"}],"usage":{"queue_time":0.043774038,"prompt_tokens":765,"prompt_time":0.050338211,"completion_tokens":478,"completion_time":0.528519644,"total_tokens":1243,"total_time":0.578857855,"completion_tokens_details":{"reasoning_tokens":97}},"usage_breakdown":null,"system_fingerprint":"fp_80501ff3a1","x_groq":{"id":"req_01kkggfas3fcqbb1gcaq5s708g","seed":293935136},"service_tier":"on_demand"}
+
+────────────────────────────────────────────────────────────────────────────────
