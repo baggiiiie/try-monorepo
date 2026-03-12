@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -15,8 +16,25 @@ var (
 	BASH_TOOL       = "bash"
 )
 
+// validatePath ensures the path is within the workspace directory.
+func validatePath(path string) (string, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("invalid path: %w", err)
+	}
+	workspace, _ := filepath.Abs(hostWorkDir())
+	if !strings.HasPrefix(absPath, workspace+string(filepath.Separator)) && absPath != workspace {
+		return "", fmt.Errorf("access denied: path %s is outside workspace %s", absPath, workspace)
+	}
+	return absPath, nil
+}
+
 func readFileTool(path string) string {
-	data, err := os.ReadFile(path)
+	safe, err := validatePath(path)
+	if err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+	data, err := os.ReadFile(safe)
 	if err != nil {
 		return fmt.Sprintf("Error reading file: %v", err)
 	}
@@ -24,14 +42,22 @@ func readFileTool(path string) string {
 }
 
 func writeFileTool(path, content string) string {
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	safe, err := validatePath(path)
+	if err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+	if err := os.WriteFile(safe, []byte(content), 0o644); err != nil {
 		return fmt.Sprintf("Error writing file: %v", err)
 	}
-	return fmt.Sprintf("File written to %s", path)
+	return fmt.Sprintf("File written to %s", safe)
 }
 
 func editFileTool(path, oldStr, newStr string) string {
-	data, err := os.ReadFile(path)
+	safe, err := validatePath(path)
+	if err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+	data, err := os.ReadFile(safe)
 	if err != nil {
 		return fmt.Sprintf("Error reading file: %v", err)
 	}
@@ -44,7 +70,7 @@ func editFileTool(path, oldStr, newStr string) string {
 		return fmt.Sprintf("Error: old_str found %d times in file, expected exactly 1", count)
 	}
 	newContent := strings.Replace(content, oldStr, newStr, 1)
-	if err := os.WriteFile(path, []byte(newContent), 0o644); err != nil {
+	if err := os.WriteFile(safe, []byte(newContent), 0o644); err != nil {
 		return fmt.Sprintf("Error writing file: %v", err)
 	}
 	return "File edited successfully"
