@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -49,7 +50,63 @@ func editFileTool(path, oldStr, newStr string) string {
 	return "File edited successfully"
 }
 
+// allowedCommands lists command prefixes that run without user approval.
+var allowedCommands = []string{
+	"ls", "cat", "head", "tail", "grep", "find", "wc",
+	"echo", "pwd", "whoami", "env", "printenv",
+	"date", "uname", "file", "which", "type",
+	"tree", "du", "df", "stat",
+	"go build", "go test", "go run", "go fmt", "go vet",
+	"python", "node",
+}
+
+func isCommandAllowed(command string) bool {
+	// Split on pipes and logical operators, check every segment.
+	segments := splitCommand(command)
+	for _, seg := range segments {
+		if !isSegmentAllowed(seg) {
+			return false
+		}
+	}
+	return true
+}
+
+func splitCommand(command string) []string {
+	// Split on |, &&, ||, ;
+	// Use a simple replacer to normalize delimiters, then split.
+	r := strings.NewReplacer("&&", "\x00", "||", "\x00", "|", "\x00", ";", "\x00")
+	return strings.Split(r.Replace(command), "\x00")
+}
+
+func isSegmentAllowed(segment string) bool {
+	cmd := strings.TrimSpace(segment)
+	if cmd == "" {
+		return true
+	}
+	for _, allowed := range allowedCommands {
+		if cmd == allowed || strings.HasPrefix(cmd, allowed+" ") {
+			return true
+		}
+	}
+	return false
+}
+
+func askApproval(command string) bool {
+	fmt.Printf("\n⚠️  Command needs approval: %s\nAllow? [y/N] ", command)
+	scanner := bufio.NewScanner(os.Stdin)
+	if !scanner.Scan() {
+		return false
+	}
+	answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
+	return answer == "y" || answer == "yes"
+}
+
 func bashTool(command string, timeoutMs int) string {
+	if !isCommandAllowed(command) {
+		if !askApproval(command) {
+			return "Error: command rejected by user"
+		}
+	}
 	output, err := dockerExec(command, timeoutMs)
 	if err != nil {
 		return fmt.Sprintf("%s\nError: %v", output, err)
