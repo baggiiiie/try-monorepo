@@ -59,6 +59,11 @@ func ensureContainer() error {
 	return nil
 }
 
+// destroyContainer forcefully removes the sandbox container.
+func destroyContainer() {
+	_ = exec.Command("docker", "rm", "-f", containerName).Run()
+}
+
 // dockerExec runs a command inside the sandbox container and returns combined output.
 func dockerExec(command string, timeoutMs int) (string, error) {
 	if err := ensureContainer(); err != nil {

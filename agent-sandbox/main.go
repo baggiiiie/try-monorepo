@@ -4,9 +4,21 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
+	// Clean up the sandbox container on exit.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		destroyContainer()
+		os.Exit(0)
+	}()
+	defer destroyContainer()
+
 	fmt.Println("Agent ready. Type your message (Ctrl+C to quit).")
 
 	messages := []ChatMessage{
