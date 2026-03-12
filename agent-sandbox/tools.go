@@ -1,13 +1,17 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
-	"time"
+)
+
+var (
+	READ_FILE_TOOL  = "read_file"
+	WRITE_FILE_TOOL = "write_file"
+	EDIT_FILE_TOOL  = "edit_file"
+	BASH_TOOL       = "bash"
 )
 
 func readFileTool(path string) string {
@@ -19,7 +23,7 @@ func readFileTool(path string) string {
 }
 
 func writeFileTool(path, content string) string {
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return fmt.Sprintf("Error writing file: %v", err)
 	}
 	return fmt.Sprintf("File written to %s", path)
@@ -39,45 +43,35 @@ func editFileTool(path, oldStr, newStr string) string {
 		return fmt.Sprintf("Error: old_str found %d times in file, expected exactly 1", count)
 	}
 	newContent := strings.Replace(content, oldStr, newStr, 1)
-	if err := os.WriteFile(path, []byte(newContent), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(newContent), 0o644); err != nil {
 		return fmt.Sprintf("Error writing file: %v", err)
 	}
 	return "File edited successfully"
 }
 
 func bashTool(command string, timeoutMs int) string {
-	if timeoutMs <= 0 {
-		timeoutMs = 30000
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMs)*time.Millisecond)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "/bin/bash", "-c", command)
-	output, err := cmd.CombinedOutput()
-	if ctx.Err() == context.DeadlineExceeded {
-		return fmt.Sprintf("Command timed out after %dms", timeoutMs)
-	}
+	output, err := dockerExec(command, timeoutMs)
 	if err != nil {
-		return fmt.Sprintf("%s\nError: %v", string(output), err)
+		return fmt.Sprintf("%s\nError: %v", output, err)
 	}
-	return string(output)
+	return output
 }
 
 func executeTool(name string, args map[string]any) string {
 	switch name {
-	case "read_file":
+	case READ_FILE_TOOL:
 		path, _ := args["path"].(string)
 		return readFileTool(path)
-	case "write_file":
+	case WRITE_FILE_TOOL:
 		path, _ := args["path"].(string)
 		content, _ := args["content"].(string)
 		return writeFileTool(path, content)
-	case "edit_file":
+	case EDIT_FILE_TOOL:
 		path, _ := args["path"].(string)
 		oldStr, _ := args["old_str"].(string)
 		newStr, _ := args["new_str"].(string)
 		return editFileTool(path, oldStr, newStr)
-	case "bash":
+	case BASH_TOOL:
 		command, _ := args["command"].(string)
 		timeoutMs := 30000
 		if t, ok := args["timeout"].(float64); ok {
