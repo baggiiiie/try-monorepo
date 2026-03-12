@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
+	"sync"
 )
 
 type ChatMessage struct {
@@ -34,6 +37,7 @@ type ChatRequest struct {
 	ToolChoice          string          `json:"tool_choice,omitempty"`
 	Temperature         float64         `json:"temperature"`
 	MaxCompletionTokens int             `json:"max_completion_tokens,omitempty"`
+	Stream              bool            `json:"stream"`
 }
 
 type ChatResponse struct {
@@ -45,6 +49,28 @@ type ChatResponse struct {
 			ToolCalls []ToolCall `json:"tool_calls"`
 		} `json:"message"`
 	} `json:"choices"`
+}
+
+type StreamChunk struct {
+	Choices []struct {
+		Delta struct {
+			Role      string                `json:"role,omitempty"`
+			Content   string                `json:"content,omitempty"`
+			Reasoning string                `json:"reasoning,omitempty"`
+			ToolCalls []StreamToolCallDelta `json:"tool_calls,omitempty"`
+		} `json:"delta"`
+		FinishReason *string `json:"finish_reason"`
+	} `json:"choices"`
+}
+
+type StreamToolCallDelta struct {
+	Index    int    `json:"index"`
+	ID       string `json:"id,omitempty"`
+	Type     string `json:"type,omitempty"`
+	Function struct {
+		Name      string `json:"name,omitempty"`
+		Arguments string `json:"arguments,omitempty"`
+	} `json:"function,omitempty"`
 }
 
 var (
@@ -65,7 +91,6 @@ func init() {
 		baseURL = "http://localhost:11434/v1"
 		apiKey = "ollama"
 		if model == "" {
-			// model = "qwen2.5-coder:7b"
 			model = "gpt-oss:20b"
 		}
 	default:
@@ -79,11 +104,8 @@ func init() {
 
 func handleTurn(messages *[]ChatMessage) error {
 	const maxIterations = 20
-	iterations := 0
 
-	for iterations < maxIterations {
-		iterations++
-
+	for iterations := 0; iterations < maxIterations; iterations++ {
 		reqBody := ChatRequest{
 			Model:               model,
 			Messages:            *messages,
@@ -91,6 +113,7 @@ func handleTurn(messages *[]ChatMessage) error {
 			ToolChoice:          "auto",
 			Temperature:         0.6,
 			MaxCompletionTokens: 4096,
+			Stream:              true,
 		}
 
 		reqJSON, err := json.Marshal(reqBody)
@@ -110,68 +133,133 @@ func handleTurn(messages *[]ChatMessage) error {
 			return fmt.Errorf("API request failed: %w", err)
 		}
 
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			return fmt.Errorf("failed to read response: %w", err)
-		}
-
 		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
 			return fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
 		}
 
-		var chatResp ChatResponse
-		if err := json.Unmarshal(body, &chatResp); err != nil {
-			return fmt.Errorf("failed to parse response: %w", err)
+		// Accumulate the streamed response.
+		var contentBuf strings.Builder
+		var toolCalls []ToolCall
+		contentStarted := false
+		reasoningStarted := false
+
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			data := strings.TrimPrefix(line, "data: ")
+			if data == "[DONE]" {
+				break
+			}
+
+			var chunk StreamChunk
+			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+				continue
+			}
+			if len(chunk.Choices) == 0 {
+				continue
+			}
+
+			delta := chunk.Choices[0].Delta
+
+			if delta.Reasoning != "" {
+				if !reasoningStarted {
+					fmt.Print("\n<REASONING>\n")
+					reasoningStarted = true
+				}
+				fmt.Print(delta.Reasoning)
+			}
+
+			if delta.Content != "" {
+				if reasoningStarted && !contentStarted {
+					fmt.Print("\n</REASONING>\n")
+				}
+				if !contentStarted {
+					fmt.Print("\nAgent> ")
+					contentStarted = true
+				}
+				fmt.Print(delta.Content)
+				contentBuf.WriteString(delta.Content)
+			}
+
+			for _, tc := range delta.ToolCalls {
+				// Grow the slice as needed.
+				for tc.Index >= len(toolCalls) {
+					toolCalls = append(toolCalls, ToolCall{Type: "function"})
+				}
+				if tc.ID != "" {
+					toolCalls[tc.Index].ID = tc.ID
+				}
+				if tc.Function.Name != "" {
+					toolCalls[tc.Index].Function.Name += tc.Function.Name
+				}
+				if tc.Function.Arguments != "" {
+					toolCalls[tc.Index].Function.Arguments += tc.Function.Arguments
+				}
+			}
+		}
+		resp.Body.Close()
+
+		if reasoningStarted && !contentStarted {
+			fmt.Print("\n</REASONING>\n")
+		}
+		if contentStarted {
+			fmt.Println()
 		}
 
-		if len(chatResp.Choices) == 0 {
-			return fmt.Errorf("no choices in response")
-		}
-
-		msg := chatResp.Choices[0].Message
-
-		if msg.Reasoning != "" {
-			logMsg("REASONING", msg.Reasoning)
-		}
-
-		if msg.Content != "" {
-			fmt.Printf("\nAgent> %s\n", msg.Content)
-		}
-
+		// Append the fully-assembled assistant message.
 		assistantMsg := ChatMessage{
-			Role:      msg.Role,
-			Content:   msg.Content,
-			ToolCalls: msg.ToolCalls,
+			Role:      "assistant",
+			Content:   contentBuf.String(),
+			ToolCalls: toolCalls,
 		}
 		*messages = append(*messages, assistantMsg)
 
-		if len(msg.ToolCalls) == 0 {
+		if len(toolCalls) == 0 {
 			break
 		}
 
-		for _, tc := range msg.ToolCalls {
-			var args map[string]any
-			if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
-				args = map[string]any{}
-			}
-
-			logMsg("TOOL CALL: "+tc.Function.Name, args)
-
-			result := executeTool(tc.Function.Name, args)
-
-			logMsg("TOOL RESULT: "+tc.Function.Name, result)
-
-			*messages = append(*messages, ChatMessage{
-				Role:       "tool",
-				ToolCallID: tc.ID,
-				Content:    result,
-			})
+		// Execute tool calls in parallel.
+		type toolResult struct {
+			msg ChatMessage
 		}
-	}
+		results := make([]toolResult, len(toolCalls))
+		var wg sync.WaitGroup
 
-	if iterations > maxIterations {
-		fmt.Println("\n⚠️  Max iterations reached, stopping.")
+		for i, tc := range toolCalls {
+			wg.Add(1)
+			go func(i int, tc ToolCall) {
+				defer wg.Done()
+
+				var args map[string]any
+				if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
+					args = map[string]any{}
+				}
+
+				logMsg("TOOL CALL: "+tc.Function.Name, args)
+				result := executeTool(tc.Function.Name, args)
+				logMsg("TOOL RESULT: "+tc.Function.Name, result)
+
+				results[i] = toolResult{
+					msg: ChatMessage{
+						Role:       "tool",
+						ToolCallID: tc.ID,
+						Content:    result,
+					},
+				}
+			}(i, tc)
+		}
+		wg.Wait()
+
+		for _, r := range results {
+			*messages = append(*messages, r.msg)
+		}
 	}
 
 	return nil
