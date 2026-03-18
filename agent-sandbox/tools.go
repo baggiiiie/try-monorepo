@@ -10,10 +10,11 @@ import (
 )
 
 var (
-	READ_FILE_TOOL  = "read_file"
-	WRITE_FILE_TOOL = "write_file"
-	EDIT_FILE_TOOL  = "edit_file"
-	BASH_TOOL       = "bash"
+	READ_FILE_TOOL      = "read_file"
+	WRITE_FILE_TOOL     = "write_file"
+	EDIT_FILE_TOOL      = "edit_file"
+	BASH_TOOL           = "bash"
+	RELOAD_RUNTIME_TOOL = "reload_runtime"
 )
 
 // validatePath ensures the path is within the workspace directory.
@@ -76,8 +77,8 @@ func editFileTool(path, oldStr, newStr string) string {
 	return "File edited successfully"
 }
 
-// allowedCommands lists command prefixes that run without user approval.
-var allowedCommands = []string{
+// defaultAllowedCommands lists command prefixes that run without user approval.
+var defaultAllowedCommands = []string{
 	"ls", "cat", "head", "tail", "grep", "find", "wc",
 	"echo", "pwd", "whoami", "env", "printenv",
 	"date", "uname", "file", "which", "type",
@@ -86,11 +87,10 @@ var allowedCommands = []string{
 	"python", "node",
 }
 
-func isCommandAllowed(command string) bool {
-	// Split on pipes and logical operators, check every segment.
+func isCommandAllowed(command string, allowedCommands []string) bool {
 	segments := splitCommand(command)
 	for _, seg := range segments {
-		if !isSegmentAllowed(seg) {
+		if !isSegmentAllowed(seg, allowedCommands) {
 			return false
 		}
 	}
@@ -98,13 +98,11 @@ func isCommandAllowed(command string) bool {
 }
 
 func splitCommand(command string) []string {
-	// Split on |, &&, ||, ;
-	// Use a simple replacer to normalize delimiters, then split.
 	r := strings.NewReplacer("&&", "\x00", "||", "\x00", "|", "\x00", ";", "\x00")
 	return strings.Split(r.Replace(command), "\x00")
 }
 
-func isSegmentAllowed(segment string) bool {
+func isSegmentAllowed(segment string, allowedCommands []string) bool {
 	cmd := strings.TrimSpace(segment)
 	if cmd == "" {
 		return true
@@ -127,8 +125,13 @@ func askApproval(command string) bool {
 	return answer == "y" || answer == "yes"
 }
 
-func bashTool(command string, timeoutMs int) string {
-	if !isCommandAllowed(command) {
+func bashTool(command string, timeoutMs int, app *App) string {
+	allowedCommands := defaultAllowedCommands
+	if app != nil && app.Runtime != nil && len(app.Runtime.AllowedCommands) > 0 {
+		allowedCommands = app.Runtime.AllowedCommands
+	}
+
+	if !isCommandAllowed(command, allowedCommands) {
 		if !askApproval(command) {
 			return "Error: command rejected by user"
 		}
@@ -140,7 +143,7 @@ func bashTool(command string, timeoutMs int) string {
 	return output
 }
 
-func executeTool(name string, args map[string]any) string {
+func executeTool(name string, args map[string]any, app *App) string {
 	switch name {
 	case READ_FILE_TOOL:
 		path, _ := args["path"].(string)
@@ -160,18 +163,29 @@ func executeTool(name string, args map[string]any) string {
 		if t, ok := args["timeout"].(float64); ok {
 			timeoutMs = int(t)
 		}
-		return bashTool(command, timeoutMs)
+		return bashTool(command, timeoutMs, app)
+	case RELOAD_RUNTIME_TOOL:
+		if app == nil {
+			return "Error: app runtime is unavailable"
+		}
+		app.QueueReload()
+		return "Queued runtime reload after the current turn."
 	default:
 		return fmt.Sprintf("Unknown tool: %s", name)
 	}
 }
 
-func getToolDefinitions() json.RawMessage {
+func getToolDefinitions(runtime *Runtime) json.RawMessage {
+	bashDescription := "Run a bash command and return its output."
+	if runtime != nil && len(runtime.AllowedCommands) > 0 {
+		bashDescription += " These command prefixes run without approval: " + strings.Join(runtime.AllowedCommands, ", ") + "."
+	}
+
 	tools := []map[string]any{
 		{
 			"type": "function",
 			"function": map[string]any{
-				"name":        "read_file",
+				"name":        READ_FILE_TOOL,
 				"description": "Read the contents of a file at the given path.",
 				"parameters": map[string]any{
 					"type":     "object",
@@ -188,7 +202,7 @@ func getToolDefinitions() json.RawMessage {
 		{
 			"type": "function",
 			"function": map[string]any{
-				"name":        "write_file",
+				"name":        WRITE_FILE_TOOL,
 				"description": "Write content to a file at the given path.",
 				"parameters": map[string]any{
 					"type":     "object",
@@ -209,7 +223,7 @@ func getToolDefinitions() json.RawMessage {
 		{
 			"type": "function",
 			"function": map[string]any{
-				"name":        "edit_file",
+				"name":        EDIT_FILE_TOOL,
 				"description": "Edit a file by replacing old_str with new_str. The old_str must appear exactly once in the file.",
 				"parameters": map[string]any{
 					"type":     "object",
@@ -234,8 +248,8 @@ func getToolDefinitions() json.RawMessage {
 		{
 			"type": "function",
 			"function": map[string]any{
-				"name":        "bash",
-				"description": "Run a bash command and return its output.",
+				"name":        BASH_TOOL,
+				"description": bashDescription,
 				"parameters": map[string]any{
 					"type":     "object",
 					"required": []string{"command"},
@@ -249,6 +263,17 @@ func getToolDefinitions() json.RawMessage {
 							"description": "Timeout in milliseconds (default: 30000)",
 						},
 					},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]any{
+				"name":        RELOAD_RUNTIME_TOOL,
+				"description": "Reload the runtime after the current turn. This re-reads AGENTS.md and agent.json and refreshes tool settings.",
+				"parameters": map[string]any{
+					"type":       "object",
+					"properties": map[string]any{},
 				},
 			},
 		},

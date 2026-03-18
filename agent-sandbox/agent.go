@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 )
@@ -37,6 +36,7 @@ type ChatRequest struct {
 	ToolChoice          string          `json:"tool_choice,omitempty"`
 	Temperature         float64         `json:"temperature"`
 	MaxCompletionTokens int             `json:"max_completion_tokens,omitempty"`
+	ReasoningEffort     string          `json:"reasoning_effort,omitempty"`
 	Stream              bool            `json:"stream"`
 }
 
@@ -73,46 +73,25 @@ type StreamToolCallDelta struct {
 	} `json:"function,omitempty"`
 }
 
-var (
-	baseURL string
-	apiKey  string
-	model   string
-)
-
-func init() {
-	provider := os.Getenv("PROVIDER")
-	if provider == "" {
-		provider = "groq"
-	}
-	model = os.Getenv("OLLAMA_MODEL")
-
-	switch provider {
-	case "ollama":
-		baseURL = "http://localhost:11434/v1"
-		apiKey = "ollama"
-		if model == "" {
-			model = "gpt-oss:20b"
-		}
-	default:
-		baseURL = "https://api.groq.com/openai/v1"
-		apiKey = os.Getenv("GROQ_API_KEY")
-		if model == "" {
-			model = "openai/gpt-oss-20b"
-		}
-	}
-}
-
-func handleTurn(messages *[]ChatMessage) error {
+func handleTurn(app *App) error {
 	const maxIterations = 20
 
 	for iterations := 0; iterations < maxIterations; iterations++ {
+		if app.ConsumeReloadPending() {
+			if err := app.Reload(); err != nil {
+				return fmt.Errorf("failed to apply queued reload: %w", err)
+			}
+			fmt.Printf("\n[reloaded runtime: %s]\n", app.Runtime.Summary())
+		}
+
 		reqBody := ChatRequest{
-			Model:               model,
-			Messages:            *messages,
-			Tools:               getToolDefinitions(),
+			Model:               app.Runtime.Model,
+			Messages:            app.Messages,
+			Tools:               getToolDefinitions(app.Runtime),
 			ToolChoice:          "auto",
 			Temperature:         0.6,
 			MaxCompletionTokens: 4096,
+			ReasoningEffort:     "high",
 			Stream:              true,
 		}
 
@@ -121,12 +100,12 @@ func handleTurn(messages *[]ChatMessage) error {
 			return fmt.Errorf("failed to marshal request: %w", err)
 		}
 
-		req, err := http.NewRequest("POST", baseURL+"/chat/completions", bytes.NewReader(reqJSON))
+		req, err := http.NewRequest("POST", app.Runtime.BaseURL+"/chat/completions", bytes.NewReader(reqJSON))
 		if err != nil {
 			return fmt.Errorf("failed to create request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+apiKey)
+		req.Header.Set("Authorization", "Bearer "+app.Runtime.APIKey)
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -189,7 +168,6 @@ func handleTurn(messages *[]ChatMessage) error {
 			}
 
 			for _, tc := range delta.ToolCalls {
-				// Grow the slice as needed.
 				for tc.Index >= len(toolCalls) {
 					toolCalls = append(toolCalls, ToolCall{Type: "function"})
 				}
@@ -213,19 +191,16 @@ func handleTurn(messages *[]ChatMessage) error {
 			fmt.Println()
 		}
 
-		// Append the fully-assembled assistant message.
-		assistantMsg := ChatMessage{
+		app.Messages = append(app.Messages, ChatMessage{
 			Role:      "assistant",
 			Content:   contentBuf.String(),
 			ToolCalls: toolCalls,
-		}
-		*messages = append(*messages, assistantMsg)
+		})
 
 		if len(toolCalls) == 0 {
 			break
 		}
 
-		// Execute tool calls in parallel.
 		type toolResult struct {
 			msg ChatMessage
 		}
@@ -243,7 +218,7 @@ func handleTurn(messages *[]ChatMessage) error {
 				}
 
 				logMsg("TOOL CALL: "+tc.Function.Name, args)
-				result := executeTool(tc.Function.Name, args)
+				result := executeTool(tc.Function.Name, args, app)
 				logMsg("TOOL RESULT: "+tc.Function.Name, result)
 
 				results[i] = toolResult{
@@ -258,7 +233,7 @@ func handleTurn(messages *[]ChatMessage) error {
 		wg.Wait()
 
 		for _, r := range results {
-			*messages = append(*messages, r.msg)
+			app.Messages = append(app.Messages, r.msg)
 		}
 	}
 

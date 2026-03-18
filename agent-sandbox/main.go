@@ -5,10 +5,17 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 )
 
 func main() {
+	app, err := NewApp()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to load runtime: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Clean up the sandbox container on exit.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -19,14 +26,7 @@ func main() {
 	}()
 	defer destroyContainer()
 
-	fmt.Println("Agent ready. Type your message (Ctrl+C to quit).")
-
-	messages := []ChatMessage{
-		{
-			Role:    "system",
-			Content: "You are a helpful coding assistant. You have access to a few tools.",
-		},
-	}
+	fmt.Printf("Agent ready (%s). Type your message (Ctrl+C to quit, /reload to reload runtime).\n", app.Runtime.Summary())
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
@@ -34,17 +34,26 @@ func main() {
 		if !scanner.Scan() {
 			break
 		}
-		line := scanner.Text()
+		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
 		}
 
-		messages = append(messages, ChatMessage{
+		if line == "/reload" {
+			if err := app.Reload(); err != nil {
+				fmt.Fprintf(os.Stderr, "Reload failed: %v\n", err)
+			} else {
+				fmt.Printf("Reloaded runtime (%s).\n", app.Runtime.Summary())
+			}
+			continue
+		}
+
+		app.Messages = append(app.Messages, ChatMessage{
 			Role:    "user",
 			Content: line,
 		})
 
-		if err := handleTurn(&messages); err != nil {
+		if err := handleTurn(app); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		}
 	}
