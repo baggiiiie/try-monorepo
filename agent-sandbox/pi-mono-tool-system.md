@@ -270,3 +270,16 @@ flowchart TD
 3. **No binary recompilation** — extensions are loaded as raw TypeScript files via `jiti`.
 4. **Tool prompt integration is automatic** — `promptSnippet` and `promptGuidelines` fields are merged into the system prompt whenever `setActiveToolsByName` is called.
 5. **Tool call/result interception** works independently of tool registration, allowing behavior modification without replacement.
+
+
+How it works:
+- Extensions export a factory function that receives an ExtensionAPI object
+- They call pi.registerTool() with a full ToolDefinition (name, description, schema, execute function)
+- registerTool calls runtime.refreshTools() which immediately updates the live agent's tool registry and system prompt — true hot reload
+- Tools can be registered at any point: during loading, at session_start, or dynamically via slash commands mid-session
+
+What makes it powerful:
+- No recompilation — raw .ts files are loaded and transpiled at runtime
+- Override built-ins — register a tool with the same name as a built-in and it replaces it
+- Event hooks — intercept any tool call/result via pi.on("tool_call", ...) without replacing the tool
+- Full code, not just bash — tools are real functions with typed parameters, not shell command templates

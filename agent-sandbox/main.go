@@ -16,11 +16,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	stopWatcher := startRuntimeWatcher(app)
+	defer stopWatcher()
+
 	// Clean up the sandbox container on exit.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
+		stopWatcher()
 		destroyContainer()
 		os.Exit(0)
 	}()
