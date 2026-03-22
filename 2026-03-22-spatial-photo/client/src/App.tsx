@@ -27,8 +27,8 @@ export default function App() {
     }
 
     if (result) {
-      return `Ready. ${result.metadata.depthSource === 'embedded-aux-depth' ? 'Using embedded Apple aux depth.' : 'Using stereo fallback depth.'}`;
-    }
+return `Ready. ${result.metadata.depthSource === 'embedded-aux-depth' ? 'Using embedded Apple aux depth.' : 'Using stereo fallback depth.'}`;
+}
 
     return 'No image loaded yet.';
   }, [isProcessing, result]);

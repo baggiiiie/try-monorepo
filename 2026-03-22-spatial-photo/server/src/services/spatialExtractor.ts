@@ -1,4 +1,4 @@
-import { mkdir, readdir } from 'node:fs/promises';
+import { mkdir, open, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
 import { ensureBinary, runCommand } from './command.js';
@@ -17,8 +17,17 @@ interface IndexedImage {
 
 export class AppleHeicExtractor implements SpatialPhotoExtractor {
   async extract(inputPath: string, outputDir: string): Promise<ExtractionResult> {
-    await ensureBinary('heif-convert');
     await mkdir(outputDir, { recursive: true });
+
+    if (!(await this.isHeifFile(inputPath))) {
+      throw new Error(
+        'The uploaded file is not a valid HEIC container. ' +
+          'Mobile browsers convert HEIC to JPEG during upload, stripping spatial data. ' +
+          'Please upload the original .HEIC file from a laptop or desktop browser.'
+      );
+    }
+
+    await ensureBinary('heif-convert');
 
     const outputBase = path.join(outputDir, 'extract.png');
     await runCommand('heif-convert', ['--with-aux', inputPath, outputBase]);
@@ -57,6 +66,17 @@ export class AppleHeicExtractor implements SpatialPhotoExtractor {
       rightImagePath: stereoPair[1]?.filePath,
       embeddedDepthPath
     };
+  }
+
+  private async isHeifFile(filePath: string): Promise<boolean> {
+    const fh = await open(filePath, 'r');
+    try {
+      const buf = Buffer.alloc(12);
+      await fh.read(buf, 0, 12, 0);
+      return buf.toString('ascii', 4, 8) === 'ftyp';
+    } finally {
+      await fh.close();
+    }
   }
 
   private async loadIndexedImages(paths: string[]): Promise<IndexedImage[]> {

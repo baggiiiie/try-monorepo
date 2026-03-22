@@ -51,7 +51,7 @@ export function UploadPanel(props: UploadPanelProps) {
           ref={inputRef}
           hidden
           type="file"
-          accept=".heic,.HEIC,image/heic,image/heif"
+          accept=".heic,.HEIC"
           onChange={(event) => handleFiles(event.target.files)}
         />
         {props.fileName ? <p className="file-pill">Current file: {props.fileName}</p> : null}
