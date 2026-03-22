@@ -1,0 +1,34 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: spatial-photo
+    restart: unless-stopped
+    volumes:
+      - ./server/data:/app/server/data
+      - ./server/uploads:/app/server/uploads
+    networks:
+      - spatial-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "20"
+
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: spatial-photo-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - spatial-network
+
+networks:
+  spatial-network:
+    driver: bridge
