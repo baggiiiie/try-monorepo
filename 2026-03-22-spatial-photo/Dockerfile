@@ -17,15 +17,32 @@ COPY client/ client/
 # Build server and client
 RUN npm run build
 
+# --- Build libheif from source (Debian's version is too old for spatial photos) ---
+FROM debian:bookworm-slim AS heif-build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake pkg-config git ca-certificates \
+    libde265-dev libx265-dev libjpeg-dev libpng-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch v1.19.7 https://github.com/strukturag/libheif.git /tmp/libheif \
+    && cd /tmp/libheif && mkdir build && cd build \
+    && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_EXAMPLES=ON -DCMAKE_BUILD_TYPE=Release \
+    && make -j$(nproc) && make install
+
 # --- Production stage ---
 FROM node:22-slim AS production
 
 WORKDIR /app
 
-# sharp needs some native libs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
+    libde265-0 libx265-199 libjpeg62-turbo libpng16-16 \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --from=heif-build /usr/local/bin/heif-convert /usr/local/bin/
+COPY --from=heif-build /usr/local/lib/libheif* /usr/local/lib/
+RUN ldconfig
 
 # Copy root workspace files
 COPY package.json package-lock.json ./
