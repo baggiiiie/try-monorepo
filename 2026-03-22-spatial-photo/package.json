@@ -1,0 +1,16 @@
+{
+  "name": "spatial-photo-viewer",
+  "private": true,
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c cyan,magenta \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w server && npm run build -w client",
+    "lint": "npm run lint -w server && npm run lint -w client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
