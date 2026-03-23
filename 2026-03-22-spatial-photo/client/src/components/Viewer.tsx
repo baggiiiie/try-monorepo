@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { ViewerScene } from '../three/viewerScene';
+import { WalkAroundScene } from '../three/walkAroundScene';
 import type { ProcessedSpatialPhoto, ViewerControls } from '../types';
 
 interface ViewerProps {
@@ -10,9 +11,12 @@ interface ViewerProps {
 
 export function Viewer(props: ViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const walkContainerRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<ViewerScene | null>(null);
+  const walkSceneRef = useRef<WalkAroundScene | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
+  const [walkAroundActive, setWalkAroundActive] = useState(false);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -77,6 +81,55 @@ export function Viewer(props: ViewerProps) {
     };
   }, []);
 
+  // Walk-around fullscreen exit handler
+  useEffect(() => {
+    if (!walkAroundActive) return;
+
+    const handleFsChange = () => {
+      if (!document.fullscreenElement) {
+        walkSceneRef.current?.dispose();
+        walkSceneRef.current = null;
+        setWalkAroundActive(false);
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, [walkAroundActive]);
+
+  // Initialize walk-around scene when container is ready
+  useEffect(() => {
+    if (!walkAroundActive || !walkContainerRef.current || !props.result) return;
+
+    const container = walkContainerRef.current;
+
+    const initWalkScene = async () => {
+      try {
+        await container.requestFullscreen();
+      } catch {
+        setWalkAroundActive(false);
+        return;
+      }
+
+      const walkScene = new WalkAroundScene(container);
+      walkSceneRef.current = walkScene;
+      walkScene.updateControls(props.controls);
+
+      try {
+        await walkScene.load(props.result!.baseImageUrl, props.result!.depthMapUrl);
+      } catch (error) {
+        console.error('Failed to load walk-around textures', error);
+      }
+    };
+
+    void initWalkScene();
+
+    return () => {
+      walkSceneRef.current?.dispose();
+      walkSceneRef.current = null;
+    };
+  }, [walkAroundActive]);
+
   const handleEnterFullscreen = async () => {
     if (!props.result || !containerRef.current || document.fullscreenElement) {
       return;
@@ -88,6 +141,11 @@ export function Viewer(props: ViewerProps) {
       console.error('Failed to enter fullscreen mode', error);
     }
   };
+
+  const handleEnterWalkAround = useCallback(() => {
+    if (!props.result || walkAroundActive) return;
+    setWalkAroundActive(true);
+  }, [props.result, walkAroundActive]);
 
   return (
     <section className="viewer-shell panel">
@@ -122,7 +180,26 @@ export function Viewer(props: ViewerProps) {
           <div className="viewer-fullscreen-hint">Press Esc to exit fullscreen</div>
         ) : null}
       </div>
+      {props.result ? (
+        <button className="walk-around-button" onClick={handleEnterWalkAround}>
+          <span className="walk-around-button__icon">🚶</span>
+          <span>Walk Around in 3D</span>
+        </button>
+      ) : null}
       {!props.result ? <div className="viewer-empty">Upload a spatial photo to render it here.</div> : null}
+
+      {walkAroundActive ? (
+        <div ref={walkContainerRef} className="walk-around-overlay">
+          <div className="walk-around-hud">
+            <div className="walk-around-hud__controls">
+              <span>WASD / Arrow keys — move</span>
+              <span>Mouse — look around</span>
+              <span>Click — lock cursor</span>
+              <span>Esc — exit</span>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

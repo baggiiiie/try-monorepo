@@ -329,6 +329,72 @@ button {
     background: #0d111a;
 }
 
+/* Walk-around 3D mode */
+
+.walk-around-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    padding: 12px 20px;
+    border-radius: 14px;
+    border: 1px solid rgba(143, 164, 255, 0.28);
+    background: linear-gradient(135deg, rgba(30, 40, 63, 0.95), rgba(20, 28, 48, 0.95));
+    color: #f4f6fb;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, transform 0.15s;
+}
+
+.walk-around-button:hover {
+    background: linear-gradient(135deg, rgba(40, 52, 80, 0.95), rgba(30, 40, 63, 0.95));
+    border-color: rgba(143, 164, 255, 0.45);
+    transform: translateY(-1px);
+}
+
+.walk-around-button:active {
+    transform: translateY(0);
+}
+
+.walk-around-button__icon {
+    font-size: 1.2rem;
+}
+
+.walk-around-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #0a0e16;
+}
+
+.walk-around-overlay canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.walk-around-hud {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    pointer-events: none;
+}
+
+.walk-around-hud__controls {
+    display: flex;
+    gap: 18px;
+    padding: 10px 18px;
+    border-radius: 999px;
+    background: rgba(7, 11, 17, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #b0baca;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
 @media (max-width: 1080px) {
     .layout-grid {
         grid-template-columns: 1fr;
