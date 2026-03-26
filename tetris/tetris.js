@@ -311,11 +311,14 @@ function paintWatch(state, event) {
 }
 
 function watchGame(initialState) {
-    let state = initialState || newGame();
-    let event = initialState ? "WATCH_START" : "NEW_GAME";
-    let lastGravityAt = Date.now();
+  let state = initialState || newGame();
+  let event = initialState ? "WATCH_START" : "NEW_GAME";
+  let lastGravityAt = Date.now();
+  let stateSnapshot = JSON.stringify(state);
 
+  if (!initialState) {
     saveState(state);
+  }
 
     const cleanup = () => {
         process.stdout.write("\x1b[?25h\x1b[0m");
@@ -338,20 +341,39 @@ function watchGame(initialState) {
         process.exit(0);
     };
 
-    process.once("SIGINT", onSigint);
+  process.once("SIGINT", onSigint);
 
-    const loop = setInterval(() => {
-        if ((Date.now() - lastGravityAt) >= gravityDelayForLevel(state.level)) {
-            const result = applyTick(state);
-            state = result.state;
-            event = result.event;
-            lastGravityAt = Date.now();
-        } else {
-            event = "WAITING";
-        }
-
+  const loop = setInterval(() => {
+    const latestState = loadState();
+    if (latestState) {
+      const latestSnapshot = JSON.stringify(latestState);
+      if (latestSnapshot !== stateSnapshot) {
+        state = latestState;
+        stateSnapshot = latestSnapshot;
+        event = "EXTERNAL_UPDATE";
+        lastGravityAt = Date.now();
+      } else if ((Date.now() - lastGravityAt) >= gravityDelayForLevel(state.level)) {
+        const result = applyTick(state);
+        state = result.state;
+        stateSnapshot = JSON.stringify(state);
+        event = result.event;
+        lastGravityAt = Date.now();
         saveState(state);
-        paintWatch(state, event);
+      } else {
+        event = "WAITING";
+      }
+    } else if ((Date.now() - lastGravityAt) >= gravityDelayForLevel(state.level)) {
+      const result = applyTick(state);
+      state = result.state;
+      stateSnapshot = JSON.stringify(state);
+      event = result.event;
+      lastGravityAt = Date.now();
+      saveState(state);
+    } else {
+      event = "WAITING";
+    }
+
+    paintWatch(state, event);
 
         if (state.over) {
             stop();
