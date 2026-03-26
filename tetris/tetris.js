@@ -11,6 +11,7 @@
  *   node tetris.js rotate       Rotate piece clockwise
  *   node tetris.js drop         Hard drop piece to bottom
  *   node tetris.js tick         Advance game by one row
+ *   node tetris.js watch        Watch an auto-played game in real time
  *   node tetris.js help         Show this help
  *
  * State is persisted to tetris_state.json so agent can call
@@ -137,6 +138,10 @@ function clearLines(board) {
 }
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
+
+const WATCH_FRAME_MS = 80;
+const WATCH_GRAVITY_BASE_MS = 700;
+const WATCH_GRAVITY_MIN_MS = 120;
 
 // ─── Rendering ────────────────────────────────────────────────────────────────
 function renderBoard(state) {
@@ -294,6 +299,161 @@ function applyDrop(state) {
   return applyTick(newState);
 }
 
+function getDropY(board, piece) {
+  let y = piece.y;
+  while (isValid(board, { ...piece, y: y + 1 })) y++;
+  return y;
+}
+
+function countHoles(board) {
+  let holes = 0;
+  for (let x = 0; x < COLS; x++) {
+    let seenBlock = false;
+    for (let y = 0; y < ROWS; y++) {
+      if (board[y][x]) {
+        seenBlock = true;
+      } else if (seenBlock) {
+        holes++;
+      }
+    }
+  }
+  return holes;
+}
+
+function columnHeights(board) {
+  return Array.from({ length: COLS }, (_, x) => {
+    for (let y = 0; y < ROWS; y++) {
+      if (board[y][x]) return ROWS - y;
+    }
+    return 0;
+  });
+}
+
+function evaluateBoard(board, cleared) {
+  const heights = columnHeights(board);
+  const aggregateHeight = heights.reduce((sum, height) => sum + height, 0);
+  const bumpiness = heights.slice(1).reduce((sum, height, index) => {
+    return sum + Math.abs(height - heights[index]);
+  }, 0);
+  const holes = countHoles(board);
+
+  return (cleared * 8) - (aggregateHeight * 0.45) - (holes * 7) - (bumpiness * 0.35);
+}
+
+function chooseWatchPlan(state) {
+  const pieceName = state.current.name;
+  const rotationCount = PIECES[pieceName].length;
+  let best = null;
+
+  for (let rotation = 0; rotation < rotationCount; rotation++) {
+    for (let x = -3; x < COLS + 3; x++) {
+      const candidate = { name: pieceName, rotation, x, y: state.current.y };
+      if (!isValid(state.board, candidate)) continue;
+
+      const landed = { ...candidate, y: getDropY(state.board, candidate) };
+      const placed = placePiece(state.board, landed);
+      const { board: clearedBoard, cleared } = clearLines(placed);
+      const score = evaluateBoard(clearedBoard, cleared);
+
+      if (!best || score > best.score) {
+        best = { rotation, x, score };
+      }
+    }
+  }
+
+  return best || { rotation: state.current.rotation, x: state.current.x };
+}
+
+function nextWatchAction(state, plan) {
+  const rotations = PIECES[state.current.name].length;
+  const desiredRotation = plan.rotation % rotations;
+  const currentRotation = state.current.rotation % rotations;
+
+  if (currentRotation !== desiredRotation) return "rotate";
+  if (state.current.x < plan.x) return "right";
+  if (state.current.x > plan.x) return "left";
+  return null;
+}
+
+function gravityDelayForLevel(level) {
+  return Math.max(WATCH_GRAVITY_MIN_MS, WATCH_GRAVITY_BASE_MS - ((level - 1) * 55));
+}
+
+function paintWatch(state, event) {
+  process.stdout.write("\x1b[H\x1b[2J");
+  process.stdout.write(`EVENT: ${event}\n`);
+  process.stdout.write(`${renderBoard(state)}\n`);
+  process.stdout.write("\nWatching auto-play. Press Ctrl+C to stop.\n");
+}
+
+function watchGame(initialState) {
+  let state = initialState || newGame();
+  let event = initialState ? "WATCH_START" : "NEW_GAME";
+  let plan = chooseWatchPlan(state);
+  let lastGravityAt = Date.now();
+
+  saveState(state);
+
+  const cleanup = () => {
+    process.stdout.write("\x1b[?25h\x1b[0m");
+    if (process.stdout.isTTY) process.stdout.write("\x1b[?1049l");
+  };
+
+  const stop = () => {
+    clearInterval(loop);
+    cleanup();
+  };
+
+  if (process.stdout.isTTY) {
+    process.stdout.write("\x1b[?1049h\x1b[?25l");
+  }
+
+  paintWatch(state, event);
+
+  const onSigint = () => {
+    stop();
+    process.exit(0);
+  };
+
+  process.once("SIGINT", onSigint);
+
+  const loop = setInterval(() => {
+    const action = nextWatchAction(state, plan);
+    if (action === "left" || action === "right") {
+      const result = applyMove(state, action);
+      state = result.state;
+      event = result.event;
+      if (event === "BLOCKED") plan = chooseWatchPlan(state);
+    } else if (action === "rotate") {
+      const result = applyRotate(state);
+      state = result.state;
+      event = result.event;
+      if (event === "BLOCKED") plan = chooseWatchPlan(state);
+    } else if ((Date.now() - lastGravityAt) >= gravityDelayForLevel(state.level)) {
+      const result = applyTick(state);
+      state = result.state;
+      event = result.event;
+      lastGravityAt = Date.now();
+
+      if (event.startsWith("LOCKED") && !state.over) {
+        plan = chooseWatchPlan(state);
+      }
+    } else {
+      event = "WAITING";
+    }
+
+    saveState(state);
+    paintWatch(state, event);
+
+    if (state.over) {
+      stop();
+      process.removeListener("SIGINT", onSigint);
+      console.log("EVENT: GAME_OVER");
+      console.log(renderBoard(state));
+    }
+  }, WATCH_FRAME_MS);
+}
+
 // ─── CLI entry point ──────────────────────────────────────────────────────────
 const [,, cmd, arg] = process.argv;
 
@@ -309,6 +469,7 @@ COMMANDS:
   move right    Move current piece right
   rotate        Rotate current piece clockwise
   drop          Hard-drop piece to bottom and lock it
+  watch         Render a live auto-played game in the terminal
   help          Show this help
 
 STATE:
@@ -320,6 +481,7 @@ AGENT WORKFLOW:
   2. Call \`move\` / \`rotate\` to position the piece.
   3. Call \`drop\` or repeated \`tick\` to place it.
   4. Repeat until GAME OVER.
+  Or call \`watch\` to watch the built-in auto-player render live.
 
 OUTPUT FORMAT:
   Board is 10×20. Active piece shown as letter pairs (II, TT, etc.).
@@ -343,6 +505,10 @@ function run() {
   }
 
   let state = loadState();
+  if (!state && cmd === "watch") {
+    watchGame(null);
+    return;
+  }
   if (!state) {
     console.error("ERROR: No game found. Run `node tetris.js new` first.");
     process.exit(1);
@@ -352,6 +518,9 @@ function run() {
   if (cmd === "status") {
     console.log("EVENT: STATUS");
     console.log(renderBoard(state));
+    return;
+  } else if (cmd === "watch") {
+    watchGame(state);
     return;
   } else if (cmd === "tick") {
     result = applyTick(state);
