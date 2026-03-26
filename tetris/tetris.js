@@ -260,30 +260,69 @@ function applyTick(state) {
     return { state: newState, event };
 }
 
-function applyMove(state, dir) {
+function applyMove(state, dir, steps = 1) {
     if (state.over) return { state, event: "GAME_OVER" };
     const dx = dir === "left" ? -1 : 1;
-    const moved = { ...state.current, x: state.current.x + dx };
-    if (isValid(state.board, moved)) {
-        return { state: { ...state, current: moved }, event: `MOVED_${dir.toUpperCase()}` };
+
+    let current = state.current;
+    let movedSteps = 0;
+    for (let i = 0; i < steps; i++) {
+        const moved = { ...current, x: current.x + dx };
+        if (!isValid(state.board, moved)) break;
+        current = moved;
+        movedSteps++;
+    }
+
+    if (movedSteps > 0) {
+        const suffix = movedSteps === 1 ? "" : `_${movedSteps}`;
+        return { state: { ...state, current }, event: `MOVED_${dir.toUpperCase()}${suffix}` };
     }
     return { state, event: "BLOCKED" };
 }
 
-function applyRotate(state) {
+function applyRotate(state, steps = 1) {
     if (state.over) return { state, event: "GAME_OVER" };
-    const rotations = PIECES[state.current.name];
-    const newRot = (state.current.rotation + 1) % rotations.length;
-    const rotated = { ...state.current, rotation: newRot };
+    let current = state.current;
+    let rotatedSteps = 0;
 
-    // Try wall kicks: 0, -1, +1, -2, +2
-    for (const kick of [0, -1, 1, -2, 2]) {
-        const kicked = { ...rotated, x: rotated.x + kick };
-        if (isValid(state.board, kicked)) {
-            return { state: { ...state, current: kicked }, event: "ROTATED" };
+    for (let i = 0; i < steps; i++) {
+        const rotations = PIECES[current.name];
+        const newRot = (current.rotation + 1) % rotations.length;
+        const rotated = { ...current, rotation: newRot };
+
+        // Try wall kicks: 0, -1, +1, -2, +2
+        let kickedPiece = null;
+        for (const kick of [0, -1, 1, -2, 2]) {
+            const kicked = { ...rotated, x: rotated.x + kick };
+            if (isValid(state.board, kicked)) {
+                kickedPiece = kicked;
+                break;
+            }
         }
+
+        if (!kickedPiece) break;
+        current = kickedPiece;
+        rotatedSteps++;
+    }
+
+    if (rotatedSteps > 0) {
+        const suffix = rotatedSteps === 1 ? "" : `_${rotatedSteps}`;
+        return { state: { ...state, current }, event: `ROTATED${suffix}` };
     }
     return { state, event: "BLOCKED" };
+}
+
+function parsePositiveInt(value) {
+    if (value === undefined) return 1;
+    if (!/^\d+$/.test(value)) return null;
+
+    const steps = Number(value);
+    if (!Number.isSafeInteger(steps) || steps < 1) return null;
+    return steps;
+}
+
+function getUnknownCommandText() {
+    return `${cmd}${arg ? ` ${arg}` : ""}${extra ? ` ${extra}` : ""}`;
 }
 
 function applyDrop(state) {
@@ -385,7 +424,7 @@ function watchGame(initialState) {
 }
 
 // ─── CLI entry point ──────────────────────────────────────────────────────────
-const [, , cmd, arg] = process.argv;
+const [, , cmd, arg, extra] = process.argv;
 
 function printHelp() {
     console.log(`
@@ -395,9 +434,9 @@ COMMANDS:
   new           Start a fresh game
   status        Print the board and game info
   tick          Advance game: drop piece one row (or lock if at bottom)
-  move left     Move current piece left
-  move right    Move current piece right
-  rotate        Rotate current piece clockwise
+  move left [n]  Move current piece left by n cells (default: 1)
+  move right [n] Move current piece right by n cells (default: 1)
+  rotate [n]    Rotate current piece clockwise n times (default: 1)
   drop          Hard-drop piece to bottom and lock it
   watch         Render the game live in the terminal
   help          Show this help
@@ -455,13 +494,23 @@ function run() {
     } else if (cmd === "tick") {
         result = applyTick(state);
     } else if (cmd === "move" && (arg === "left" || arg === "right")) {
-        result = applyMove(state, arg);
+        const steps = parsePositiveInt(extra);
+        if (steps === null) {
+            console.error("ERROR: Move distance must be a positive integer.");
+            process.exit(1);
+        }
+        result = applyMove(state, arg, steps);
     } else if (cmd === "rotate") {
-        result = applyRotate(state);
+        const steps = parsePositiveInt(arg);
+        if (steps === null || extra !== undefined) {
+            console.error("ERROR: Rotate count must be a positive integer.");
+            process.exit(1);
+        }
+        result = applyRotate(state, steps);
     } else if (cmd === "drop") {
         result = applyDrop(state);
     } else {
-        console.error(`ERROR: Unknown command "${cmd} ${arg || ""}". Run \`node tetris.js help\`.`);
+        console.error(`ERROR: Unknown command "${getUnknownCommandText()}". Run \`node tetris.js help\`.`);
         process.exit(1);
     }
 
