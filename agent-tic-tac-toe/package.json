@@ -1,0 +1,16 @@
+{
+  "name": "agent-tic-tac-toe",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=23.6"
+  },
+  "scripts": {
+    "new-game": "node new_game.ts",
+    "join": "node join.ts",
+    "move": "node move.ts",
+    "status": "node status.ts",
+    "wait": "node wait_for_turn.ts",
+    "watch": "node watch.ts"
+  }
+}
