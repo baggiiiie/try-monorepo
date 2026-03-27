@@ -8,13 +8,13 @@ Usage:
 Examples:
     python join.py Alice        # auto-assign symbol
     python join.py Bob O        # request O
-    python join.py "Claude AI"  # agent joins
+    python join.py "Agent"  # agent joins
 """
 import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
 
-from game import load_state, save_state, init_game
+from game import format_state_snapshot, init_game, load_state, save_state
 
 def main():
     if len(sys.argv) < 2:
@@ -45,7 +45,7 @@ def main():
     for sym, n in players.items():
         if n == name:
             print(f"You ({name}) are already in the game as {sym}!")
-            print(f"Status: {state['status']}")
+            print(format_state_snapshot(state, viewer_name=name))
             sys.exit(0)
 
     if len(players) >= 2:
@@ -81,17 +81,10 @@ def main():
     save_state(state)
 
     print(f"✓ Joined as {symbol} ({name})")
-    if state["status"] == "playing":
-        opponent_sym = "O" if symbol == "X" else "X"
-        print(f"  Opponent: {state['players'][opponent_sym]} ({opponent_sym})")
-        print(f"  X goes first. Good luck!")
-    else:
-        print(f"  Waiting for another player to join...")
+    print(format_state_snapshot(state, viewer_name=name))
     print()
-    print("To make a move: python move.py <position>")
-    print("Positions:  1 | 2 | 3")
-    print("            4 | 5 | 6")
-    print("            7 | 8 | 9")
+    print(f'Move with: python move.py <1-9> --name "{name}"')
+    print(f'Wait with: python wait_for_turn.py --name "{name}"')
 
 if __name__ == "__main__":
     main()

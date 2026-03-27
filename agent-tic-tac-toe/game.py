@@ -5,28 +5,28 @@ from pathlib import Path
 
 STATE_FILE = Path(__file__).parent / "game_state.json"
 
-INITIAL_STATE = {
-    "board": [" "] * 9,
-    "players": {},       # {"X": "Alice", "O": "Bob"}
-    "current_turn": "X",
-    "status": "waiting", # waiting | playing | done
-    "winner": None,
-    "message": "Waiting for players to join...",
-    "history": [],
-    "created_at": None,
-}
-
 WIN_LINES = [
     [0, 1, 2], [3, 4, 5], [6, 7, 8],  # rows
     [0, 3, 6], [1, 4, 7], [2, 5, 8],  # cols
     [0, 4, 8], [2, 4, 6],              # diags
 ]
 
-PREFERRED_MOVE_ORDER = [4, 0, 2, 6, 8, 1, 3, 5, 7]
-
 
 class GameError(Exception):
     """Raised when a requested game action is invalid."""
+
+
+def new_state():
+    return {
+        "board": [" "] * 9,
+        "players": {},
+        "current_turn": "X",
+        "status": "waiting",
+        "winner": None,
+        "message": "Waiting for players to join...",
+        "history": [],
+        "created_at": None,
+    }
 
 def load_state():
     if STATE_FILE.exists():
@@ -39,9 +39,7 @@ def save_state(state):
         json.dump(state, f, indent=2)
 
 def init_game():
-    state = dict(INITIAL_STATE)
-    state["board"] = [" "] * 9
-    state["players"] = {}
+    state = new_state()
     state["created_at"] = time.time()
     save_state(state)
     return state
@@ -69,17 +67,19 @@ def board_to_display(board):
     return rows
 
 
-def format_board(board):
+def board_lines(board):
     rows = board_to_display(board)
-    return "\n".join([
-        "",
+    return [
         f"  {rows[0][0]} | {rows[0][1]} | {rows[0][2]}",
         "  ---------",
         f"  {rows[1][0]} | {rows[1][1]} | {rows[1][2]}",
         "  ---------",
         f"  {rows[2][0]} | {rows[2][1]} | {rows[2][2]}",
-        "",
-    ])
+    ]
+
+
+def format_board(board):
+    return "\n".join(board_lines(board))
 
 
 def find_player_symbol(players, name):
@@ -93,49 +93,54 @@ def other_symbol(symbol):
     return "O" if symbol == "X" else "X"
 
 
-def available_indexes(board):
-    return [idx for idx in PREFERRED_MOVE_ORDER if board[idx] == " "]
+def format_state_snapshot(state, viewer_name=None):
+    players = state["players"]
+    viewer_symbol = find_player_symbol(players, viewer_name) if viewer_name else None
+    history = state.get("history", [])
+    lines = []
 
+    x_name = players.get("X", "---")
+    o_name = players.get("O", "---")
+    lines.append(f"Players: X={x_name}  O={o_name}")
 
-def choose_best_move(board, symbol):
-    if symbol not in ("X", "O"):
-        raise GameError(f"Symbol must be X or O, got {symbol!r}.")
+    if viewer_name:
+        if viewer_symbol is None:
+            lines.append(f"You: {viewer_name} (not joined)")
+        else:
+            lines.append(f"You: {viewer_name} ({viewer_symbol})")
 
-    opponent = other_symbol(symbol)
+    lines.append("Board:")
+    lines.extend(board_lines(state["board"]))
 
-    def minimax(current_symbol, depth):
-        winner = check_winner(board)
-        if winner == symbol:
-            return 10 - depth
-        if winner == opponent:
-            return depth - 10
-        if is_draw(board):
-            return 0
+    if history:
+        last_move = history[-1]
+        lines.append(
+            f"Last move: {last_move['player']} ({last_move['symbol']}) -> {last_move['position']}"
+        )
 
-        scores = []
-        for idx in available_indexes(board):
-            board[idx] = current_symbol
-            scores.append(minimax(other_symbol(current_symbol), depth + 1))
-            board[idx] = " "
+    status = state["status"]
+    if status == "waiting":
+        lines.append("Status: waiting for both players to join")
+    elif status == "playing":
+        current = state["current_turn"]
+        current_name = players.get(current, current)
+        if viewer_symbol == current:
+            lines.append(f"Status: your turn ({current})")
+        else:
+            lines.append(f"Status: {current_name}'s turn ({current})")
+    elif status == "done":
+        winner = state.get("winner")
+        if winner == "draw":
+            lines.append("Status: game over (draw)")
+        else:
+            winner_name = players.get(winner, winner)
+            lines.append(f"Status: game over ({winner_name} won as {winner})")
 
-        if current_symbol == symbol:
-            return max(scores)
-        return min(scores)
+    message = state.get("message")
+    if message:
+        lines.append(f"Message: {message}")
 
-    best_score = None
-    best_move = None
-    for idx in available_indexes(board):
-        board[idx] = symbol
-        score = minimax(opponent, 1)
-        board[idx] = " "
-        if best_score is None or score > best_score:
-            best_score = score
-            best_move = idx
-
-    if best_move is None:
-        raise GameError("No legal moves are available.")
-
-    return best_move + 1
+    return "\n".join(lines)
 
 
 def apply_move(state, name, pos):

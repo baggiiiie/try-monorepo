@@ -1,39 +1,23 @@
 #!/usr/bin/env python3
 """
-Block until it's your turn (or the game ends).
+Block until it's your turn, then print the latest board snapshot.
 
 Usage:
-    python wait_for_turn.py --name "Claude"
-    python wait_for_turn.py --name "Claude" --auto-play --quiet
+    python wait_for_turn.py --name "Agent"
 
 Exit codes:
     0  = it's your turn now
-    1  = game is over (check status.py for result)
+    1  = game is over
     2  = error (not in game, no game found, etc.)
 """
-import sys
-import os
-import time
 import argparse
+import os
+import sys
+import time
+
 sys.path.insert(0, os.path.dirname(__file__))
 
-from game import (
-    GameError,
-    apply_move,
-    choose_best_move,
-    find_player_symbol,
-    format_board,
-    load_state,
-    save_state,
-)
-
-RESET  = "\033[0m"
-DIM    = "\033[2m"
-BOLD   = "\033[1m"
-CYAN   = "\033[96m"
-GREEN  = "\033[92m"
-YELLOW = "\033[93m"
-RED    = "\033[91m"
+from game import find_player_symbol, format_state_snapshot, load_state
 
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
@@ -42,110 +26,81 @@ def clear_status_line():
     print("\r" + (" " * 80) + "\r", end="", flush=True)
 
 
-def print_game_result(state, symbol):
-    winner = state.get("winner")
-    msg = state.get("message", "Game over.")
-    if winner == symbol:
-        print(f"\n{GREEN}{BOLD}You win! {msg}{RESET}")
-    elif winner == "draw":
-        print(f"\n{YELLOW}{msg}{RESET}")
-    else:
-        print(f"\n{RED}{msg}{RESET}")
+def progress_message(state, symbol, tick):
+    status = state["status"]
+    players = state["players"]
 
+    if status == "waiting":
+        return f"{SPINNER[tick % len(SPINNER)]} Waiting for opponent to join..."
 
-def auto_play_turn(state, name, symbol):
-    position = choose_best_move(state["board"], symbol)
-    apply_move(state, name, position)
-    save_state(state)
+    if status == "playing":
+        current = state["current_turn"]
+        if current == symbol:
+            return None
 
-    print(f"{GREEN}{BOLD}Auto-play:{RESET} {name} ({symbol}) played position {position}")
-    print(format_board(state["board"]))
-    if state["status"] != "done":
-        print(f"  {state['message']}")
-    return position
+        current_name = players.get(current, current)
+        return f"{SPINNER[tick % len(SPINNER)]} Waiting for {current_name} to move..."
+
+    return None
+
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", "-n", required=True, help="Your player name")
-    parser.add_argument("--interval", type=float, default=0.4, help="Poll interval in seconds")
-    parser.add_argument("--quiet", action="store_true", help="Suppress spinner output while waiting")
     parser.add_argument(
-        "--auto-play",
+        "--interval", type=float, default=0.4, help="Poll interval in seconds"
+    )
+    parser.add_argument(
+        "--quiet",
         action="store_true",
-        help="Keep waiting, make the best move automatically, and continue until the game ends",
+        help="Suppress progress output while waiting",
     )
     args = parser.parse_args()
 
-    name = args.name
+    show_progress = sys.stdout.isatty() and not args.quiet
     tick = 0
 
     while True:
         state = load_state()
 
         if state is None:
-            print(f"{RED}No game found. Run: python new_game.py{RESET}")
+            print("No game found. Run: python new_game.py")
             sys.exit(2)
 
         players = state["players"]
-        symbol = find_player_symbol(players, name)
+        symbol = find_player_symbol(players, args.name)
 
         if symbol is None:
-            print(f"{RED}'{name}' is not in this game.{RESET}")
+            print(f"'{args.name}' is not in this game.")
             print(f"Current players: {players}")
-            print(f"Join with: python join.py \"{name}\"")
+            print(f'Join with: python join.py "{args.name}"')
             sys.exit(2)
 
         status = state["status"]
-
         if status == "done":
-            if not args.quiet:
+            if show_progress:
                 clear_status_line()
-            print_game_result(state, symbol)
+            print(format_state_snapshot(state, viewer_name=args.name))
             sys.exit(1)
 
-        if status == "waiting":
-            if not args.quiet:
-                spinner = SPINNER[tick % len(SPINNER)]
-                print(f"\r{DIM}{spinner} Waiting for opponent to join...{RESET}   ", end="", flush=True)
+        if status == "playing" and state["current_turn"] == symbol:
+            if show_progress:
+                clear_status_line()
+            print(format_state_snapshot(state, viewer_name=args.name))
+            sys.exit(0)
 
-        elif status == "playing":
-            current = state["current_turn"]
-            if current == symbol:
-                if not args.quiet:
-                    clear_status_line()
-
-                if args.auto_play:
-                    try:
-                        auto_play_turn(state, name, symbol)
-                    except GameError as exc:
-                        print(f"{RED}Auto-play failed: {exc}{RESET}")
-                        sys.exit(2)
-
-                    if state["status"] == "done":
-                        print_game_result(state, symbol)
-                        sys.exit(1)
-                else:
-                    opponent_sym = "O" if symbol == "X" else "X"
-                    opponent = players.get(opponent_sym, "opponent")
-                    last = state.get("history", [])
-                    if last:
-                        last_move = last[-1]
-                        print(f"\r{GREEN}{BOLD}✓ Your turn!{RESET} {DIM}({opponent} played position {last_move['position']}){RESET}   ")
-                    else:
-                        print(f"\r{GREEN}{BOLD}✓ Your turn!{RESET} (you go first)   ")
-                    sys.exit(0)
-            else:
-                if not args.quiet:
-                    other_name = players.get(current, current)
-                    spinner = SPINNER[tick % len(SPINNER)]
-                    print(f"\r{DIM}{spinner} Waiting for {other_name} to move...{RESET}   ", end="", flush=True)
+        if show_progress:
+            message = progress_message(state, symbol, tick)
+            if message:
+                print(f"\r{message}", end="", flush=True)
 
         time.sleep(args.interval)
         tick += 1
+
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print(f"\n{DIM}Interrupted.{RESET}")
+        print("\nInterrupted.")
         sys.exit(2)

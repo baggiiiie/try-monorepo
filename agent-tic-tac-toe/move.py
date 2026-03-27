@@ -12,14 +12,15 @@ Position is 1-9:
 
 Examples:
     python move.py 5 --name Alice
-    python move.py 1 --name "Claude AI"
+    python move.py 1 --name "Agent"
 """
-import sys
-import os
 import argparse
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(__file__))
 
-from game import GameError, apply_move, format_board, load_state, save_state
+from game import GameError, apply_move, format_state_snapshot, load_state, save_state
 
 def main():
     parser = argparse.ArgumentParser(description="Make a move in Tic-Tac-Toe")
@@ -36,18 +37,13 @@ def main():
     except GameError as exc:
         print(f"Error: {exc}")
         if state is not None and state.get("board"):
-            print(format_board(state["board"]))
+            print(format_state_snapshot(state, viewer_name=name))
         sys.exit(1)
 
     save_state(state)
 
-    print(f"✓ {name} ({symbol}) played position {pos}")
-    print(format_board(state["board"]))
-    print(f"  {state['message']}")
-
-    if state["status"] == "done":
-        print()
-        print("Game over! Run 'python new_game.py' to play again.")
+    print(f"Played: {name} ({symbol}) -> {pos}")
+    print(format_state_snapshot(state, viewer_name=name))
 
 if __name__ == "__main__":
     main()
