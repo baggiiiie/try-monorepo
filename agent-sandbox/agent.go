@@ -121,8 +121,9 @@ func handleTurn(app *App) error {
 		// Accumulate the streamed response.
 		var contentBuf strings.Builder
 		var toolCalls []ToolCall
-		contentStarted := false
-		reasoningStarted := false
+		hasReasoning := false
+		hasContent := false
+		hooks := app.Hooks
 
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -148,22 +149,22 @@ func handleTurn(app *App) error {
 			delta := chunk.Choices[0].Delta
 
 			if delta.Reasoning != "" {
-				if !reasoningStarted {
-					fmt.Print("\n<REASONING>\n")
-					reasoningStarted = true
+				hasReasoning = true
+				if hooks.OnReasoningDelta != nil {
+					hooks.OnReasoningDelta(delta.Reasoning)
 				}
-				fmt.Print(delta.Reasoning)
 			}
 
 			if delta.Content != "" {
-				if reasoningStarted && !contentStarted {
-					fmt.Print("\n</REASONING>\n")
+				if hasReasoning && !hasContent {
+					if hooks.OnReasoningDone != nil {
+						hooks.OnReasoningDone()
+					}
 				}
-				if !contentStarted {
-					fmt.Print("\nAgent> ")
-					contentStarted = true
+				hasContent = true
+				if hooks.OnContentDelta != nil {
+					hooks.OnContentDelta(delta.Content)
 				}
-				fmt.Print(delta.Content)
 				contentBuf.WriteString(delta.Content)
 			}
 
@@ -180,15 +181,20 @@ func handleTurn(app *App) error {
 				if tc.Function.Arguments != "" {
 					toolCalls[tc.Index].Function.Arguments += tc.Function.Arguments
 				}
+				if hooks.OnToolCallDelta != nil {
+					hooks.OnToolCallDelta(tc.Index, tc)
+				}
 			}
 		}
 		resp.Body.Close()
 
-		if reasoningStarted && !contentStarted {
-			fmt.Print("\n</REASONING>\n")
+		if hasReasoning && !hasContent {
+			if hooks.OnReasoningDone != nil {
+				hooks.OnReasoningDone()
+			}
 		}
-		if contentStarted {
-			fmt.Println()
+		if hooks.OnContentDone != nil {
+			hooks.OnContentDone(contentBuf.String())
 		}
 
 		app.Messages = append(app.Messages, ChatMessage{
@@ -212,14 +218,13 @@ func handleTurn(app *App) error {
 			go func(i int, tc ToolCall) {
 				defer wg.Done()
 
-				var args map[string]any
-				if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
-					args = map[string]any{}
+				if hooks.OnToolCallReady != nil {
+					hooks.OnToolCallReady(tc)
 				}
-
-				logMsg("TOOL CALL: "+tc.Function.Name, args)
-				result := executeTool(tc.Function.Name, args, app)
-				logMsg("TOOL RESULT: "+tc.Function.Name, result)
+				result := executeTool(tc.Function.Name, parseArgs(tc.Function.Arguments), app)
+				if hooks.OnToolResult != nil {
+					hooks.OnToolResult(tc.Function.Name, result)
+				}
 
 				results[i] = toolResult{
 					msg: ChatMessage{
@@ -238,4 +243,12 @@ func handleTurn(app *App) error {
 	}
 
 	return nil
+}
+
+func parseArgs(raw string) map[string]any {
+	var args map[string]any
+	if err := json.Unmarshal([]byte(raw), &args); err != nil {
+		return map[string]any{}
+	}
+	return args
 }
