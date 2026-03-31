@@ -30,7 +30,7 @@ func main() {
 	}()
 	defer destroyContainer()
 
-	fmt.Printf("Agent ready (%s). Type your message (Ctrl+C to quit, /reload to reload runtime).\n", app.Runtime.Summary())
+	fmt.Printf("Agent ready (%s). Type your message (Ctrl+C to quit, /reload to reload runtime, /resume to restore last session).\n", app.Runtime.Summary())
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
@@ -52,6 +52,21 @@ func main() {
 			continue
 		}
 
+		if line == "/resume" {
+			msgs, err := loadSession()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Resume failed: %v\n", err)
+			} else {
+				app.Messages = msgs
+				// Update system prompt to current runtime.
+				if len(app.Messages) > 0 && app.Messages[0].Role == "system" {
+					app.Messages[0].Content = app.Runtime.SystemPrompt
+				}
+				fmt.Printf("Session restored (%d messages). You may continue the conversation.\n", len(app.Messages))
+			}
+			continue
+		}
+
 		app.Messages = append(app.Messages, ChatMessage{
 			Role:    "user",
 			Content: line,
@@ -59,6 +74,10 @@ func main() {
 
 		if err := handleTurn(app); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		}
+
+		if err := saveSession(app.Messages); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to save session: %v\n", err)
 		}
 	}
 }
