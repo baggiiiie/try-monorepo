@@ -15,20 +15,22 @@ const (
 )
 
 type RuntimeConfig struct {
-	Provider        string   `json:"provider"`
-	Model           string   `json:"model"`
-	BaseURL         string   `json:"base_url"`
-	APIKey          string   `json:"api_key"`
-	AllowedCommands []string `json:"allowed_commands"`
+	Provider         string   `json:"provider"`
+	Model            string   `json:"model"`
+	BaseURL          string   `json:"base_url"`
+	APIKey           string   `json:"api_key"`
+	AllowedCommands  []string `json:"allowed_commands"`
+	MaxContextTokens int      `json:"max_context_tokens"`
 }
 
 type Runtime struct {
-	Provider        string
-	SystemPrompt    string
-	BaseURL         string
-	APIKey          string
-	Model           string
-	AllowedCommands []string
+	Provider         string
+	SystemPrompt     string
+	BaseURL          string
+	APIKey           string
+	Model            string
+	AllowedCommands  []string
+	MaxContextTokens int
 }
 
 type App struct {
@@ -106,13 +108,19 @@ func LoadRuntime() (*Runtime, error) {
 		allowedCommands = cloneStrings(defaultAllowedCommands)
 	}
 
+	maxContextTokens := cfg.MaxContextTokens
+	if maxContextTokens <= 0 {
+		maxContextTokens = 8192
+	}
+
 	return &Runtime{
-		Provider:        provider,
-		SystemPrompt:    systemPrompt,
-		BaseURL:         baseURL,
-		APIKey:          apiKey,
-		Model:           model,
-		AllowedCommands: allowedCommands,
+		Provider:         provider,
+		SystemPrompt:     systemPrompt,
+		BaseURL:          baseURL,
+		APIKey:           apiKey,
+		Model:            model,
+		AllowedCommands:  allowedCommands,
+		MaxContextTokens: maxContextTokens,
 	}, nil
 }
 

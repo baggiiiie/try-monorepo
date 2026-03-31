@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 )
@@ -77,6 +78,12 @@ func handleTurn(app *App) error {
 	const maxIterations = 20
 
 	for iterations := 0; iterations < maxIterations; iterations++ {
+		if compacted, err := compactIfNeeded(app); err != nil {
+			fmt.Fprintf(os.Stderr, "\n[compaction failed: %v]\n", err)
+		} else if compacted {
+			fmt.Printf("\n[compacted context: %d messages, ~%d tokens]\n", len(app.Messages), estimateTokens(app.Messages))
+		}
+
 		if app.ConsumeReloadPending() {
 			if err := app.Reload(); err != nil {
 				return fmt.Errorf("failed to apply queued reload: %w", err)
