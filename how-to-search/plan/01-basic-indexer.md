@@ -29,7 +29,7 @@ walk `notes/` dir, read each `.md` file, store content in an FTS5 virtual table,
    SELECT path, title FROM notes_fts WHERE notes_fts MATCH ? ;
    ```
    print results.
-5. try searching: `go run . "markdown"`, `go run . "list"`
+5. try searching: `go run -tags "fts5" . "markdown"`, `go run -tags "fts5" . "list"`
 
 ## verify
 
