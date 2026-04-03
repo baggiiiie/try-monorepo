@@ -1,6 +1,7 @@
 package main
 
 import (
+	"agent-sandbox/tools"
 	"bufio"
 	"bytes"
 	"encoding/json"
@@ -74,29 +75,20 @@ type StreamToolCallDelta struct {
 	} `json:"function,omitempty"`
 }
 
-func handleTurn(app *App) error {
-	const maxIterations = 20
+type loopConfig struct {
+	Runtime       *Runtime
+	Messages      *[]ChatMessage
+	Registry      *tools.Registry
+	Hooks         *EventHooks
+	MaxIterations int
+}
 
-	for range maxIterations {
-		if compacted, err := compactIfNeeded(app); err != nil {
-			fmt.Fprintf(os.Stderr, "\n[compaction failed: %v]\n", err)
-		} else if compacted {
-			fmt.Printf("\n[compacted context: %d messages, ~%d tokens]\n", len(app.Messages), estimateTokens(app.Messages))
-		}
-
-		if app.ConsumeReloadPending() {
-			if err := app.Reload(); err != nil {
-				return fmt.Errorf("failed to apply queued reload: %w", err)
-			}
-			fmt.Printf("\n[reloaded runtime: %s]\n", app.Runtime.Summary())
-		}
-
-		reg := buildToolRegistry(app)
-
+func runLoop(cfg loopConfig) error {
+	for range cfg.MaxIterations {
 		reqBody := ChatRequest{
-			Model:               app.Runtime.Model,
-			Messages:            app.Messages,
-			Tools:               reg.Definitions(),
+			Model:               cfg.Runtime.Model,
+			Messages:            *cfg.Messages,
+			Tools:               cfg.Registry.Definitions(),
 			ToolChoice:          "auto",
 			Temperature:         0.6,
 			MaxCompletionTokens: 4096,
@@ -109,12 +101,12 @@ func handleTurn(app *App) error {
 			return fmt.Errorf("failed to marshal request: %w", err)
 		}
 
-		req, err := http.NewRequest("POST", app.Runtime.BaseURL+"/chat/completions", bytes.NewReader(reqJSON))
+		req, err := http.NewRequest("POST", cfg.Runtime.BaseURL+"/chat/completions", bytes.NewReader(reqJSON))
 		if err != nil {
 			return fmt.Errorf("failed to create request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+app.Runtime.APIKey)
+		req.Header.Set("Authorization", "Bearer "+cfg.Runtime.APIKey)
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -127,12 +119,11 @@ func handleTurn(app *App) error {
 			return fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
 		}
 
-		// Accumulate the streamed response.
 		var contentBuf strings.Builder
 		var toolCalls []ToolCall
 		hasReasoning := false
 		hasContent := false
-		hooks := app.Hooks
+		hooks := cfg.Hooks
 
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -206,7 +197,7 @@ func handleTurn(app *App) error {
 			hooks.OnContentDone(contentBuf.String())
 		}
 
-		app.Messages = append(app.Messages, ChatMessage{
+		*cfg.Messages = append(*cfg.Messages, ChatMessage{
 			Role:      "assistant",
 			Content:   contentBuf.String(),
 			ToolCalls: toolCalls,
@@ -230,7 +221,7 @@ func handleTurn(app *App) error {
 				if hooks.OnToolCallReady != nil {
 					hooks.OnToolCallReady(tc)
 				}
-				result := reg.Execute(tc.Function.Name, parseArgs(tc.Function.Arguments))
+				result := cfg.Registry.Execute(tc.Function.Name, parseArgs(tc.Function.Arguments))
 				if hooks.OnToolResult != nil {
 					hooks.OnToolResult(tc.Function.Name, result)
 				}
@@ -247,11 +238,65 @@ func handleTurn(app *App) error {
 		wg.Wait()
 
 		for _, r := range results {
-			app.Messages = append(app.Messages, r.msg)
+			*cfg.Messages = append(*cfg.Messages, r.msg)
 		}
 	}
 
 	return nil
+}
+
+func handleTurn(app *App) error {
+	if compacted, err := compactIfNeeded(app); err != nil {
+		fmt.Fprintf(os.Stderr, "\n[compaction failed: %v]\n", err)
+	} else if compacted {
+		fmt.Printf("\n[compacted context: %d messages, ~%d tokens]\n", len(app.Messages), estimateTokens(app.Messages))
+	}
+
+	if app.ConsumeReloadPending() {
+		if err := app.Reload(); err != nil {
+			return fmt.Errorf("failed to apply queued reload: %w", err)
+		}
+		fmt.Printf("\n[reloaded runtime: %s]\n", app.Runtime.Summary())
+	}
+
+	return runLoop(loopConfig{
+		Runtime:       app.Runtime,
+		Messages:      &app.Messages,
+		Registry:      buildToolRegistry(app),
+		Hooks:         app.Hooks,
+		MaxIterations: 20,
+	})
+}
+
+func runSubagent(app *App, prompt string) (string, error) {
+	messages := []ChatMessage{
+		{Role: "system", Content: "You are a subagent. Complete the task and respond with a concise summary of what you did."},
+		{Role: "user", Content: prompt},
+	}
+
+	reg := buildToolRegistry(app)
+
+	err := runLoop(loopConfig{
+		Runtime:       app.Runtime,
+		Messages:      &messages,
+		Registry:      reg,
+		Hooks:         &EventHooks{},
+		MaxIterations: 10,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	// After the subagent's agent loop finishes, walks backward through
+	// messages to find the last assistant response and returns it as the tool
+	// result string back to the parent agent. If the subagent only made tool
+	// calls and never produced text, it returns a fallback message.
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "assistant" && messages[i].Content != "" {
+			return messages[i].Content, nil
+		}
+	}
+	return "Subagent completed but produced no response.", nil
 }
 
 func parseArgs(raw string) map[string]any {

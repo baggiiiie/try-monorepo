@@ -48,8 +48,15 @@ func buildToolRegistry(app *App) *tools.Registry {
 		OnReload: app.QueueReload,
 	})
 
+	reg.Register(&tools.SubagentTool{
+		Run: func(prompt string) (string, error) {
+			return runSubagent(app, prompt)
+		},
+	})
+
 	return reg
 }
+
 
 func askApproval(command string) bool {
 	fmt.Printf("\n⚠️  Command needs approval: %s\nAllow? [y/N] ", command)
