@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 )
@@ -75,20 +74,21 @@ type StreamToolCallDelta struct {
 	} `json:"function,omitempty"`
 }
 
-type loopConfig struct {
-	Runtime       *Runtime
-	Messages      *[]ChatMessage
-	Registry      *tools.Registry
-	Hooks         *EventHooks
-	MaxIterations int
+// Agent defines what varies between agent types: prompt, tools, hooks, iteration limit.
+// The agent loop and message history are shared infrastructure, not owned by the agent.
+type Agent interface {
+	SystemPrompt() string
+	Tools() *tools.Registry
+	Hooks() *EventHooks
+	MaxIterations() int
 }
 
-func runLoop(cfg loopConfig) error {
-	for range cfg.MaxIterations {
+func runLoop(runtime *Runtime, agent Agent, messages *[]ChatMessage) error {
+	for range agent.MaxIterations() {
 		reqBody := ChatRequest{
-			Model:               cfg.Runtime.Model,
-			Messages:            *cfg.Messages,
-			Tools:               cfg.Registry.Definitions(),
+			Model:               runtime.Model,
+			Messages:            *messages,
+			Tools:               agent.Tools().Definitions(),
 			ToolChoice:          "auto",
 			Temperature:         0.6,
 			MaxCompletionTokens: 4096,
@@ -101,12 +101,12 @@ func runLoop(cfg loopConfig) error {
 			return fmt.Errorf("failed to marshal request: %w", err)
 		}
 
-		req, err := http.NewRequest("POST", cfg.Runtime.BaseURL+"/chat/completions", bytes.NewReader(reqJSON))
+		req, err := http.NewRequest("POST", runtime.BaseURL+"/chat/completions", bytes.NewReader(reqJSON))
 		if err != nil {
 			return fmt.Errorf("failed to create request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+cfg.Runtime.APIKey)
+		req.Header.Set("Authorization", "Bearer "+runtime.APIKey)
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -123,7 +123,7 @@ func runLoop(cfg loopConfig) error {
 		var toolCalls []ToolCall
 		hasReasoning := false
 		hasContent := false
-		hooks := cfg.Hooks
+		hooks := agent.Hooks()
 
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -197,7 +197,7 @@ func runLoop(cfg loopConfig) error {
 			hooks.OnContentDone(contentBuf.String())
 		}
 
-		*cfg.Messages = append(*cfg.Messages, ChatMessage{
+		*messages = append(*messages, ChatMessage{
 			Role:      "assistant",
 			Content:   contentBuf.String(),
 			ToolCalls: toolCalls,
@@ -221,7 +221,7 @@ func runLoop(cfg loopConfig) error {
 				if hooks.OnToolCallReady != nil {
 					hooks.OnToolCallReady(tc)
 				}
-				result := cfg.Registry.Execute(tc.Function.Name, parseArgs(tc.Function.Arguments))
+				result := agent.Tools().Execute(tc.Function.Name, parseArgs(tc.Function.Arguments))
 				if hooks.OnToolResult != nil {
 					hooks.OnToolResult(tc.Function.Name, result)
 				}
@@ -238,65 +238,11 @@ func runLoop(cfg loopConfig) error {
 		wg.Wait()
 
 		for _, r := range results {
-			*cfg.Messages = append(*cfg.Messages, r.msg)
+			*messages = append(*messages, r.msg)
 		}
 	}
 
 	return nil
-}
-
-func handleTurn(app *App) error {
-	if compacted, err := compactIfNeeded(app); err != nil {
-		fmt.Fprintf(os.Stderr, "\n[compaction failed: %v]\n", err)
-	} else if compacted {
-		fmt.Printf("\n[compacted context: %d messages, ~%d tokens]\n", len(app.Messages), estimateTokens(app.Messages))
-	}
-
-	if app.ConsumeReloadPending() {
-		if err := app.Reload(); err != nil {
-			return fmt.Errorf("failed to apply queued reload: %w", err)
-		}
-		fmt.Printf("\n[reloaded runtime: %s]\n", app.Runtime.Summary())
-	}
-
-	return runLoop(loopConfig{
-		Runtime:       app.Runtime,
-		Messages:      &app.Messages,
-		Registry:      buildToolRegistry(app),
-		Hooks:         app.Hooks,
-		MaxIterations: 20,
-	})
-}
-
-func runSubagent(app *App, prompt string) (string, error) {
-	messages := []ChatMessage{
-		{Role: "system", Content: "You are a subagent. Complete the task and respond with a concise summary of what you did."},
-		{Role: "user", Content: prompt},
-	}
-
-	reg := buildToolRegistry(app)
-
-	err := runLoop(loopConfig{
-		Runtime:       app.Runtime,
-		Messages:      &messages,
-		Registry:      reg,
-		Hooks:         &EventHooks{},
-		MaxIterations: 10,
-	})
-	if err != nil {
-		return "", err
-	}
-
-	// After the subagent's agent loop finishes, walks backward through
-	// messages to find the last assistant response and returns it as the tool
-	// result string back to the parent agent. If the subagent only made tool
-	// calls and never produced text, it returns a fallback message.
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role == "assistant" && messages[i].Content != "" {
-			return messages[i].Content, nil
-		}
-	}
-	return "Subagent completed but produced no response.", nil
 }
 
 func parseArgs(raw string) map[string]any {

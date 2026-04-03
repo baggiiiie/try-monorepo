@@ -37,7 +37,6 @@ type Runtime struct {
 type App struct {
 	Runtime       *Runtime
 	Messages      []ChatMessage
-	Hooks         *EventHooks
 	reloadPending atomic.Bool
 }
 
@@ -53,7 +52,6 @@ func NewApp() (*App, error) {
 			Role:    "system",
 			Content: runtime.SystemPrompt,
 		}},
-		Hooks: DefaultHooks(),
 	}, nil
 }
 

@@ -9,12 +9,9 @@ import (
 	"agent-sandbox/tools"
 )
 
-// buildToolRegistry creates and populates the tool registry with all tools,
-// wired to the app's sandbox and policy configuration.
-func buildToolRegistry(app *App) *tools.Registry {
+// registerCoreTools adds the tools shared by all agent types.
+func registerCoreTools(reg *tools.Registry, app *App) {
 	workspace := hostWorkDir()
-
-	reg := tools.NewRegistry()
 
 	reg.Register(&tools.ReadFileTool{Workspace: workspace})
 	reg.Register(&tools.WriteFileTool{Workspace: workspace})
@@ -43,20 +40,7 @@ func buildToolRegistry(app *App) *tools.Registry {
 	})
 
 	reg.Register(&tools.TodoTool{})
-
-	reg.Register(&tools.ReloadRuntimeTool{
-		OnReload: app.QueueReload,
-	})
-
-	reg.Register(&tools.SubagentTool{
-		Run: func(prompt string) (string, error) {
-			return runSubagent(app, prompt)
-		},
-	})
-
-	return reg
 }
-
 
 func askApproval(command string) bool {
 	fmt.Printf("\n⚠️  Command needs approval: %s\nAllow? [y/N] ", command)
