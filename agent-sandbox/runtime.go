@@ -1,6 +1,7 @@
 package main
 
 import (
+	"agent-sandbox/tools"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -105,7 +106,7 @@ func LoadRuntime() (*Runtime, error) {
 
 	allowedCommands := cloneStrings(cfg.AllowedCommands)
 	if len(allowedCommands) == 0 {
-		allowedCommands = cloneStrings(defaultAllowedCommands)
+		allowedCommands = cloneStrings(tools.DefaultAllowedCommands)
 	}
 
 	maxContextTokens := cfg.MaxContextTokens

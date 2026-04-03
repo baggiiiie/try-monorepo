@@ -77,7 +77,7 @@ type StreamToolCallDelta struct {
 func handleTurn(app *App) error {
 	const maxIterations = 20
 
-	for iterations := 0; iterations < maxIterations; iterations++ {
+	for range maxIterations {
 		if compacted, err := compactIfNeeded(app); err != nil {
 			fmt.Fprintf(os.Stderr, "\n[compaction failed: %v]\n", err)
 		} else if compacted {
@@ -91,10 +91,12 @@ func handleTurn(app *App) error {
 			fmt.Printf("\n[reloaded runtime: %s]\n", app.Runtime.Summary())
 		}
 
+		reg := buildToolRegistry(app)
+
 		reqBody := ChatRequest{
 			Model:               app.Runtime.Model,
 			Messages:            app.Messages,
-			Tools:               getToolDefinitions(app.Runtime),
+			Tools:               reg.Definitions(),
 			ToolChoice:          "auto",
 			Temperature:         0.6,
 			MaxCompletionTokens: 4096,
@@ -228,7 +230,7 @@ func handleTurn(app *App) error {
 				if hooks.OnToolCallReady != nil {
 					hooks.OnToolCallReady(tc)
 				}
-				result := executeTool(tc.Function.Name, parseArgs(tc.Function.Arguments), app)
+				result := reg.Execute(tc.Function.Name, parseArgs(tc.Function.Arguments))
 				if hooks.OnToolResult != nil {
 					hooks.OnToolResult(tc.Function.Name, result)
 				}

@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	sessionFilePath    = ".session.json"
-	compactThreshold   = 0.8
-	recentTurnsToKeep  = 4
+	sessionFilePath   = ".session.json"
+	compactThreshold  = 0.8
+	recentTurnsToKeep = 4
 )
 
 func saveSession(messages []ChatMessage) error {
