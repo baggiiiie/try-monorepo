@@ -1,11 +1,12 @@
 package main
 
 import (
-	"agent-sandbox/tools"
 	"bufio"
 	"fmt"
 	"os"
 	"strings"
+
+	"agent-sandbox/tools"
 )
 
 // buildToolRegistry creates and populates the tool registry with all tools,
@@ -18,6 +19,7 @@ func buildToolRegistry(app *App) *tools.Registry {
 	reg.Register(&tools.ReadFileTool{Workspace: workspace})
 	reg.Register(&tools.WriteFileTool{Workspace: workspace})
 	reg.Register(&tools.EditFileTool{Workspace: workspace})
+	reg.Register(&tools.GlobTool{Workspace: workspace})
 
 	allowedCommands := tools.DefaultAllowedCommands
 	if app.Runtime != nil && len(app.Runtime.AllowedCommands) > 0 {
