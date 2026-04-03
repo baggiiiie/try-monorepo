@@ -42,6 +42,8 @@ func buildToolRegistry(app *App) *tools.Registry {
 		DescriptionSuffix: descSuffix,
 	})
 
+	reg.Register(&tools.TodoTool{})
+
 	reg.Register(&tools.ReloadRuntimeTool{
 		OnReload: app.QueueReload,
 	})
