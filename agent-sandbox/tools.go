@@ -39,7 +39,7 @@ func registerCoreTools(reg *tools.Registry, app *App) {
 		DescriptionSuffix: descSuffix,
 	})
 
-	reg.Register(&tools.TodoTool{})
+	reg.Register(app.Todo)
 }
 
 func askApproval(command string) bool {

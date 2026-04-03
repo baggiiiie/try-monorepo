@@ -37,8 +37,11 @@ type Runtime struct {
 type App struct {
 	Runtime       *Runtime
 	Messages      []ChatMessage
+	Todo          *tools.TodoTool
 	reloadPending atomic.Bool
 }
+
+const todoFilePath = ".todo.json"
 
 func NewApp() (*App, error) {
 	runtime, err := LoadRuntime()
@@ -46,8 +49,15 @@ func NewApp() (*App, error) {
 		return nil, err
 	}
 
+	todo := &tools.TodoTool{}
+	todo.SetSavePath(todoFilePath)
+	if err := todo.Load(); err != nil {
+		return nil, fmt.Errorf("failed to load todos: %w", err)
+	}
+
 	return &App{
 		Runtime: runtime,
+		Todo:    todo,
 		Messages: []ChatMessage{{
 			Role:    "system",
 			Content: runtime.SystemPrompt,

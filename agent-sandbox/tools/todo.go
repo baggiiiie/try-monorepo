@@ -1,21 +1,24 @@
 package tools
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 )
 
 type TodoItem struct {
-	ID   int
-	Task string
-	Done bool
+	ID   int    `json:"id"`
+	Task string `json:"task"`
+	Done bool   `json:"done"`
 }
 
 type TodoTool struct {
-	mu    sync.Mutex
-	items []TodoItem
-	next  int
+	mu       sync.Mutex
+	items    []TodoItem
+	next     int
+	savePath string // if set, items are persisted to this file
 }
 
 func (t *TodoTool) Name() string { return "todo" }
@@ -46,6 +49,7 @@ func (t *TodoTool) Execute(args map[string]any) string {
 		}
 		t.next++
 		t.items = append(t.items, TodoItem{ID: t.next, Task: task})
+		t.save()
 		return fmt.Sprintf("Added task #%d. %s", t.next, t.formatList())
 
 	case "complete":
@@ -53,6 +57,7 @@ func (t *TodoTool) Execute(args map[string]any) string {
 		for i := range t.items {
 			if t.items[i].ID == id {
 				t.items[i].Done = true
+				t.save()
 				return fmt.Sprintf("Completed task #%d. %s", id, t.formatList())
 			}
 		}
@@ -63,6 +68,7 @@ func (t *TodoTool) Execute(args map[string]any) string {
 		for i := range t.items {
 			if t.items[i].ID == id {
 				t.items = append(t.items[:i], t.items[i+1:]...)
+				t.save()
 				return fmt.Sprintf("Removed task #%d. %s", id, t.formatList())
 			}
 		}
@@ -92,6 +98,47 @@ func (t *TodoTool) formatList() string {
 		fmt.Fprintf(&b, "#%d %s %s\n", item.ID, check, item.Task)
 	}
 	return b.String()
+}
+
+func (t *TodoTool) SetSavePath(path string) {
+	t.savePath = path
+}
+
+func (t *TodoTool) Load() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	data, err := os.ReadFile(t.savePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var items []TodoItem
+	if err := json.Unmarshal(data, &items); err != nil {
+		return err
+	}
+	t.items = items
+	t.next = 0
+	for _, item := range items {
+		if item.ID > t.next {
+			t.next = item.ID
+		}
+	}
+	return nil
+}
+
+// save persists items to disk. Must be called with mu held.
+func (t *TodoTool) save() {
+	if t.savePath == "" {
+		return
+	}
+	data, err := json.MarshalIndent(t.items, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(t.savePath, data, 0o644)
 }
 
 func toInt(v any) int {
