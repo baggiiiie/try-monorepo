@@ -39,6 +39,7 @@ type PushExpense struct {
 }
 
 type PushCategory struct {
+	ID        string `json:"id,omitempty"`
 	ClientID  string `json:"client_id"`
 	Name      string `json:"name"`
 	Icon      string `json:"icon"`
@@ -123,18 +124,28 @@ func (s *SyncService) Push(ctx context.Context, req PushRequest) (*PushResponse,
 		Categories: make([]Category, 0, len(req.Categories)),
 		ServerTime: now,
 	}
+	categoryAliases := make(map[string]string, len(req.Categories)*3)
 
-	// Process categories first (expenses may reference them)
 	for _, c := range req.Categories {
 		cat, err := s.pushCategory(ctx, qtx, c, now)
 		if err != nil {
 			return nil, fmt.Errorf("pushing category: %w", err)
 		}
 		resp.Categories = append(resp.Categories, *cat)
+		for _, alias := range []string{c.ID, c.ClientID, cat.ID} {
+			if alias != "" {
+				categoryAliases[alias] = cat.ID
+			}
+		}
 	}
 
-	// Process expenses
 	for _, e := range req.Expenses {
+		resolvedCategoryID, err := s.resolveCategoryID(ctx, qtx, e.CategoryID, categoryAliases)
+		if err != nil {
+			return nil, fmt.Errorf("resolving category %q: %w", e.CategoryID, err)
+		}
+		e.CategoryID = resolvedCategoryID
+
 		exp, err := s.pushExpense(ctx, qtx, e, now)
 		if err != nil {
 			return nil, fmt.Errorf("pushing expense: %w", err)
@@ -147,6 +158,22 @@ func (s *SyncService) Push(ctx context.Context, req PushRequest) (*PushResponse,
 	}
 
 	return resp, nil
+}
+
+func (s *SyncService) resolveCategoryID(ctx context.Context, q *dbsqlc.Queries, categoryID string, aliases map[string]string) (string, error) {
+	if mappedID, ok := aliases[categoryID]; ok {
+		return mappedID, nil
+	}
+
+	cat, err := q.GetCategoryByClientID(ctx, categoryID)
+	if err == nil {
+		return cat.ID, nil
+	}
+	if err != sql.ErrNoRows {
+		return "", err
+	}
+
+	return categoryID, nil
 }
 
 func (s *SyncService) pushCategory(ctx context.Context, q *dbsqlc.Queries, input PushCategory, now int64) (*Category, error) {
@@ -168,21 +195,46 @@ func (s *SyncService) pushCategory(ctx context.Context, q *dbsqlc.Queries, input
 		if err != nil {
 			return nil, err
 		}
+		if input.DeletedAt != nil {
+			if err := q.SoftDeleteCategory(ctx, dbsqlc.SoftDeleteCategoryParams{
+				DeletedAt: sql.NullInt64{Int64: now, Valid: true},
+				UpdatedAt: now,
+				ID:        row.ID,
+			}); err != nil {
+				return nil, err
+			}
+			row, err = q.GetCategoryByClientID(ctx, input.ClientID)
+			if err != nil {
+				return nil, err
+			}
+		}
 		cat := categoryFromRow(row)
 		return &cat, nil
 	}
 
-	// Exists — update if newer
-	if input.UpdatedAt > existing.UpdatedAt {
-		err = q.UpdateCategory(ctx, dbsqlc.UpdateCategoryParams{
-			Name:      input.Name,
-			Icon:      input.Icon,
-			Budget:    nullInt64(input.Budget),
-			UpdatedAt: now,
-			ID:        existing.ID,
-		})
-		if err != nil {
-			return nil, err
+	shouldApply := input.UpdatedAt > existing.UpdatedAt || (input.UpdatedAt == existing.UpdatedAt && !sameCategoryState(existing, input))
+	if shouldApply {
+		if input.DeletedAt != nil {
+			if !existing.DeletedAt.Valid {
+				if err := q.SoftDeleteCategory(ctx, dbsqlc.SoftDeleteCategoryParams{
+					DeletedAt: sql.NullInt64{Int64: now, Valid: true},
+					UpdatedAt: now,
+					ID:        existing.ID,
+				}); err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			err = q.UpdateCategory(ctx, dbsqlc.UpdateCategoryParams{
+				Name:      input.Name,
+				Icon:      input.Icon,
+				Budget:    nullInt64(input.Budget),
+				UpdatedAt: now,
+				ID:        existing.ID,
+			})
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -222,24 +274,50 @@ func (s *SyncService) pushExpense(ctx context.Context, q *dbsqlc.Queries, input 
 		if err != nil {
 			return nil, err
 		}
-		exp := expenseFromRow(row, "")
+		if input.DeletedAt != nil {
+			if err := q.SoftDeleteExpense(ctx, dbsqlc.SoftDeleteExpenseParams{
+				DeletedAt: sql.NullInt64{Int64: now, Valid: true},
+				UpdatedAt: now,
+				ID:        row.ID,
+			}); err != nil {
+				return nil, err
+			}
+			row, err = q.GetExpenseByClientID(ctx, input.ClientID)
+			if err != nil {
+				return nil, err
+			}
+		}
+		cat, _ := q.GetCategoryIncludingDeleted(ctx, row.CategoryID)
+		exp := expenseFromRow(row, cat.Name)
 		return &exp, nil
 	}
 
-	// Exists — update if newer
-	if input.UpdatedAt > existing.UpdatedAt {
-		err = q.UpdateExpense(ctx, dbsqlc.UpdateExpenseParams{
-			Amount:      input.Amount,
-			Currency:    input.Currency,
-			CategoryID:  input.CategoryID,
-			Description: input.Description,
-			Merchant:    input.Merchant,
-			Date:        input.Date,
-			UpdatedAt:   now,
-			ID:          existing.ID,
-		})
-		if err != nil {
-			return nil, err
+	shouldApply := input.UpdatedAt > existing.UpdatedAt || (input.UpdatedAt == existing.UpdatedAt && !sameExpenseState(existing, input, source))
+	if shouldApply {
+		if input.DeletedAt != nil {
+			if !existing.DeletedAt.Valid {
+				if err := q.SoftDeleteExpense(ctx, dbsqlc.SoftDeleteExpenseParams{
+					DeletedAt: sql.NullInt64{Int64: now, Valid: true},
+					UpdatedAt: now,
+					ID:        existing.ID,
+				}); err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			err = q.UpdateExpense(ctx, dbsqlc.UpdateExpenseParams{
+				Amount:      input.Amount,
+				Currency:    input.Currency,
+				CategoryID:  input.CategoryID,
+				Description: input.Description,
+				Merchant:    input.Merchant,
+				Date:        input.Date,
+				UpdatedAt:   now,
+				ID:          existing.ID,
+			})
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -247,6 +325,39 @@ func (s *SyncService) pushExpense(ctx context.Context, q *dbsqlc.Queries, input 
 	if err != nil {
 		return nil, err
 	}
-	exp := expenseFromRow(updated, "")
+	cat, _ := q.GetCategoryIncludingDeleted(ctx, updated.CategoryID)
+	exp := expenseFromRow(updated, cat.Name)
 	return &exp, nil
+}
+
+func sameCategoryState(existing dbsqlc.Category, input PushCategory) bool {
+	return existing.Name == input.Name &&
+		existing.Icon == input.Icon &&
+		nullInt64Equal(existing.Budget, input.Budget) &&
+		deletedStateEqual(existing.DeletedAt, input.DeletedAt)
+}
+
+func sameExpenseState(existing dbsqlc.Expense, input PushExpense, source string) bool {
+	return existing.Amount == input.Amount &&
+		existing.Currency == input.Currency &&
+		existing.CategoryID == input.CategoryID &&
+		existing.Description == input.Description &&
+		existing.Merchant == input.Merchant &&
+		existing.Date == input.Date &&
+		existing.Source == source &&
+		deletedStateEqual(existing.DeletedAt, input.DeletedAt)
+}
+
+func nullInt64Equal(existing sql.NullInt64, incoming *int64) bool {
+	if incoming == nil {
+		return !existing.Valid
+	}
+	return existing.Valid && existing.Int64 == *incoming
+}
+
+func deletedStateEqual(existing sql.NullInt64, incoming *int64) bool {
+	if incoming == nil {
+		return !existing.Valid
+	}
+	return existing.Valid
 }

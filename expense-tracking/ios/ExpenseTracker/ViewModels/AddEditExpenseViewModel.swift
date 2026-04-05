@@ -64,6 +64,7 @@ class AddEditExpenseViewModel: ObservableObject {
                     existing.description = descriptionText
                     existing.date = dateTs
                     existing.updatedAt = now
+                    existing.syncStatus = "pending_push"
                     try existing.update(db)
                 } else {
                     var expense = Expense(

@@ -59,6 +59,7 @@ struct CategoryFormView: View {
                     existing.icon = icon
                     existing.budget = budget
                     existing.updatedAt = now
+                    existing.syncStatus = "pending_push"
                     try existing.update(db)
                 } else {
                     var newCategory = Category(

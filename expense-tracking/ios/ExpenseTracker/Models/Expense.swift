@@ -14,6 +14,7 @@ struct Expense: Codable, Identifiable, FetchableRecord, PersistableRecord {
     var createdAt: Int64
     var updatedAt: Int64
     var deletedAt: Int64?
+    var syncStatus: String = "pending_push"
 
     static let databaseTableName = "expenses"
 
@@ -30,6 +31,7 @@ struct Expense: Codable, Identifiable, FetchableRecord, PersistableRecord {
         static let createdAt = Column(CodingKeys.createdAt)
         static let updatedAt = Column(CodingKeys.updatedAt)
         static let deletedAt = Column(CodingKeys.deletedAt)
+        static let syncStatus = Column(CodingKeys.syncStatus)
     }
 
     static let category = belongsTo(Category.self)

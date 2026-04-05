@@ -3,20 +3,24 @@ import SwiftUI
 @main
 struct ExpenseTrackerApp: App {
     let database: AppDatabase
+    @StateObject private var syncService: SyncService
 
     init() {
+        let db: AppDatabase
         do {
             let path = Self.databasePath()
-            database = try AppDatabase(path: path)
+            db = try AppDatabase(path: path)
         } catch {
             fatalError("Database initialization failed: \(error)")
         }
+        self.database = db
+        _syncService = StateObject(wrappedValue: SyncService(database: db))
     }
 
     var body: some Scene {
         WindowGroup {
             TabView {
-                ExpenseFeedView(database: database)
+                ExpenseFeedView(database: database, syncService: syncService)
                     .tabItem {
                         Label("Expenses", systemImage: "list.bullet")
                     }
@@ -26,7 +30,7 @@ struct ExpenseTrackerApp: App {
                         Label("Categories", systemImage: "tag")
                     }
 
-                SettingsView()
+                SettingsView(syncService: syncService)
                     .tabItem {
                         Label("Settings", systemImage: "gear")
                     }

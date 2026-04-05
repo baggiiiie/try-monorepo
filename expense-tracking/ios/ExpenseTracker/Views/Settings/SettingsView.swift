@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @ObservedObject var syncService: SyncService
     @AppStorage("serverURL") private var serverURL = ""
     @AppStorage("currency") private var currency = "SGD"
     @AppStorage("timezone") private var timezone = "Asia/Singapore"
@@ -13,6 +14,40 @@ struct SettingsView: View {
                         .textContentType(.URL)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                }
+
+                Section("Sync") {
+                    Button {
+                        Task { await syncService.sync() }
+                    } label: {
+                        HStack {
+                            Text("Sync Now")
+                            Spacer()
+                            if syncService.isSyncing {
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(syncService.isSyncing || serverURL.isEmpty)
+
+                    if let lastSync = syncService.lastSyncTime {
+                        HStack {
+                            Text("Last Synced")
+                            Spacer()
+                            Text(lastSync, style: .relative)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if let error = syncService.lastSyncError {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.red)
+                            Text(error)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                    }
                 }
 
                 Section("Preferences") {

@@ -22,6 +22,8 @@ POST /api/sync/push
 }
 ```
 
+When pushing a new category and expenses that reference it in the same request, the category payload may include its local `id`. The server uses that local ID (and `client_id`) as an alias and rewrites any matching `expense.category_id` values to the canonical server category ID before inserting expenses.
+
 The server processes each record:
 
 1. If `client_id` doesn't exist on server → insert (assign server `id`).

@@ -49,6 +49,15 @@ struct AppDatabase {
             try db.create(index: "idx_categories_updated_at", on: "categories", columns: ["updated_at"])
         }
 
+        migrator.registerMigration("v2") { db in
+            try db.alter(table: "expenses") { t in
+                t.add(column: "sync_status", .text).notNull().defaults(to: "pending_push")
+            }
+            try db.alter(table: "categories") { t in
+                t.add(column: "sync_status", .text).notNull().defaults(to: "pending_push")
+            }
+        }
+
         return migrator
     }
 
@@ -78,7 +87,8 @@ struct AppDatabase {
                     budget: nil,
                     createdAt: now,
                     updatedAt: now,
-                    deletedAt: nil
+                    deletedAt: nil,
+                    syncStatus: "pending_push"
                 )
                 try category.insert(db)
             }

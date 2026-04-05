@@ -30,6 +30,7 @@ class CategoryViewModel: ObservableObject {
                 var cat = category
                 cat.deletedAt = Int64(Date().timeIntervalSince1970)
                 cat.updatedAt = cat.deletedAt!
+                cat.syncStatus = "pending_push"
                 try cat.update(db)
             }
             refresh()
