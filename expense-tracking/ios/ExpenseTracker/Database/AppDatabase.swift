@@ -2,6 +2,14 @@ import Foundation
 import GRDB
 
 struct AppDatabase {
+    private static let _shared: AppDatabase = {
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let path = documentsURL.appendingPathComponent("expense-tracker.sqlite").path
+        return try! AppDatabase(path: path)
+    }()
+
+    static var shared: AppDatabase { _shared }
+
     let dbQueue: DatabaseQueue
 
     init(path: String) throws {
@@ -55,6 +63,21 @@ struct AppDatabase {
             }
             try db.alter(table: "categories") { t in
                 t.add(column: "sync_status", .text).notNull().defaults(to: "pending_push")
+            }
+        }
+
+        migrator.registerMigration("v3") { db in
+            try db.create(table: "wallet_suggestions") { t in
+                t.column("id", .text).primaryKey()
+                t.column("financekit_tx_id", .text)
+                t.column("amount", .integer)
+                t.column("currency", .text).notNull().defaults(to: "SGD")
+                t.column("merchant", .text).notNull()
+                t.column("date", .integer).notNull()
+                t.column("source", .text).notNull()
+                t.column("status", .text).notNull().defaults(to: "pending")
+                t.column("linked_expense_id", .text)
+                t.column("created_at", .integer).notNull()
             }
         }
 

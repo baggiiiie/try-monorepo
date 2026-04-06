@@ -6,15 +6,8 @@ struct ExpenseTrackerApp: App {
     @StateObject private var syncService: SyncService
 
     init() {
-        let db: AppDatabase
-        do {
-            let path = Self.databasePath()
-            db = try AppDatabase(path: path)
-        } catch {
-            fatalError("Database initialization failed: \(error)")
-        }
-        self.database = db
-        _syncService = StateObject(wrappedValue: SyncService(database: db))
+        self.database = AppDatabase.shared
+        _syncService = StateObject(wrappedValue: SyncService(database: database))
     }
 
     var body: some Scene {
@@ -23,6 +16,11 @@ struct ExpenseTrackerApp: App {
                 ExpenseFeedView(database: database, syncService: syncService)
                     .tabItem {
                         Label("Expenses", systemImage: "list.bullet")
+                    }
+
+                WalletSuggestionsView(database: database)
+                    .tabItem {
+                        Label("Wallet", systemImage: "creditcard")
                     }
 
                 CategoryListView(database: database)
@@ -38,8 +36,4 @@ struct ExpenseTrackerApp: App {
         }
     }
 
-    private static func databasePath() -> String {
-        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        return documentsURL.appendingPathComponent("expense-tracker.sqlite").path
-    }
 }

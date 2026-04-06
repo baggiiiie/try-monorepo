@@ -66,6 +66,17 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("Apple Pay Automation") {
+                    NavigationLink {
+                        ApplePaySetupView()
+                    } label: {
+                        HStack {
+                            Image(systemName: "creditcard")
+                            Text("Set Up Apple Pay Automation")
+                        }
+                    }
+                }
+
                 Section("About") {
                     HStack {
                         Text("Version")

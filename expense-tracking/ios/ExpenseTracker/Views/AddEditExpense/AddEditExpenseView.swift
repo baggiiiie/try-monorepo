@@ -11,6 +11,11 @@ struct AddEditExpenseView: View {
         _viewModel = StateObject(wrappedValue: AddEditExpenseViewModel(database: database, expense: expense))
     }
 
+    init(database: AppDatabase, suggestion: WalletSuggestion) {
+        self.isEditing = false
+        _viewModel = StateObject(wrappedValue: AddEditExpenseViewModel(database: database, expense: nil, walletSuggestion: suggestion))
+    }
+
     var body: some View {
         NavigationStack {
             Form {

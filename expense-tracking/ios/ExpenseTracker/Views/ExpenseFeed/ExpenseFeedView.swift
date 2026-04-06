@@ -3,17 +3,33 @@ import GRDB
 
 struct ExpenseFeedView: View {
     @StateObject private var viewModel: ExpenseFeedViewModel
+    @StateObject private var suggestionsViewModel: WalletSuggestionsViewModel
     @ObservedObject var syncService: SyncService
     @State private var showingAddExpense = false
 
     init(database: AppDatabase, syncService: SyncService) {
         _viewModel = StateObject(wrappedValue: ExpenseFeedViewModel(database: database))
+        _suggestionsViewModel = StateObject(wrappedValue: WalletSuggestionsViewModel(database: database))
         self.syncService = syncService
     }
 
     var body: some View {
         NavigationStack {
             List {
+                if suggestionsViewModel.pendingCount > 0 {
+                    Section {
+                        NavigationLink {
+                            WalletSuggestionsView(database: viewModel.database)
+                        } label: {
+                            HStack {
+                                Image(systemName: "creditcard.fill")
+                                    .foregroundStyle(.blue)
+                                Text("\(suggestionsViewModel.pendingCount) pending suggestion\(suggestionsViewModel.pendingCount == 1 ? "" : "s")")
+                                Spacer()
+                            }
+                        }
+                    }
+                }
                 ForEach(viewModel.groupedExpenses, id: \.date) { group in
                     Section(header: Text(group.displayDate)) {
                         ForEach(group.expenses) { item in
@@ -63,10 +79,14 @@ struct ExpenseFeedView: View {
                 AddEditExpenseView(database: viewModel.database, expense: nil)
                     .onDisappear { viewModel.refresh() }
             }
-            .onAppear { viewModel.refresh() }
+            .onAppear {
+                viewModel.refresh()
+                suggestionsViewModel.refresh()
+            }
             .task {
                 await syncService.sync()
                 viewModel.refresh()
+                suggestionsViewModel.refresh()
             }
         }
     }

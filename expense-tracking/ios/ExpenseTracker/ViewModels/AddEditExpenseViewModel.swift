@@ -18,9 +18,12 @@ class AddEditExpenseViewModel: ObservableObject {
         return !selectedCategoryId.isEmpty
     }
 
-    init(database: AppDatabase, expense: Expense?) {
+    let walletSuggestion: WalletSuggestion?
+
+    init(database: AppDatabase, expense: Expense?, walletSuggestion: WalletSuggestion? = nil) {
         self.database = database
         self.existingExpense = expense
+        self.walletSuggestion = walletSuggestion
 
         loadCategories()
 
@@ -30,6 +33,12 @@ class AddEditExpenseViewModel: ObservableObject {
             self.merchant = expense.merchant
             self.descriptionText = expense.description
             self.date = Date(timeIntervalSince1970: TimeInterval(expense.date))
+        } else if let suggestion = walletSuggestion {
+            if let amount = suggestion.amount, amount > 0 {
+                self.amountText = String(format: "%.2f", Double(amount) / 100.0)
+            }
+            self.merchant = suggestion.merchant
+            self.date = Date(timeIntervalSince1970: TimeInterval(suggestion.date))
         }
     }
 
@@ -67,6 +76,7 @@ class AddEditExpenseViewModel: ObservableObject {
                     existing.syncStatus = "pending_push"
                     try existing.update(db)
                 } else {
+                    let source = walletSuggestion != nil ? "shortcut" : "manual"
                     var expense = Expense(
                         id: UUID().uuidString,
                         clientId: UUID().uuidString,
@@ -76,12 +86,19 @@ class AddEditExpenseViewModel: ObservableObject {
                         description: descriptionText,
                         merchant: merchant,
                         date: dateTs,
-                        source: "manual",
+                        source: source,
                         createdAt: now,
                         updatedAt: now,
                         deletedAt: nil
                     )
                     try expense.insert(db)
+
+                    if let suggestion = walletSuggestion {
+                        try db.execute(
+                            sql: "UPDATE wallet_suggestions SET status = 'accepted', linked_expense_id = ? WHERE id = ?",
+                            arguments: [expense.id, suggestion.id]
+                        )
+                    }
                 }
             }
         } catch {
