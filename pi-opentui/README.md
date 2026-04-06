@@ -1,15 +1,24 @@
-# pi-opentui
+# OpenTUI screenshot mockup
 
-To install dependencies:
+A Bun + OpenTUI mockup that recreates the UI from `SCR-20260406-djnp.png`:
+
+- dark full-screen shell
+- top prompt panel with blue left accent
+- chat transcript area with "Thinking:" line, reply, and build metadata
+- right-side scrollbar mock
+- bottom status/footer panel
+
+## Run
 
 ```bash
 bun install
-```
-
-To run:
-
-```bash
 bun run index.ts
 ```
 
-This project was created using `bun init` in bun v1.3.11. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+Or:
+
+```bash
+bun run start
+```
+
+Exit with `Ctrl+C`.
