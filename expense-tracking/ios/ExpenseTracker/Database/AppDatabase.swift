@@ -19,7 +19,6 @@ struct AppDatabase {
         dbQueue = try DatabaseQueue(path: path, configuration: config)
         try migrator.migrate(dbQueue)
         try seedDefaultCategories()
-        try normalizeCategoryIcons()
     }
 
     private var migrator: DatabaseMigrator {
@@ -82,6 +81,23 @@ struct AppDatabase {
             }
         }
 
+        migrator.registerMigration("v4-normalize-icons") { db in
+            let now = Int64(Date().timeIntervalSince1970)
+            let categories = try Category
+                .filter(Category.Columns.deletedAt == nil)
+                .fetchAll(db)
+
+            for var category in categories {
+                let resolvedIcon = Category.resolvedIcon(name: category.name, icon: category.icon)
+                guard resolvedIcon != category.icon, !resolvedIcon.isEmpty else { continue }
+
+                category.icon = resolvedIcon
+                category.updatedAt = now
+                category.syncStatus = "pending_push"
+                try category.update(db)
+            }
+        }
+
         return migrator
     }
 
@@ -109,22 +125,4 @@ struct AppDatabase {
         }
     }
 
-    private func normalizeCategoryIcons() throws {
-        try dbQueue.write { db in
-            let now = Int64(Date().timeIntervalSince1970)
-            let categories = try Category
-                .filter(Category.Columns.deletedAt == nil)
-                .fetchAll(db)
-
-            for var category in categories {
-                let resolvedIcon = Category.resolvedIcon(name: category.name, icon: category.icon)
-                guard resolvedIcon != category.icon, !resolvedIcon.isEmpty else { continue }
-
-                category.icon = resolvedIcon
-                category.updatedAt = now
-                category.syncStatus = "pending_push"
-                try category.update(db)
-            }
-        }
-    }
 }

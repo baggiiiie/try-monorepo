@@ -34,8 +34,14 @@ class ExpenseFeedViewModel: ObservableObject {
 
                 let expenses = try request.fetchAll(db)
 
-                return try expenses.map { expense in
-                    let category = try Category.fetchOne(db, key: expense.categoryId)
+                let categoryIds = Set(expenses.map(\.categoryId))
+                let categories = try Category
+                    .filter(categoryIds.contains(Category.Columns.id))
+                    .fetchAll(db)
+                let categoryMap = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+
+                return expenses.map { expense in
+                    let category = categoryMap[expense.categoryId]
                     return ExpenseWithCategory(
                         expense: expense,
                         categoryName: category?.name ?? "Unknown",
