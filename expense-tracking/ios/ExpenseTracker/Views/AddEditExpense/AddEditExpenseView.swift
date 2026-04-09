@@ -124,32 +124,34 @@ struct AddEditExpenseView: View {
     }
 
     private var controlsRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Button {
                 showingDateEditor = true
             } label: {
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     Image(systemName: "calendar")
-                        .font(.system(size: 18, weight: .medium))
+                        .font(.system(size: 17, weight: .medium))
                         .foregroundStyle(Color(.systemGray))
 
-                    Text(viewModel.formattedDate)
-                        .font(.system(size: 16, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.95)
-                        .layoutPriority(1)
+                    ViewThatFits(in: .horizontal) {
+                        Text(viewModel.formattedDate)
+                        Text(viewModel.formattedDateCompact)
+                    }
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .layoutPriority(1)
 
-                    Spacer(minLength: 6)
+                    Spacer(minLength: 4)
 
                     Text(viewModel.formattedTime)
-                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
                 }
-                .padding(.horizontal, 18)
+                .padding(.horizontal, 16)
                 .frame(maxWidth: .infinity)
                 .frame(height: 70)
                 .background(controlPillBackground)
@@ -166,21 +168,21 @@ struct AddEditExpenseView: View {
                     }
                 }
             } label: {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Image(systemName: viewModel.selectedCategory?.displayIcon ?? "circle.grid.2x2.fill")
-                        .font(.system(size: 18, weight: .medium))
+                        .font(.system(size: 17, weight: .medium))
                         .foregroundStyle(Color(.systemGray))
 
                     Text(viewModel.selectedCategory?.name ?? "Category")
-                        .font(.system(size: 16, weight: .medium, design: .rounded))
+                        .font(.system(size: 15, weight: .medium, design: .rounded))
                         .foregroundStyle(viewModel.selectedCategory == nil ? Color(.systemGray) : .primary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.85)
+                        .minimumScaleFactor(0.8)
 
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 18)
-                .frame(width: 114, height: 70)
+                .padding(.horizontal, 14)
+                .frame(width: 108, height: 70)
                 .background(controlPillBackground)
             }
             .buttonStyle(.plain)
@@ -397,6 +399,25 @@ private extension AddEditExpenseViewModel {
 
         if calendar.isDateInTomorrow(date) {
             return "Tomorrow, \(suffix)"
+        }
+
+        return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+    }
+
+    var formattedDateCompact: String {
+        let calendar = Calendar.current
+        let suffix = date.formatted(.dateTime.day().month(.abbreviated))
+
+        if calendar.isDateInToday(date) {
+            return "Today \(suffix)"
+        }
+
+        if calendar.isDateInYesterday(date) {
+            return "Yesterday \(suffix)"
+        }
+
+        if calendar.isDateInTomorrow(date) {
+            return "Tomorrow \(suffix)"
         }
 
         return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))

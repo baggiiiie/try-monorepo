@@ -1,0 +1,1 @@
+- For any iOS UI change, always build the app and launch it in the iOS Simulator to verify the result.
