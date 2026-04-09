@@ -27,7 +27,7 @@ struct ImportTransactionIntent: AppIntent {
             createdAt: Int64(Date().timeIntervalSince1970)
         )
 
-        try db.dbQueue.write { dbConn in
+        try await db.dbQueue.write { dbConn in
             var record = suggestion
             try record.insert(dbConn)
         }

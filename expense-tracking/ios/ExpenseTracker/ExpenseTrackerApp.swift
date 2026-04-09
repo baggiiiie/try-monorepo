@@ -6,8 +6,9 @@ struct ExpenseTrackerApp: App {
     @StateObject private var syncService: SyncService
 
     init() {
-        self.database = AppDatabase.shared
-        _syncService = StateObject(wrappedValue: SyncService(database: database))
+        let db = AppDatabase.shared
+        self.database = db
+        _syncService = StateObject(wrappedValue: SyncService(database: db))
     }
 
     var body: some Scene {

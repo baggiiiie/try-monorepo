@@ -46,7 +46,7 @@ class SyncService: ObservableObject {
     // MARK: - Push
 
     private func push() async throws {
-        let (expenses, categories) = try database.dbQueue.read { db in
+        let (expenses, categories) = try await database.dbQueue.read { db in
             let expenses = try Expense
                 .filter(Expense.Columns.syncStatus == "pending_push")
                 .fetchAll(db)
@@ -110,7 +110,7 @@ class SyncService: ObservableObject {
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let pushResponse = try decoder.decode(PushResponse.self, from: data)
 
-        try database.dbQueue.write { db in
+        try await database.dbQueue.write { db in
             // Update categories first — cascade ID changes to expense.category_id
             for serverCategory in pushResponse.categories {
                 guard let local = try Category
@@ -172,7 +172,7 @@ class SyncService: ObservableObject {
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let pullResponse = try decoder.decode(PullResponse.self, from: data)
 
-        try database.dbQueue.write { db in
+        try await database.dbQueue.write { db in
             // Upsert categories first so FK references resolve for expenses
             for serverCategory in pullResponse.categories {
                 let local = try Category

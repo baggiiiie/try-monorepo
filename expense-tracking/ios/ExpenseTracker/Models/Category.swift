@@ -13,17 +13,19 @@ struct Category: Codable, Identifiable, FetchableRecord, PersistableRecord {
     var syncStatus: String = "pending_push"
 
     static let databaseTableName = "categories"
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
 
     enum Columns {
-        static let id = Column(CodingKeys.id)
-        static let clientId = Column(CodingKeys.clientId)
-        static let name = Column(CodingKeys.name)
-        static let icon = Column(CodingKeys.icon)
-        static let budget = Column(CodingKeys.budget)
-        static let createdAt = Column(CodingKeys.createdAt)
-        static let updatedAt = Column(CodingKeys.updatedAt)
-        static let deletedAt = Column(CodingKeys.deletedAt)
-        static let syncStatus = Column(CodingKeys.syncStatus)
+        static let id = Column("id")
+        static let clientId = Column("client_id")
+        static let name = Column("name")
+        static let icon = Column("icon")
+        static let budget = Column("budget")
+        static let createdAt = Column("created_at")
+        static let updatedAt = Column("updated_at")
+        static let deletedAt = Column("deleted_at")
+        static let syncStatus = Column("sync_status")
     }
 
     static let expenses = hasMany(Expense.self)

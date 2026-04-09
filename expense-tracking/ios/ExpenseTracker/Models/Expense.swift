@@ -17,21 +17,23 @@ struct Expense: Codable, Identifiable, FetchableRecord, PersistableRecord {
     var syncStatus: String = "pending_push"
 
     static let databaseTableName = "expenses"
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
 
     enum Columns {
-        static let id = Column(CodingKeys.id)
-        static let clientId = Column(CodingKeys.clientId)
-        static let amount = Column(CodingKeys.amount)
-        static let currency = Column(CodingKeys.currency)
-        static let categoryId = Column(CodingKeys.categoryId)
-        static let description = Column(CodingKeys.description)
-        static let merchant = Column(CodingKeys.merchant)
-        static let date = Column(CodingKeys.date)
-        static let source = Column(CodingKeys.source)
-        static let createdAt = Column(CodingKeys.createdAt)
-        static let updatedAt = Column(CodingKeys.updatedAt)
-        static let deletedAt = Column(CodingKeys.deletedAt)
-        static let syncStatus = Column(CodingKeys.syncStatus)
+        static let id = Column("id")
+        static let clientId = Column("client_id")
+        static let amount = Column("amount")
+        static let currency = Column("currency")
+        static let categoryId = Column("category_id")
+        static let description = Column("description")
+        static let merchant = Column("merchant")
+        static let date = Column("date")
+        static let source = Column("source")
+        static let createdAt = Column("created_at")
+        static let updatedAt = Column("updated_at")
+        static let deletedAt = Column("deleted_at")
+        static let syncStatus = Column("sync_status")
     }
 
     static let category = belongsTo(Category.self)
