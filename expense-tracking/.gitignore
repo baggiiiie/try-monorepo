@@ -1,1 +1,3 @@
 server/bin/*
+ios/.build/
+xcuserdata/
