@@ -7,8 +7,9 @@ struct ExpenseRowView: View {
 
     var body: some View {
         HStack {
-            Text(categoryIcon)
+            Image(systemName: categoryIcon)
                 .font(.title2)
+                .frame(width: 28)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(expense.merchant.isEmpty ? categoryName : expense.merchant)

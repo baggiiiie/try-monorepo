@@ -16,6 +16,28 @@ struct Category: Codable, Identifiable, FetchableRecord, PersistableRecord {
     static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
     static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
 
+    private static let suggestedSymbolsByName: [String: String] = [
+        "Bills": "doc.text",
+        "Entertainment": "film",
+        "Food & Dining": "fork.knife",
+        "Groceries": "cart",
+        "Health": "cross.case",
+        "Other": "shippingbox",
+        "Shopping": "bag",
+        "Transport": "car",
+    ]
+
+    private static let legacyIconsByName: [String: Set<String>] = [
+        "Bills": ["🧾", "📄", "doc.text"],
+        "Entertainment": ["🎬", "film"],
+        "Food & Dining": ["🍽️", "fork.knife"],
+        "Groceries": ["🛒", "cart"],
+        "Health": ["🩺", "💊", "cross.case"],
+        "Other": ["📦", "shippingbox"],
+        "Shopping": ["🛍️", "bag"],
+        "Transport": ["🚗", "🚌", "car"],
+    ]
+
     enum Columns {
         static let id = Column("id")
         static let clientId = Column("client_id")
@@ -29,6 +51,31 @@ struct Category: Codable, Identifiable, FetchableRecord, PersistableRecord {
     }
 
     static let expenses = hasMany(Expense.self)
+
+    static func suggestedSymbol(for name: String) -> String? {
+        suggestedSymbolsByName[name]
+    }
+
+    static func resolvedIcon(name: String, icon: String) -> String {
+        let trimmedIcon = icon.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let suggested = suggestedSymbol(for: name) {
+            if trimmedIcon.isEmpty || trimmedIcon == "?" || trimmedIcon == "❓" {
+                return suggested
+            }
+
+            if legacyIconsByName[name]?.contains(trimmedIcon) == true {
+                return suggested
+            }
+        }
+
+        return trimmedIcon
+    }
+
+    var displayIcon: String {
+        let resolved = Self.resolvedIcon(name: name, icon: icon)
+        return resolved.isEmpty ? "shippingbox" : resolved
+    }
 
     var displayBudget: String? {
         guard let budget else { return nil }

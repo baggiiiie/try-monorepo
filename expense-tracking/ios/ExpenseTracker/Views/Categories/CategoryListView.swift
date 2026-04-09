@@ -14,8 +14,9 @@ struct CategoryListView: View {
             List {
                 ForEach(viewModel.categories) { cat in
                     HStack {
-                        Text(cat.icon)
+                        Image(systemName: cat.displayIcon)
                             .font(.title2)
+                            .frame(width: 28)
                         VStack(alignment: .leading) {
                             Text(cat.name)
                             if let budget = cat.displayBudget {

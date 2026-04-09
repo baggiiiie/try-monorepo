@@ -69,8 +69,8 @@ struct CategoryChip: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: 4) {
-            Text(category.icon)
+        HStack(spacing: 6) {
+            Image(systemName: category.displayIcon)
             Text(category.name)
                 .font(.caption)
         }

@@ -15,7 +15,17 @@ struct CategoryFormView: View {
         NavigationStack {
             Form {
                 TextField("Name", text: $name)
-                TextField("Icon (emoji)", text: $icon)
+
+                HStack(spacing: 12) {
+                    Image(systemName: Category.resolvedIcon(
+                        name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                        icon: icon
+                    ))
+                    .frame(width: 24)
+
+                    TextField("Icon (SF Symbol)", text: $icon)
+                }
+
                 TextField("Monthly Budget (optional)", text: $budgetText)
                     .keyboardType(.decimalPad)
             }
@@ -30,13 +40,13 @@ struct CategoryFormView: View {
                         save()
                         dismiss()
                     }
-                    .disabled(name.isEmpty)
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .onAppear {
                 if let category {
                     name = category.name
-                    icon = category.icon
+                    icon = category.displayIcon
                     if let budget = category.budget {
                         budgetText = String(format: "%.2f", Double(budget) / 100.0)
                     }
@@ -46,6 +56,8 @@ struct CategoryFormView: View {
     }
 
     private func save() {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedIcon = Category.resolvedIcon(name: trimmedName, icon: icon)
         let now = Int64(Date().timeIntervalSince1970)
         var budget: Int64?
         if let parsed = Double(budgetText) {
@@ -55,8 +67,8 @@ struct CategoryFormView: View {
         do {
             try database.dbQueue.write { db in
                 if var existing = category {
-                    existing.name = name
-                    existing.icon = icon
+                    existing.name = trimmedName
+                    existing.icon = resolvedIcon
                     existing.budget = budget
                     existing.updatedAt = now
                     existing.syncStatus = "pending_push"
@@ -65,8 +77,8 @@ struct CategoryFormView: View {
                     var newCategory = Category(
                         id: UUID().uuidString,
                         clientId: UUID().uuidString,
-                        name: name,
-                        icon: icon,
+                        name: trimmedName,
+                        icon: resolvedIcon,
                         budget: budget,
                         createdAt: now,
                         updatedAt: now,

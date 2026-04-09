@@ -39,7 +39,7 @@ class ExpenseFeedViewModel: ObservableObject {
                     return ExpenseWithCategory(
                         expense: expense,
                         categoryName: category?.name ?? "Unknown",
-                        categoryIcon: category?.icon ?? "📦"
+                        categoryIcon: category?.displayIcon ?? "shippingbox"
                     )
                 }
             }

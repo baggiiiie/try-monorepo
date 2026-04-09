@@ -19,6 +19,7 @@ struct AppDatabase {
         dbQueue = try DatabaseQueue(path: path, configuration: config)
         try migrator.migrate(dbQueue)
         try seedDefaultCategories()
+        try normalizeCategoryIcons()
     }
 
     private var migrator: DatabaseMigrator {
@@ -90,18 +91,8 @@ struct AppDatabase {
             if count > 0 { return }
 
             let now = Int64(Date().timeIntervalSince1970)
-            let defaults: [(String, String)] = [
-                ("Food & Dining", "🍽️"),
-                ("Groceries", "🛒"),
-                ("Transport", "🚌"),
-                ("Shopping", "🛍️"),
-                ("Entertainment", "🎬"),
-                ("Bills", "📄"),
-                ("Health", "💊"),
-                ("Other", "📦"),
-            ]
 
-            for (name, icon) in defaults {
+            for (name, icon) in DefaultCategories.all {
                 var category = Category(
                     id: UUID().uuidString,
                     clientId: UUID().uuidString,
@@ -114,6 +105,25 @@ struct AppDatabase {
                     syncStatus: "pending_push"
                 )
                 try category.insert(db)
+            }
+        }
+    }
+
+    private func normalizeCategoryIcons() throws {
+        try dbQueue.write { db in
+            let now = Int64(Date().timeIntervalSince1970)
+            let categories = try Category
+                .filter(Category.Columns.deletedAt == nil)
+                .fetchAll(db)
+
+            for var category in categories {
+                let resolvedIcon = Category.resolvedIcon(name: category.name, icon: category.icon)
+                guard resolvedIcon != category.icon, !resolvedIcon.isEmpty else { continue }
+
+                category.icon = resolvedIcon
+                category.updatedAt = now
+                category.syncStatus = "pending_push"
+                try category.update(db)
             }
         }
     }
