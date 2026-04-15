@@ -7,6 +7,8 @@ struct WalletSuggestion: Codable, Identifiable, FetchableRecord, PersistableReco
     var amount: Int64?
     var currency: String
     var merchant: String
+    var cardName: String?
+    var transactionName: String?
     var date: Int64
     var source: String
     var status: String
@@ -21,6 +23,8 @@ struct WalletSuggestion: Codable, Identifiable, FetchableRecord, PersistableReco
         case amount
         case currency
         case merchant
+        case cardName = "card_name"
+        case transactionName = "transaction_name"
         case date
         case source
         case status
@@ -34,6 +38,8 @@ struct WalletSuggestion: Codable, Identifiable, FetchableRecord, PersistableReco
         static let amount = Column(CodingKeys.amount)
         static let currency = Column(CodingKeys.currency)
         static let merchant = Column(CodingKeys.merchant)
+        static let cardName = Column(CodingKeys.cardName)
+        static let transactionName = Column(CodingKeys.transactionName)
         static let date = Column(CodingKeys.date)
         static let source = Column(CodingKeys.source)
         static let status = Column(CodingKeys.status)

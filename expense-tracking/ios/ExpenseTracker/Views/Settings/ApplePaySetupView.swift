@@ -16,9 +16,11 @@ struct ApplePaySetupView: View {
                 SetupStepRow(number: 4, text: "Under \"When I tap\", select the cards you want to track")
                 SetupStepRow(number: 5, text: "Set to **Run Immediately**")
                 SetupStepRow(number: 6, text: "Add action → search for **Import Transaction**")
-                SetupStepRow(number: 7, text: "Tap the **Amount** field → select **Shortcut Input** → **Amount**")
-                SetupStepRow(number: 8, text: "Tap the **Merchant** field → select **Shortcut Input** → **Merchant**")
-                SetupStepRow(number: 9, text: "Tap **Done**")
+                SetupStepRow(number: 7, text: "Tap the **Amount** field → select **Shortcut Input** → choose type **Amount**")
+                SetupStepRow(number: 8, text: "Tap the **Merchant** field → select **Shortcut Input** → choose type **Merchant**")
+                SetupStepRow(number: 9, text: "Tap the **Card** field → select **Shortcut Input** → choose type **Card or Pass**")
+                SetupStepRow(number: 10, text: "Tap the **Name** field → select **Shortcut Input** → choose type **Name**")
+                SetupStepRow(number: 11, text: "Tap **Done**")
             }
 
             Section("Notes") {

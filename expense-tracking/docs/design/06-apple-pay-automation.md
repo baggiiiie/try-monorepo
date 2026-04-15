@@ -19,11 +19,11 @@ Apple Pay tap
     ↓
 iOS Shortcuts "Transaction" automation (runs immediately, background)
     ↓
-Shortcut Input provides: Amount, Merchant, Card/Pass
+Shortcut Input provides: Amount, Merchant, Card/Pass, Name
     ↓
 Calls our app's App Intent action ("Import Transaction")
     ↓
-App stores a pending WalletSuggestion entry locally
+App stores a pending WalletSuggestion entry locally (with all fields)
     ↓
 User opens app → sees ready-to-confirm entry (amount + merchant pre-filled)
 ```
@@ -37,6 +37,7 @@ The Transaction trigger passes a `Shortcut Input` object. To access individual f
 | **Amount**   | Unreliable  | Some card issuers return 0. Known iOS bug.      |
 | **Merchant** | Reliable    | Merchant name as reported by the payment system.|
 | **Card**     | Reliable    | Which Wallet card was used.                     |
+| **Name**     | Reliable    | Transaction name / description.                 |
 
 **Important**: The Amount field has been widely reported as returning 0 for certain card issuers. The app UI must handle this gracefully by allowing the user to fill in the amount manually.
 
@@ -58,6 +59,12 @@ struct ImportTransactionIntent: AppIntent {
 
     @Parameter(title: "Merchant")
     var merchant: String?
+
+    @Parameter(title: "Card")
+    var cardName: String?
+
+    @Parameter(title: "Name")
+    var transactionName: String?
 
     func perform() async throws -> some IntentResult {
         let suggestion = WalletSuggestion(
@@ -107,7 +114,9 @@ The user performs a one-time setup in the iOS Shortcuts app:
 5. Add action → select our app → **Import Transaction**
 6. Map `Shortcut Input > Amount` to the Amount parameter
 7. Map `Shortcut Input > Merchant` to the Merchant parameter
-8. Done
+8. Map `Shortcut Input > Card or Pass` to the Card parameter
+9. Map `Shortcut Input > Name` to the Name parameter
+10. Done
 
 The app should include an onboarding screen or settings page that walks the user through this setup with step-by-step instructions (or a deep link to create the automation).
 

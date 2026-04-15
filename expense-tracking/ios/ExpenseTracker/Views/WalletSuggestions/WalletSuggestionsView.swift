@@ -64,6 +64,11 @@ struct WalletSuggestionRow: View {
                 Text(suggestion.displayDate, style: .date)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if let cardName = suggestion.cardName {
+                    Text(cardName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 Text(suggestion.source)
                     .font(.caption2)
