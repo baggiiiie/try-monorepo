@@ -77,7 +77,7 @@ class AddEditExpenseViewModel: ObservableObject {
                     try existing.update(db)
                 } else {
                     let source = walletSuggestion != nil ? "shortcut" : "manual"
-                    var expense = Expense(
+                    let expense = Expense(
                         id: UUID().uuidString,
                         clientId: UUID().uuidString,
                         amount: amountCents,

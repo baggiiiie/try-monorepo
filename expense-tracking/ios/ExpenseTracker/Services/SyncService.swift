@@ -203,7 +203,7 @@ class SyncService: ObservableObject {
                         ]
                     )
                 } else {
-                    var category = Category(
+                    let category = Category(
                         id: serverCategory.id,
                         clientId: serverCategory.clientId,
                         name: serverCategory.name,
@@ -242,7 +242,7 @@ class SyncService: ObservableObject {
                         ]
                     )
                 } else {
-                    var expense = Expense(
+                    let expense = Expense(
                         id: serverExpense.id,
                         clientId: serverExpense.clientId,
                         amount: serverExpense.amount,

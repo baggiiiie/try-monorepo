@@ -74,7 +74,7 @@ struct CategoryFormView: View {
                     existing.syncStatus = "pending_push"
                     try existing.update(db)
                 } else {
-                    var newCategory = Category(
+                    let newCategory = Category(
                         id: UUID().uuidString,
                         clientId: UUID().uuidString,
                         name: trimmedName,

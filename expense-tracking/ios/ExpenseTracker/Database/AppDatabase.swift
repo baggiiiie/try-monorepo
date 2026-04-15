@@ -98,6 +98,13 @@ struct AppDatabase {
             }
         }
 
+        migrator.registerMigration("v5-wallet-card-name") { db in
+            try db.alter(table: "wallet_suggestions") { t in
+                t.add(column: "card_name", .text)
+                t.add(column: "transaction_name", .text)
+            }
+        }
+
         return migrator
     }
 
@@ -109,7 +116,7 @@ struct AppDatabase {
             let now = Int64(Date().timeIntervalSince1970)
 
             for (name, icon) in DefaultCategories.all {
-                var category = Category(
+                let category = Category(
                     id: UUID().uuidString,
                     clientId: UUID().uuidString,
                     name: name,

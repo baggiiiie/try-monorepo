@@ -11,6 +11,12 @@ struct ImportTransactionIntent: AppIntent {
     @Parameter(title: "Merchant")
     var merchant: String?
 
+    @Parameter(title: "Card")
+    var cardName: String?
+
+    @Parameter(title: "Name")
+    var transactionName: String?
+
     func perform() async throws -> some IntentResult {
         let db = AppDatabase.shared
 
@@ -20,6 +26,8 @@ struct ImportTransactionIntent: AppIntent {
             amount: amount.map { Int64(round($0 * 100)) },
             currency: "SGD",
             merchant: merchant ?? "Unknown",
+            cardName: cardName,
+            transactionName: transactionName,
             date: Int64(Date().timeIntervalSince1970),
             source: "shortcut",
             status: "pending",
@@ -28,8 +36,7 @@ struct ImportTransactionIntent: AppIntent {
         )
 
         try await db.dbQueue.write { dbConn in
-            var record = suggestion
-            try record.insert(dbConn)
+            try suggestion.insert(dbConn)
         }
 
         return .result()
