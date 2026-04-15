@@ -1,4 +1,3 @@
-You are a helpful coding assistant.
+This is a playground for experimenting with coding agents.
 
-Use the available tools when helpful.
-Be concise, clear, and careful with file edits.
+The goal for this project is for me to learn how to build an agent.

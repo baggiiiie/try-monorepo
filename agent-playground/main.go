@@ -19,7 +19,6 @@ func main() {
 	stopWatcher := startRuntimeWatcher(app)
 	defer stopWatcher()
 
-	// Clean up the sandbox container on exit.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -38,41 +37,23 @@ func main() {
 		if !scanner.Scan() {
 			break
 		}
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
+		userInput := strings.TrimSpace(scanner.Text())
+		if userInput == "" {
 			continue
 		}
 
-		if line == "/reload" {
-			if err := app.Reload(); err != nil {
-				fmt.Fprintf(os.Stderr, "Reload failed: %v\n", err)
-			} else {
-				fmt.Printf("Reloaded runtime (%s).\n", app.Runtime.Summary())
-			}
-			continue
-		}
-
-		if line == "/resume" {
-			msgs, err := loadSession()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Resume failed: %v\n", err)
-			} else {
-				app.Messages = msgs
-				// Update system prompt to current runtime.
-				if len(app.Messages) > 0 && app.Messages[0].Role == "system" {
-					app.Messages[0].Content = app.Runtime.SystemPrompt
-				}
-				fmt.Printf("Session restored (%d messages). You may continue the conversation.\n", len(app.Messages))
-			}
+		if handled := handleCommand(app, userInput); handled {
+			// command handled by app, go to next iteration
+			// e.g., user types `/reload`
 			continue
 		}
 
 		app.Messages = append(app.Messages, ChatMessage{
 			Role:    "user",
-			Content: line,
+			Content: userInput,
 		})
 
-		if err := handleTurn(app); err != nil {
+		if err := respondToUser(app); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		}
 
@@ -80,4 +61,50 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Warning: failed to save session: %v\n", err)
 		}
 	}
+}
+
+// handleCommand processes slash commands. Returns true if the input was a command.
+func handleCommand(app *App, line string) bool {
+	switch line {
+	case "/reload":
+		if err := app.Reload(); err != nil {
+			fmt.Fprintf(os.Stderr, "Reload failed: %v\n", err)
+		} else {
+			fmt.Printf("Reloaded runtime (%s).\n", app.Runtime.Summary())
+		}
+		return true
+
+	case "/resume":
+		msgs, err := loadSession()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Resume failed: %v\n", err)
+		} else {
+			app.Messages = msgs
+			if len(app.Messages) > 0 && app.Messages[0].Role == "system" {
+				app.Messages[0].Content = app.Runtime.SystemPrompt
+			}
+			fmt.Printf("Session restored (%d messages). You may continue the conversation.\n", len(app.Messages))
+		}
+		return true
+	}
+
+	return false
+}
+
+// respondToUser runs compaction, applies pending reloads, and executes the agent loop.
+func respondToUser(app *App) error {
+	if compacted, err := compactIfNeeded(app); err != nil {
+		fmt.Fprintf(os.Stderr, "\n[compaction failed: %v]\n", err)
+	} else if compacted {
+		fmt.Printf("\n[compacted context: %d messages, ~%d tokens]\n", len(app.Messages), estimateTokens(app.Messages))
+	}
+
+	if app.ConsumeReloadPending() {
+		if err := app.Reload(); err != nil {
+			return fmt.Errorf("failed to apply queued reload: %w", err)
+		}
+		fmt.Printf("\n[reloaded runtime: %s]\n", app.Runtime.Summary())
+	}
+
+	return runAgentTurn(app.Runtime, NewMainAgent(app), &app.Messages)
 }

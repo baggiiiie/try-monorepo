@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,10 +11,15 @@ import (
 )
 
 const (
-	containerName  = "agent-sandbox"
 	containerImage = "ubuntu:22.04"
 	workDir        = "/workspace"
 )
+
+// containerName returns a per-workspace container name to avoid collisions.
+func containerName() string {
+	h := sha256.Sum256([]byte(hostWorkDir()))
+	return fmt.Sprintf("agent-playground-%x", h[:4])
+}
 
 // hostWorkDir returns the host directory to mount into the container.
 // Defaults to the current working directory.
@@ -27,25 +33,28 @@ func hostWorkDir() string {
 
 // ensureContainer starts the sandbox container if it's not already running.
 func ensureContainer() error {
+	name := containerName()
+
 	// Check if already running.
-	out, err := exec.Command("docker", "inspect", "-f", "{{.State.Running}}", containerName).CombinedOutput()
+	out, err := exec.Command("docker", "inspect", "-f", "{{.State.Running}}", name).CombinedOutput()
 	if err == nil && strings.TrimSpace(string(out)) == "true" {
 		return nil
 	}
 
 	// Remove any stopped container with the same name.
-	_ = exec.Command("docker", "rm", "-f", containerName).Run()
+	_ = exec.Command("docker", "rm", "-f", name).Run()
 
 	cmd := exec.Command("docker", "run", "-d",
-		"--name", containerName,
-		"-w", workDir, // Mount host workspace into container.
-		"-v", hostWorkDir()+":"+workDir, // Security: no network access.
-		"--network", "none", // Security: no privilege escalation.
-		"--security-opt", "no-new-privileges", // Security: drop all Linux capabilities.
-		"--cap-drop", "ALL", // Security: read-only root filesystem (workspace volume is still writable).
-		"--read-only",                                // Writable /tmp for programs that need scratch space.
-		"--tmpfs", "/tmp:rw,noexec,nosuid,size=256m", // Writable /var for apt/dpkg if needed.
-		"--tmpfs", "/var:rw,noexec,nosuid,size=256m", // Security: limit resources.
+		"--name", name,
+		"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
+		"-w", workDir,
+		"-v", hostWorkDir()+":"+workDir,
+		"--network", "none",
+		"--security-opt", "no-new-privileges",
+		"--cap-drop", "ALL",
+		"--read-only",
+		"--tmpfs", "/tmp:rw,noexec,nosuid,size=256m",
+		"--tmpfs", "/var:rw,noexec,nosuid,size=256m",
 		"--memory", "512m",
 		"--cpus", "1",
 		"--pids-limit", "256",
@@ -61,7 +70,7 @@ func ensureContainer() error {
 
 // destroyContainer forcefully removes the sandbox container.
 func destroyContainer() {
-	_ = exec.Command("docker", "rm", "-f", containerName).Run()
+	_ = exec.Command("docker", "rm", "-f", containerName()).Run()
 }
 
 // dockerExec runs a command inside the sandbox container and returns combined output.
@@ -76,7 +85,7 @@ func dockerExec(command string, timeoutMs int) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMs)*time.Millisecond)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "docker", "exec", containerName, "bash", "-c", command)
+	cmd := exec.CommandContext(ctx, "docker", "exec", containerName(), "bash", "-c", command)
 	output, err := cmd.CombinedOutput()
 	if ctx.Err() == context.DeadlineExceeded {
 		return "", fmt.Errorf("command timed out after %dms", timeoutMs)

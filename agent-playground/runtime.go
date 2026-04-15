@@ -1,17 +1,18 @@
 package main
 
 import (
-	"agent-sandbox/tools"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 	"sync/atomic"
+
+	"agent-playground/tools"
 )
 
 const (
 	defaultSystemPrompt = "You are a helpful coding assistant. You have access to a few tools."
-	systemPromptPath    = "AGENTS.md"
+	systemPromptPath    = "AGENTS_PLAYGROUND.md"
 	runtimeConfigPath   = "agent.json"
 )
 

@@ -6,11 +6,11 @@ import (
 	"os"
 	"strings"
 
-	"agent-sandbox/tools"
+	"agent-playground/tools"
 )
 
 // registerCoreTools adds the tools shared by all agent types.
-func registerCoreTools(reg *tools.Registry, app *App) {
+func registerCoreTools(reg *tools.Tools, app *App) {
 	workspace := hostWorkDir()
 
 	reg.Register(&tools.ReadFileTool{Workspace: workspace})

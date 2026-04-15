@@ -41,33 +41,47 @@ func (t *GlobTool) Execute(args map[string]any) string {
 	}
 
 	var matches []string
-	err := filepath.WalkDir(ws, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil // skip unreadable entries
-		}
-		matched, matchErr := filepath.Match(filepath.Base(pattern), d.Name())
-		if matchErr != nil {
-			return matchErr
-		}
-		// For double-star patterns (e.g. **/*.go), match by the base pattern
-		// against every file in the tree. For non-recursive patterns, use
-		// filepath.Match on the full path.
-		if strings.Contains(pattern, "**") {
+	if strings.Contains(pattern, "**") {
+		// Split on the first "**" to get a directory prefix and a file suffix.
+		// e.g. "/workspace/src/**/*.go" → prefix="/workspace/src", suffix="*.go"
+		parts := strings.SplitN(pattern, "**", 2)
+		prefix := filepath.Clean(parts[0])
+		suffix := strings.TrimLeft(parts[1], string(filepath.Separator))
+
+		err := filepath.WalkDir(prefix, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if suffix == "" {
+				rel, _ := filepath.Rel(ws, path)
+				matches = append(matches, rel)
+				return nil
+			}
+			matched, matchErr := filepath.Match(suffix, d.Name())
+			if matchErr != nil {
+				return matchErr
+			}
 			if matched {
 				rel, _ := filepath.Rel(ws, path)
 				matches = append(matches, rel)
 			}
-		} else {
-			fullMatched, _ := filepath.Match(pattern, path)
-			if fullMatched {
-				rel, _ := filepath.Rel(ws, path)
-				matches = append(matches, rel)
-			}
+			return nil
+		})
+		if err != nil {
+			return fmt.Sprintf("Error: %v", err)
 		}
-		return nil
-	})
-	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+	} else {
+		globMatches, err := filepath.Glob(pattern)
+		if err != nil {
+			return fmt.Sprintf("Error: %v", err)
+		}
+		for _, m := range globMatches {
+			rel, _ := filepath.Rel(ws, m)
+			matches = append(matches, rel)
+		}
 	}
 
 	if len(matches) == 0 {
