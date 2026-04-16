@@ -52,6 +52,7 @@ func registerCoreTools(reg *tools.Tools, app *App) {
 	})
 
 	reg.Register(app.Todo)
+	reg.Register(&tools.WebSearchTool{})
 }
 
 func askApproval(command string) bool {
