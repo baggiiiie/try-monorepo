@@ -6,6 +6,7 @@ struct ExpenseFeedView: View {
     @StateObject private var suggestionsViewModel: WalletSuggestionsViewModel
     @ObservedObject var syncService: SyncService
     @State private var showingAddExpense = false
+    @State private var expenseToEdit: Expense?
 
     init(database: AppDatabase, syncService: SyncService) {
         _viewModel = StateObject(wrappedValue: ExpenseFeedViewModel(database: database))
@@ -33,11 +34,16 @@ struct ExpenseFeedView: View {
                 ForEach(viewModel.groupedExpenses, id: \.date) { group in
                     Section(header: Text(group.displayDate)) {
                         ForEach(group.expenses) { item in
-                            ExpenseRowView(
-                                expense: item.expense,
-                                categoryName: item.categoryName,
-                                categoryIcon: item.categoryIcon
-                            )
+                            Button {
+                                expenseToEdit = item.expense
+                            } label: {
+                                ExpenseRowView(
+                                    expense: item.expense,
+                                    categoryName: item.categoryName,
+                                    categoryIcon: item.categoryIcon
+                                )
+                            }
+                            .tint(.primary)
                         }
                     }
                 }
@@ -77,6 +83,10 @@ struct ExpenseFeedView: View {
             }
             .sheet(isPresented: $showingAddExpense) {
                 AddEditExpenseView(database: viewModel.database, expense: nil)
+                    .onDisappear { viewModel.refresh() }
+            }
+            .sheet(item: $expenseToEdit) { expense in
+                AddEditExpenseView(database: viewModel.database, expense: expense)
                     .onDisappear { viewModel.refresh() }
             }
             .onAppear {
