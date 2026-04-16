@@ -28,14 +28,26 @@ func registerCoreTools(reg *tools.Tools, app *App) {
 		descSuffix = "These command prefixes run without approval: " + strings.Join(allowedCommands, ", ") + "."
 	}
 
-	reg.Register(&tools.BashTool{
-		Executor: dockerExec,
-		Policy: func(command string) bool {
+	executor := dockerExec
+	if app.Runtime != nil && !app.Runtime.Sandbox {
+		executor = localExec
+	}
+
+	var policy tools.CommandPolicy
+	if app.Runtime != nil && !app.Runtime.Sandbox {
+		policy = nil
+	} else {
+		policy = func(command string) bool {
 			if tools.IsCommandAllowed(command, allowedCommands) {
 				return true
 			}
 			return askApproval(command)
-		},
+		}
+	}
+
+	reg.Register(&tools.BashTool{
+		Executor:          executor,
+		Policy:            policy,
 		DescriptionSuffix: descSuffix,
 	})
 

@@ -24,10 +24,16 @@ func main() {
 	go func() {
 		<-sigCh
 		stopWatcher()
-		destroyContainer()
+		if app.Runtime.Sandbox {
+			destroyContainer()
+		}
 		os.Exit(0)
 	}()
-	defer destroyContainer()
+	defer func() {
+		if app.Runtime.Sandbox {
+			destroyContainer()
+		}
+	}()
 
 	fmt.Printf("Agent ready (%s). Type your message (Ctrl+C to quit, /reload to reload runtime, /resume to restore last session).\n", app.Runtime.Summary())
 

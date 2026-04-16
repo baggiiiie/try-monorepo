@@ -23,6 +23,7 @@ type RuntimeConfig struct {
 	APIKey           string   `json:"api_key"`
 	AllowedCommands  []string `json:"allowed_commands"`
 	MaxContextTokens int      `json:"max_context_tokens"`
+	Sandbox          *bool    `json:"sandbox"`
 }
 
 type Runtime struct {
@@ -33,6 +34,7 @@ type Runtime struct {
 	Model            string
 	AllowedCommands  []string
 	MaxContextTokens int
+	Sandbox          bool
 }
 
 type App struct {
@@ -123,6 +125,11 @@ func LoadRuntime() (*Runtime, error) {
 		maxContextTokens = 8192
 	}
 
+	sandbox := true
+	if cfg.Sandbox != nil {
+		sandbox = *cfg.Sandbox
+	}
+
 	return &Runtime{
 		Provider:         provider,
 		SystemPrompt:     systemPrompt,
@@ -131,6 +138,7 @@ func LoadRuntime() (*Runtime, error) {
 		Model:            model,
 		AllowedCommands:  allowedCommands,
 		MaxContextTokens: maxContextTokens,
+		Sandbox:          sandbox,
 	}, nil
 }
 
@@ -162,7 +170,7 @@ func (a *App) ConsumeReloadPending() bool {
 }
 
 func (r *Runtime) Summary() string {
-	return fmt.Sprintf("provider=%s model=%s", r.Provider, r.Model)
+	return fmt.Sprintf("provider=%s model=%s sandbox=%v", r.Provider, r.Model, r.Sandbox)
 }
 
 func firstNonEmpty(values ...string) string {

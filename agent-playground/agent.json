@@ -1,3 +1,4 @@
 {
-    "provider": "ollama"
+    "provider": "ollama",
+    "sandbox": false
 }

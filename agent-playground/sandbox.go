@@ -73,6 +73,23 @@ func destroyContainer() {
 	_ = exec.Command("docker", "rm", "-f", containerName()).Run()
 }
 
+// localExec runs a command directly on the host and returns combined output.
+func localExec(command string, timeoutMs int) (string, error) {
+	if timeoutMs <= 0 {
+		timeoutMs = 30000
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMs)*time.Millisecond)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "bash", "-c", command)
+	cmd.Dir = hostWorkDir()
+	output, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return "", fmt.Errorf("command timed out after %dms", timeoutMs)
+	}
+	return string(output), err
+}
+
 // dockerExec runs a command inside the sandbox container and returns combined output.
 func dockerExec(command string, timeoutMs int) (string, error) {
 	if err := ensureContainer(); err != nil {
