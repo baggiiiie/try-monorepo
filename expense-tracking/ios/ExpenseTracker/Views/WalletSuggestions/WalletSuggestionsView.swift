@@ -82,8 +82,11 @@ struct WalletSuggestionRow: View {
                 Button {
                     showingAddExpense = true
                 } label: {
-                    Label("Add as Expense", systemImage: "plus.circle.fill")
-                        .font(.subheadline)
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus.circle.fill")
+                        Text("Add as Expense")
+                    }
+                    .font(.subheadline)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
@@ -91,13 +94,15 @@ struct WalletSuggestionRow: View {
                 Button(role: .destructive) {
                     onDismiss()
                 } label: {
-                    Label("Dismiss", systemImage: "xmark.circle")
-                        .font(.subheadline)
+                    HStack(spacing: 4) {
+                        Image(systemName: "xmark.circle")
+                        Text("Dismiss")
+                    }
+                    .font(.subheadline)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             }
-            .padding(.top, 4)
         }
         .padding(.vertical, 4)
         .sheet(isPresented: $showingAddExpense) {
