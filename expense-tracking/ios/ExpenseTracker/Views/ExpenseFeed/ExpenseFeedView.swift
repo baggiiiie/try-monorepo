@@ -17,9 +17,9 @@ struct ExpenseFeedView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                if suggestionsViewModel.pendingCount > 0 {
-                    Section {
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    if suggestionsViewModel.pendingCount > 0 {
                         NavigationLink {
                             WalletSuggestionsView(database: database)
                         } label: {
@@ -28,23 +28,45 @@ struct ExpenseFeedView: View {
                                     .foregroundStyle(.blue)
                                 Text("\(suggestionsViewModel.pendingCount) pending suggestion\(suggestionsViewModel.pendingCount == 1 ? "" : "s")")
                                 Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
+                            .padding()
                         }
+                        .tint(.primary)
                     }
-                }
-                ForEach(viewModel.groupedExpenses, id: \.date) { group in
-                    Section(header: Text(group.displayDate)) {
-                        ForEach(group.expenses) { item in
-                            Button {
-                                expenseToEdit = item.expense
-                            } label: {
-                                ExpenseRowView(
-                                    expense: item.expense,
-                                    categoryName: item.categoryName,
-                                    categoryIcon: item.categoryIcon
-                                )
+
+                    ForEach(viewModel.groupedExpenses, id: \.date) { group in
+                        VStack(spacing: 0) {
+                            HStack {
+                                Text(group.displayDate)
+                                Spacer()
+                                Text(group.dailyTotal)
                             }
-                            .tint(.primary)
+                            .font(.system(.callout, design: .rounded).weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal)
+                            .padding(.top, 16)
+                            .padding(.bottom, 4)
+
+                            Divider()
+                                .padding(.horizontal)
+
+                            ForEach(group.expenses) { item in
+                                Button {
+                                    expenseToEdit = item.expense
+                                } label: {
+                                    ExpenseRowView(
+                                        expense: item.expense,
+                                        categoryName: item.categoryName,
+                                        categoryIcon: item.categoryIcon,
+                                        categoryColor: item.categoryColor
+                                    )
+                                }
+                                .tint(.primary)
+                                .padding(.horizontal)
+                            }
                         }
                     }
                 }

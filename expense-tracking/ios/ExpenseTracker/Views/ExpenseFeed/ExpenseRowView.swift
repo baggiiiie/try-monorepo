@@ -4,29 +4,34 @@ struct ExpenseRowView: View {
     let expense: Expense
     let categoryName: String
     let categoryIcon: String
+    let categoryColor: Color
 
     var body: some View {
-        HStack {
-            Image(systemName: categoryIcon)
-                .font(.title2)
-                .frame(width: 28)
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(categoryColor.opacity(0.2))
+                    .frame(width: 44, height: 44)
+                Image(systemName: categoryIcon)
+                    .font(.title3)
+                    .foregroundStyle(categoryColor)
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(expense.merchant.isEmpty ? categoryName : expense.merchant)
-                    .font(.body)
-                if !expense.description.isEmpty {
-                    Text(expense.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                    .font(.system(.body, design: .rounded))
+                    .fontWeight(.medium)
+                Text(AppDateFormatter.shortTimeString(from: expense.displayDate))
+                    .font(.system(.subheadline, design: .rounded))
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            Text("\(expense.currency) \(expense.displayAmount)")
-                .font(.body.monospacedDigit())
-                .fontWeight(.medium)
+            Text("-\(CurrencyFormatter.format(cents: expense.amount, currency: expense.currency))")
+                .font(.system(.title3, design: .rounded))
+                .fontWeight(.semibold)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 6)
     }
 }
