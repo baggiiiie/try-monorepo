@@ -1,1 +1,5 @@
 - For any iOS UI change, always build the app and launch it in the iOS Simulator to verify the result.
+- Use the root Makefile for common tasks:
+  - `make build` — build the iOS app for simulator
+  - `make install` — build and install the app on the booted simulator
+  - `make run` — build, install, and launch the app
