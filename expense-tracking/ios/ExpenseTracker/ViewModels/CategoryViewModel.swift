@@ -1,24 +1,19 @@
 import Foundation
-import GRDB
 
 @MainActor
-class CategoryViewModel: ObservableObject {
-    let database: AppDatabase
+final class CategoryViewModel: ObservableObject {
     @Published var categories: [Category] = []
 
+    private let categoryRepository: CategoryRepository
+
     init(database: AppDatabase) {
-        self.database = database
+        self.categoryRepository = database.categoryRepository
         refresh()
     }
 
     func refresh() {
         do {
-            categories = try database.dbQueue.read { db in
-                try Category
-                    .filter(Category.Columns.deletedAt == nil)
-                    .order(Category.Columns.name)
-                    .fetchAll(db)
-            }
+            categories = try categoryRepository.fetchActive()
         } catch {
             print("Error loading categories: \(error)")
         }
@@ -26,13 +21,7 @@ class CategoryViewModel: ObservableObject {
 
     func delete(_ category: Category) {
         do {
-            try database.dbQueue.write { db in
-                var cat = category
-                cat.deletedAt = Int64(Date().timeIntervalSince1970)
-                cat.updatedAt = cat.deletedAt!
-                cat.syncStatus = "pending_push"
-                try cat.update(db)
-            }
+            try categoryRepository.softDelete(category)
             refresh()
         } catch {
             print("Error deleting category: \(error)")

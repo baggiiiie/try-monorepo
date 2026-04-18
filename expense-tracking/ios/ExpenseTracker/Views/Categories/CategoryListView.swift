@@ -1,11 +1,13 @@
 import SwiftUI
 
 struct CategoryListView: View {
+    let database: AppDatabase
     @StateObject private var viewModel: CategoryViewModel
     @State private var showingAddCategory = false
     @State private var editingCategory: Category?
 
     init(database: AppDatabase) {
+        self.database = database
         _viewModel = StateObject(wrappedValue: CategoryViewModel(database: database))
     }
 
@@ -47,12 +49,12 @@ struct CategoryListView: View {
                 }
             }
             .sheet(isPresented: $showingAddCategory) {
-                CategoryFormView(database: viewModel.database, category: nil)
-                    .onDisappear { viewModel.refresh() }
+                CategoryFormView(database: database, category: nil)
+                    .onDisappear(perform: viewModel.refresh)
             }
             .sheet(item: $editingCategory) { cat in
-                CategoryFormView(database: viewModel.database, category: cat)
-                    .onDisappear { viewModel.refresh() }
+                CategoryFormView(database: database, category: cat)
+                    .onDisappear(perform: viewModel.refresh)
             }
             .onAppear { viewModel.refresh() }
         }

@@ -1,7 +1,7 @@
 import SwiftUI
-import GRDB
 
 struct ExpenseFeedView: View {
+    let database: AppDatabase
     @StateObject private var viewModel: ExpenseFeedViewModel
     @StateObject private var suggestionsViewModel: WalletSuggestionsViewModel
     @ObservedObject var syncService: SyncService
@@ -9,6 +9,7 @@ struct ExpenseFeedView: View {
     @State private var expenseToEdit: Expense?
 
     init(database: AppDatabase, syncService: SyncService) {
+        self.database = database
         _viewModel = StateObject(wrappedValue: ExpenseFeedViewModel(database: database))
         _suggestionsViewModel = StateObject(wrappedValue: WalletSuggestionsViewModel(database: database))
         self.syncService = syncService
@@ -20,7 +21,7 @@ struct ExpenseFeedView: View {
                 if suggestionsViewModel.pendingCount > 0 {
                     Section {
                         NavigationLink {
-                            WalletSuggestionsView(database: viewModel.database)
+                            WalletSuggestionsView(database: database)
                         } label: {
                             HStack {
                                 Image(systemName: "creditcard.fill")
@@ -79,25 +80,26 @@ struct ExpenseFeedView: View {
             }
             .refreshable {
                 await syncService.sync()
-                viewModel.refresh()
+                refreshViewModels()
             }
             .sheet(isPresented: $showingAddExpense) {
-                AddEditExpenseView(database: viewModel.database, expense: nil)
-                    .onDisappear { viewModel.refresh() }
+                AddEditExpenseView(database: database, expense: nil)
+                    .onDisappear(perform: refreshViewModels)
             }
             .sheet(item: $expenseToEdit) { expense in
-                AddEditExpenseView(database: viewModel.database, expense: expense)
-                    .onDisappear { viewModel.refresh() }
+                AddEditExpenseView(database: database, expense: expense)
+                    .onDisappear(perform: refreshViewModels)
             }
-            .onAppear {
-                viewModel.refresh()
-                suggestionsViewModel.refresh()
-            }
+            .onAppear(perform: refreshViewModels)
             .task {
                 await syncService.sync()
-                viewModel.refresh()
-                suggestionsViewModel.refresh()
+                refreshViewModels()
             }
         }
+    }
+
+    private func refreshViewModels() {
+        viewModel.refresh()
+        suggestionsViewModel.refresh()
     }
 }

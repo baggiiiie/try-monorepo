@@ -1,11 +1,10 @@
 import Foundation
-import GRDB
-import Combine
 
 struct ExpenseWithCategory: Identifiable {
     let expense: Expense
     let categoryName: String
     let categoryIcon: String
+
     var id: String { expense.id }
 }
 
@@ -16,65 +15,39 @@ struct ExpenseGroup {
 }
 
 @MainActor
-class ExpenseFeedViewModel: ObservableObject {
-    let database: AppDatabase
+final class ExpenseFeedViewModel: ObservableObject {
     @Published var groupedExpenses: [ExpenseGroup] = []
 
+    private let expenseRepository: ExpenseRepository
+
     init(database: AppDatabase) {
-        self.database = database
+        self.expenseRepository = database.expenseRepository
         refresh()
     }
 
     func refresh() {
         do {
-            let items = try database.dbQueue.read { db in
-                let request = Expense
-                    .filter(Expense.Columns.deletedAt == nil)
-                    .order(Expense.Columns.date.desc, Expense.Columns.createdAt.desc)
-
-                let expenses = try request.fetchAll(db)
-
-                let categoryIds = Set(expenses.map(\.categoryId))
-                let categories = try Category
-                    .filter(categoryIds.contains(Category.Columns.id))
-                    .fetchAll(db)
-                let categoryMap = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
-
-                return expenses.map { expense in
-                    let category = categoryMap[expense.categoryId]
-                    return ExpenseWithCategory(
-                        expense: expense,
-                        categoryName: category?.name ?? "Unknown",
-                        categoryIcon: category?.displayIcon ?? "shippingbox"
-                    )
-                }
-            }
-
-            let calendar = Calendar.current
-            let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-
-            let grouped = Dictionary(grouping: items) { item -> String in
-                let date = Date(timeIntervalSince1970: TimeInterval(item.expense.date))
-                let components = calendar.dateComponents([.year, .month, .day], from: date)
-                return "\(components.year!)-\(String(format: "%02d", components.month!))-\(String(format: "%02d", components.day!))"
-            }
-
-            self.groupedExpenses = grouped
-                .sorted { $0.key > $1.key }
-                .map { key, value in
-                    let isoFormatter = DateFormatter()
-                    isoFormatter.dateFormat = "yyyy-MM-dd"
-                    let date = isoFormatter.date(from: key) ?? Date()
-
-                    return ExpenseGroup(
-                        date: key,
-                        displayDate: formatter.string(from: date),
-                        expenses: value
-                    )
-                }
+            let items = try expenseRepository.fetchFeedItems()
+            groupedExpenses = Self.groupExpenses(items)
         } catch {
             print("Error loading expenses: \(error)")
         }
+    }
+
+    private static func groupExpenses(_ items: [ExpenseWithCategory]) -> [ExpenseGroup] {
+        let groupedByDay = Dictionary(grouping: items) { item in
+            AppDateFormatter.dayKey(from: item.expense.displayDate)
+        }
+
+        return groupedByDay
+            .sorted { $0.key > $1.key }
+            .map { key, value in
+                let date = AppDateFormatter.date(fromDayKey: key) ?? Date()
+                return ExpenseGroup(
+                    date: key,
+                    displayDate: AppDateFormatter.mediumDateString(from: date),
+                    expenses: value
+                )
+            }
     }
 }

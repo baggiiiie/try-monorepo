@@ -10,7 +10,7 @@ struct Category: Codable, Identifiable, FetchableRecord, PersistableRecord {
     var createdAt: Int64
     var updatedAt: Int64
     var deletedAt: Int64?
-    var syncStatus: String = "pending_push"
+    var syncStatus: String = RecordSyncStatus.pendingPush.rawValue
 
     static let databaseTableName = "categories"
     static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
@@ -79,11 +79,7 @@ struct Category: Codable, Identifiable, FetchableRecord, PersistableRecord {
 
     var displayBudget: String? {
         guard let budget else { return nil }
-        let dollars = Double(budget) / 100.0
-        return String(format: "%.2f", dollars)
+        return MoneyFormatter.decimalString(fromCents: budget)
     }
 
-    var isDeleted: Bool {
-        deletedAt != nil
-    }
 }

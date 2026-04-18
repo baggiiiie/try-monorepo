@@ -1,6 +1,12 @@
 import Foundation
 import GRDB
 
+enum WalletSuggestionStatus: String {
+    case pending
+    case accepted
+    case dismissed
+}
+
 struct WalletSuggestion: Codable, Identifiable, FetchableRecord, PersistableRecord {
     var id: String
     var financekitTxId: String?
@@ -49,15 +55,11 @@ struct WalletSuggestion: Codable, Identifiable, FetchableRecord, PersistableReco
 
     var displayAmount: String? {
         guard let amount else { return nil }
-        let dollars = Double(amount) / 100.0
-        return String(format: "%.2f", dollars)
+        return MoneyFormatter.decimalString(fromCents: amount)
     }
 
     var displayDate: Date {
-        Date(timeIntervalSince1970: TimeInterval(date))
+        AppDateFormatter.date(fromUnixTimestamp: date)
     }
 
-    var isPending: Bool {
-        status == "pending"
-    }
 }

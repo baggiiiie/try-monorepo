@@ -1,6 +1,16 @@
 import Foundation
 import GRDB
 
+enum RecordSyncStatus: String {
+    case pendingPush = "pending_push"
+    case synced
+}
+
+enum ExpenseSource: String {
+    case manual
+    case shortcut
+}
+
 struct Expense: Codable, Identifiable, FetchableRecord, PersistableRecord {
     var id: String
     var clientId: String
@@ -14,7 +24,7 @@ struct Expense: Codable, Identifiable, FetchableRecord, PersistableRecord {
     var createdAt: Int64
     var updatedAt: Int64
     var deletedAt: Int64?
-    var syncStatus: String = "pending_push"
+    var syncStatus: String = RecordSyncStatus.pendingPush.rawValue
 
     static let databaseTableName = "expenses"
     static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
@@ -42,15 +52,11 @@ struct Expense: Codable, Identifiable, FetchableRecord, PersistableRecord {
     }
 
     var displayAmount: String {
-        let dollars = Double(amount) / 100.0
-        return String(format: "%.2f", dollars)
+        MoneyFormatter.decimalString(fromCents: amount)
     }
 
     var displayDate: Date {
-        Date(timeIntervalSince1970: TimeInterval(date))
+        AppDateFormatter.date(fromUnixTimestamp: date)
     }
 
-    var isDeleted: Bool {
-        deletedAt != nil
-    }
 }

@@ -1,28 +1,23 @@
 import Foundation
-import GRDB
 
 @MainActor
-class WalletSuggestionsViewModel: ObservableObject {
-    let database: AppDatabase
+final class WalletSuggestionsViewModel: ObservableObject {
     @Published var suggestions: [WalletSuggestion] = []
+
+    private let walletSuggestionRepository: WalletSuggestionRepository
 
     var pendingCount: Int {
         suggestions.count
     }
 
     init(database: AppDatabase) {
-        self.database = database
+        self.walletSuggestionRepository = database.walletSuggestionRepository
         refresh()
     }
 
     func refresh() {
         do {
-            suggestions = try database.dbQueue.read { db in
-                try WalletSuggestion
-                    .filter(WalletSuggestion.Columns.status == "pending")
-                    .order(WalletSuggestion.Columns.createdAt.desc)
-                    .fetchAll(db)
-            }
+            suggestions = try walletSuggestionRepository.fetchPending()
         } catch {
             print("Error loading wallet suggestions: \(error)")
         }
@@ -30,16 +25,10 @@ class WalletSuggestionsViewModel: ObservableObject {
 
     func dismiss(_ suggestion: WalletSuggestion) {
         do {
-            try database.dbQueue.write { db in
-                try db.execute(
-                    sql: "UPDATE wallet_suggestions SET status = 'dismissed' WHERE id = ?",
-                    arguments: [suggestion.id]
-                )
-            }
+            try walletSuggestionRepository.dismiss(suggestion)
             refresh()
         } catch {
             print("Error dismissing suggestion: \(error)")
         }
     }
-
 }

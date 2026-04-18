@@ -1,108 +1,156 @@
 import Foundation
-import GRDB
 
 @MainActor
-class AddEditExpenseViewModel: ObservableObject {
-    let database: AppDatabase
+final class AddEditExpenseViewModel: ObservableObject {
     let existingExpense: Expense?
-
-    @Published var amountText: String = ""
-    @Published var selectedCategoryId: String = ""
-    @Published var merchant: String = ""
-    @Published var descriptionText: String = ""
-    @Published var date: Date = Date()
-    @Published var categories: [Category] = []
-
-    var isValid: Bool {
-        guard let amount = Double(amountText), amount > 0 else { return false }
-        return !selectedCategoryId.isEmpty
-    }
-
     let walletSuggestion: WalletSuggestion?
 
+    @Published var amountText = ""
+    @Published var selectedCategoryId = ""
+    @Published var merchant = ""
+    @Published var descriptionText = ""
+    @Published var date = Date()
+    @Published var categories: [Category] = []
+
+    private let categoryRepository: CategoryRepository
+    private let expenseRepository: ExpenseRepository
+
     init(database: AppDatabase, expense: Expense?, walletSuggestion: WalletSuggestion? = nil) {
-        self.database = database
         self.existingExpense = expense
         self.walletSuggestion = walletSuggestion
+        self.categoryRepository = database.categoryRepository
+        self.expenseRepository = database.expenseRepository
 
         loadCategories()
+        populateForm(expense: expense, walletSuggestion: walletSuggestion)
+    }
 
-        if let expense {
-            self.amountText = String(format: "%.2f", Double(expense.amount) / 100.0)
-            self.selectedCategoryId = expense.categoryId
-            self.merchant = expense.merchant
-            self.descriptionText = expense.description
-            self.date = Date(timeIntervalSince1970: TimeInterval(expense.date))
-        } else if let suggestion = walletSuggestion {
-            if let amount = suggestion.amount, amount > 0 {
-                self.amountText = String(format: "%.2f", Double(amount) / 100.0)
-            }
-            self.merchant = suggestion.merchant
-            self.date = Date(timeIntervalSince1970: TimeInterval(suggestion.date))
+    var selectedCategory: Category? {
+        categories.first { $0.id == selectedCategoryId }
+    }
+
+    var amountDisplay: String {
+        amountText.isEmpty ? "0.00" : amountText
+    }
+
+    var formattedDate: String {
+        AppDateFormatter.relativeExpenseDateString(from: date)
+    }
+
+    var formattedTime: String {
+        AppDateFormatter.shortTimeString(from: date)
+    }
+
+    var validationMessage: String? {
+        guard let amountInCents = MoneyFormatter.cents(fromDecimalString: amountText), amountInCents > 0 else {
+            return "Enter an amount"
         }
+
+        guard !selectedCategoryId.isEmpty else {
+            return "Pick a category"
+        }
+
+        return nil
+    }
+
+    func appendDigit(_ digit: String) {
+        guard digit.count == 1, digit.first?.isNumber == true else { return }
+
+        var digits = digitsOnlyAmount
+        if digits == "0" {
+            digits = ""
+        }
+
+        guard digits.count < 9 else { return }
+
+        digits.append(digit)
+        amountText = Self.amountString(fromDigits: digits)
+    }
+
+    func deleteLastDigit() {
+        var digits = digitsOnlyAmount
+        guard !digits.isEmpty else {
+            amountText = "0.00"
+            return
+        }
+
+        digits.removeLast()
+        amountText = Self.amountString(fromDigits: digits)
+    }
+
+    func save() throws {
+        guard let amountInCents = MoneyFormatter.cents(fromDecimalString: amountText), amountInCents > 0 else {
+            throw AddEditExpenseError.invalidAmount
+        }
+
+        let draft = ExpenseDraft(
+            amount: amountInCents,
+            currency: "SGD",
+            categoryId: selectedCategoryId,
+            description: descriptionText,
+            merchant: merchant,
+            date: AppDateFormatter.unixTimestamp(from: date),
+            source: defaultSource
+        )
+
+        try expenseRepository.save(draft, editing: existingExpense, from: walletSuggestion)
+    }
+
+    private var defaultSource: ExpenseSource {
+        walletSuggestion == nil ? .manual : .shortcut
+    }
+
+    private var digitsOnlyAmount: String {
+        let digits = amountText.filter(\.isWholeNumber)
+        return digits.isEmpty ? "0" : digits
+    }
+
+    private func populateForm(expense: Expense?, walletSuggestion: WalletSuggestion?) {
+        if let expense {
+            amountText = MoneyFormatter.decimalString(fromCents: expense.amount)
+            selectedCategoryId = expense.categoryId
+            merchant = expense.merchant
+            descriptionText = expense.description
+            date = AppDateFormatter.date(fromUnixTimestamp: expense.date)
+            return
+        }
+
+        guard let walletSuggestion else { return }
+
+        if let amount = walletSuggestion.amount, amount > 0 {
+            amountText = MoneyFormatter.decimalString(fromCents: amount)
+        }
+
+        merchant = walletSuggestion.merchant
+        date = AppDateFormatter.date(fromUnixTimestamp: walletSuggestion.date)
     }
 
     private func loadCategories() {
         do {
-            categories = try database.dbQueue.read { db in
-                try Category
-                    .filter(Category.Columns.deletedAt == nil)
-                    .order(Category.Columns.name)
-                    .fetchAll(db)
-            }
-            if selectedCategoryId.isEmpty, let first = categories.first {
-                selectedCategoryId = first.id
+            categories = try categoryRepository.fetchActive()
+
+            if selectedCategoryId.isEmpty, let firstCategory = categories.first {
+                selectedCategoryId = firstCategory.id
             }
         } catch {
             print("Error loading categories: \(error)")
         }
     }
 
-    func save() {
-        guard let amount = Double(amountText) else { return }
-        let amountCents = Int64(amount * 100)
-        let now = Int64(Date().timeIntervalSince1970)
-        let dateTs = Int64(date.timeIntervalSince1970)
+    private static func amountString(fromDigits digits: String) -> String {
+        let normalizedDigits = digits.isEmpty ? "0" : digits
+        let cents = Int64(normalizedDigits) ?? 0
+        return MoneyFormatter.decimalString(fromCents: cents)
+    }
+}
 
-        do {
-            try database.dbQueue.write { db in
-                if var existing = existingExpense {
-                    existing.amount = amountCents
-                    existing.categoryId = selectedCategoryId
-                    existing.merchant = merchant
-                    existing.description = descriptionText
-                    existing.date = dateTs
-                    existing.updatedAt = now
-                    existing.syncStatus = "pending_push"
-                    try existing.update(db)
-                } else {
-                    let source = walletSuggestion != nil ? "shortcut" : "manual"
-                    let expense = Expense(
-                        id: UUID().uuidString,
-                        clientId: UUID().uuidString,
-                        amount: amountCents,
-                        currency: "SGD",
-                        categoryId: selectedCategoryId,
-                        description: descriptionText,
-                        merchant: merchant,
-                        date: dateTs,
-                        source: source,
-                        createdAt: now,
-                        updatedAt: now,
-                        deletedAt: nil
-                    )
-                    try expense.insert(db)
+private enum AddEditExpenseError: LocalizedError {
+    case invalidAmount
 
-                    if let suggestion = walletSuggestion {
-                        try db.execute(
-                            sql: "UPDATE wallet_suggestions SET status = 'accepted', linked_expense_id = ? WHERE id = ?",
-                            arguments: [expense.id, suggestion.id]
-                        )
-                    }
-                }
-            }
-        } catch {
-            print("Error saving expense: \(error)")
+    var errorDescription: String? {
+        switch self {
+        case .invalidAmount:
+            return "Enter an amount"
         }
     }
 }

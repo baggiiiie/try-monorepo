@@ -29,8 +29,8 @@ struct ImportTransactionIntent: AppIntent {
             cardName: cardName,
             transactionName: transactionName,
             date: Int64(Date().timeIntervalSince1970),
-            source: "shortcut",
-            status: "pending",
+            source: ExpenseSource.shortcut.rawValue,
+            status: WalletSuggestionStatus.pending.rawValue,
             linkedExpenseId: nil,
             createdAt: Int64(Date().timeIntervalSince1970)
         )

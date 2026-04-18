@@ -2,9 +2,9 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var syncService: SyncService
-    @AppStorage("serverURL") private var serverURL = ""
-    @AppStorage("currency") private var currency = "SGD"
-    @AppStorage("timezone") private var timezone = "Asia/Singapore"
+    @AppStorage(AppPreferenceKey.serverURL) private var serverURL = ""
+    @AppStorage(AppPreferenceKey.currency) private var currency = "SGD"
+    @AppStorage(AppPreferenceKey.timezone) private var timezone = "Asia/Singapore"
 
     var body: some View {
         NavigationStack {

@@ -5,6 +5,10 @@ struct CategoryFormView: View {
     let database: AppDatabase
     let category: Category?
 
+    private var categoryRepository: CategoryRepository {
+        database.categoryRepository
+    }
+
     @State private var name: String = ""
     @State private var icon: String = ""
     @State private var budgetText: String = ""
@@ -48,7 +52,7 @@ struct CategoryFormView: View {
                     name = category.name
                     icon = category.displayIcon
                     if let budget = category.budget {
-                        budgetText = String(format: "%.2f", Double(budget) / 100.0)
+                        budgetText = MoneyFormatter.decimalString(fromCents: budget)
                     }
                 }
             }
@@ -58,35 +62,16 @@ struct CategoryFormView: View {
     private func save() {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedIcon = Category.resolvedIcon(name: trimmedName, icon: icon)
-        let now = Int64(Date().timeIntervalSince1970)
-        var budget: Int64?
-        if let parsed = Double(budgetText) {
-            budget = Int64(parsed * 100)
-        }
+        let budget = MoneyFormatter.cents(fromDecimalString: budgetText)
+
+        let draft = CategoryDraft(
+            name: trimmedName,
+            icon: resolvedIcon,
+            budget: budget
+        )
 
         do {
-            try database.dbQueue.write { db in
-                if var existing = category {
-                    existing.name = trimmedName
-                    existing.icon = resolvedIcon
-                    existing.budget = budget
-                    existing.updatedAt = now
-                    existing.syncStatus = "pending_push"
-                    try existing.update(db)
-                } else {
-                    let newCategory = Category(
-                        id: UUID().uuidString,
-                        clientId: UUID().uuidString,
-                        name: trimmedName,
-                        icon: resolvedIcon,
-                        budget: budget,
-                        createdAt: now,
-                        updatedAt: now,
-                        deletedAt: nil
-                    )
-                    try newCategory.insert(db)
-                }
-            }
+            try categoryRepository.save(draft, editing: category)
         } catch {
             print("Error saving category: \(error)")
         }

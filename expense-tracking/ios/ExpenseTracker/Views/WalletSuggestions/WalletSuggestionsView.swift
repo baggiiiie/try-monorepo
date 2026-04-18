@@ -30,7 +30,7 @@ struct WalletSuggestionsView: View {
                 }
             }
             .navigationTitle("Wallet Suggestions")
-            .onAppear { viewModel.refresh() }
+            .onAppear(perform: viewModel.refresh)
         }
     }
 }
@@ -107,7 +107,7 @@ struct WalletSuggestionRow: View {
         .padding(.vertical, 4)
         .sheet(isPresented: $showingAddExpense) {
             AddEditExpenseView(database: database, suggestion: suggestion)
-                .onDisappear { onAccept() }
+                .onDisappear(perform: onAccept)
         }
     }
 }

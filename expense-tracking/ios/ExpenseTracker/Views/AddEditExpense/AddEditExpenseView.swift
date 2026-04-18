@@ -3,81 +3,89 @@ import SwiftUI
 struct AddEditExpenseView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: AddEditExpenseViewModel
-    @State private var showingDatePicker = false
-    @State private var showCategoryPicker = false
+    @State private var isShowingDatePicker = false
+    @State private var isShowingCategoryPicker = false
     @State private var toastMessage: String?
-    @State private var noteText = ""
-    @FocusState private var noteFocused: Bool
-
-    let isEditing: Bool
+    @FocusState private var isMerchantFieldFocused: Bool
 
     init(database: AppDatabase, expense: Expense?) {
-        self.isEditing = expense != nil
         _viewModel = StateObject(wrappedValue: AddEditExpenseViewModel(database: database, expense: expense))
     }
 
     init(database: AppDatabase, suggestion: WalletSuggestion) {
-        self.isEditing = false
-        _viewModel = StateObject(wrappedValue: AddEditExpenseViewModel(database: database, expense: nil, walletSuggestion: suggestion))
+        _viewModel = StateObject(
+            wrappedValue: AddEditExpenseViewModel(database: database, expense: nil, walletSuggestion: suggestion)
+        )
     }
 
     var body: some View {
         GeometryReader { proxy in
             let bottomInset = proxy.safeAreaInsets.bottom
-            let padHeight = max(240, proxy.size.height * 0.42)
+            let inputPanelHeight = max(240, proxy.size.height * 0.42)
 
             ZStack {
                 Color(.systemBackground).ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    // Top bar: X button + Expense/Income toggle
-                    topBar
+                    AddEditExpenseTopBar(onClose: { dismiss() })
                         .padding(.top, 8)
                         .padding(.horizontal, 18)
 
                     Spacer(minLength: 0)
 
-                    // Amount display
-                    amountSection
+                    ExpenseAmountSection(amount: viewModel.amountDisplay)
                         .padding(.horizontal, 18)
 
                     Spacer().frame(height: 12)
 
-                    // Note field (inline pill)
-                    noteField
-                        .padding(.horizontal, 18)
+                    ExpenseMerchantField(
+                        text: $viewModel.merchant,
+                        isFocused: $isMerchantFieldFocused
+                    )
+                    .padding(.horizontal, 18)
 
                     Spacer(minLength: 0)
 
-                    // Date + Category row
-                    if !showCategoryPicker {
-                        controlsRow
-                            .padding(.horizontal, 18)
-                            .transition(.move(edge: .leading).combined(with: .opacity))
+                    if !isShowingCategoryPicker {
+                        ExpenseControlsRow(
+                            formattedDate: viewModel.formattedDate,
+                            formattedTime: viewModel.formattedTime,
+                            selectedCategory: viewModel.selectedCategory,
+                            onDateTap: { isShowingDatePicker = true },
+                            onCategoryTap: toggleCategoryPicker
+                        )
+                        .padding(.horizontal, 18)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
                     }
 
                     Spacer().frame(height: 10)
 
-                    // Number pad or category picker
-                    if showCategoryPicker {
-                        categoryPickerView
-                            .frame(height: padHeight)
-                            .padding(.horizontal, 18)
-                            .padding(.bottom, bottomInset + 8)
+                    Group {
+                        if isShowingCategoryPicker {
+                            ExpenseCategoryPicker(
+                                categories: viewModel.categories,
+                                selectedCategoryId: viewModel.selectedCategoryId,
+                                onClose: hideCategoryPicker,
+                                onSelectCategory: selectCategory
+                            )
                             .transition(.move(edge: .trailing).combined(with: .opacity))
-                    } else {
-                        keypad
-                            .frame(height: padHeight)
-                            .padding(.horizontal, 18)
-                            .padding(.bottom, bottomInset + 8)
+                        } else {
+                            ExpenseKeypad(
+                                onDigitTap: viewModel.appendDigit,
+                                onDeleteTap: viewModel.deleteLastDigit,
+                                onSubmitTap: handleSaveTapped
+                            )
                             .transition(.move(edge: .leading).combined(with: .opacity))
+                        }
                     }
+                    .frame(height: inputPanelHeight)
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, bottomInset + 8)
                 }
 
-                // Toast
                 if let toastMessage {
                     VStack {
-                        toastView(message: toastMessage)
+                        ToastBanner(message: toastMessage)
                             .padding(.top, 60)
                         Spacer()
                     }
@@ -85,27 +93,75 @@ struct AddEditExpenseView: View {
                     .zIndex(10)
                 }
 
-                // Date picker overlay
-                if showingDatePicker {
-                    datePickerOverlay
-                        .zIndex(5)
+                if isShowingDatePicker {
+                    ExpenseDatePickerOverlay(date: $viewModel.date) {
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            isShowingDatePicker = false
+                        }
+                    }
+                    .zIndex(5)
                 }
             }
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
-        .onAppear {
-            noteText = viewModel.merchant
+    }
+
+    private func handleSaveTapped() {
+        if let validationMessage = viewModel.validationMessage {
+            showToast(validationMessage)
+            return
+        }
+
+        do {
+            try viewModel.save()
+            dismiss()
+        } catch {
+            showToast(error.localizedDescription.isEmpty ? "Couldn't save expense" : error.localizedDescription)
         }
     }
 
-    // MARK: - Top Bar
+    private func toggleCategoryPicker() {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            isShowingCategoryPicker.toggle()
+        }
+    }
 
-    private var topBar: some View {
+    private func hideCategoryPicker() {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            isShowingCategoryPicker = false
+        }
+    }
+
+    private func selectCategory(_ category: Category) {
+        viewModel.selectedCategoryId = category.id
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            hideCategoryPicker()
+        }
+    }
+
+    private func showToast(_ message: String) {
+        withAnimation(.spring(duration: 0.3)) {
+            toastMessage = message
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+            guard toastMessage == message else { return }
+
+            withAnimation(.spring(duration: 0.3)) {
+                toastMessage = nil
+            }
+        }
+    }
+}
+
+private struct AddEditExpenseTopBar: View {
+    let onClose: () -> Void
+
+    var body: some View {
         ZStack {
             HStack {
-                Button {
-                    dismiss()
-                } label: {
+                Button(action: onClose) {
                     Image(systemName: "xmark")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(Color(.label))
@@ -122,16 +178,18 @@ struct AddEditExpenseView: View {
                 .foregroundStyle(.primary)
         }
     }
+}
 
-    // MARK: - Amount
+private struct ExpenseAmountSection: View {
+    let amount: String
 
-    private var amountSection: some View {
+    var body: some View {
         HStack(alignment: .lastTextBaseline, spacing: 2) {
             Text("$")
                 .font(.system(size: 32, weight: .light, design: .rounded))
                 .foregroundStyle(Color(.systemGray))
 
-            Text(viewModel.amountDisplay)
+            Text(amount)
                 .font(.system(size: 54, weight: .regular, design: .rounded))
                 .foregroundStyle(.primary)
         }
@@ -139,31 +197,31 @@ struct AddEditExpenseView: View {
         .minimumScaleFactor(0.5)
         .frame(maxWidth: .infinity)
     }
+}
 
-    // MARK: - Note Field (inline pill like dimeApp)
+private struct ExpenseMerchantField: View {
+    @Binding var text: String
+    let isFocused: FocusState<Bool>.Binding
 
-    private var noteField: some View {
+    var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: "text.alignleft")
+            Image(systemName: "building.2")
                 .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(Color(.systemGray))
 
             ZStack(alignment: .leading) {
-                if noteText.isEmpty && !noteFocused {
-                    Text("Add Note")
+                if text.isEmpty && !isFocused.wrappedValue {
+                    Text("Merchant")
                         .font(.system(size: 15, weight: .medium, design: .rounded))
                         .foregroundStyle(Color(.systemGray))
                 }
 
-                TextField("", text: $noteText)
+                TextField("", text: $text)
                     .font(.system(size: 15, weight: .medium, design: .rounded))
                     .foregroundStyle(.primary)
-                    .focused($noteFocused)
-                    .onChange(of: noteText) { _, newValue in
-                        viewModel.merchant = newValue
-                    }
+                    .focused(isFocused)
                     .onSubmit {
-                        noteFocused = false
+                        isFocused.wrappedValue = false
                     }
             }
         }
@@ -175,28 +233,31 @@ struct AddEditExpenseView: View {
         )
         .frame(maxWidth: 260)
     }
+}
 
-    // MARK: - Controls Row (Date + Category)
+private struct ExpenseControlsRow: View {
+    let formattedDate: String
+    let formattedTime: String
+    let selectedCategory: Category?
+    let onDateTap: () -> Void
+    let onCategoryTap: () -> Void
 
-    private var controlsRow: some View {
+    var body: some View {
         HStack(spacing: 8) {
-            // Date pill
-            Button {
-                showingDatePicker = true
-            } label: {
+            Button(action: onDateTap) {
                 HStack(spacing: 6) {
                     Image(systemName: "calendar")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(Color(.systemGray))
 
-                    Text(viewModel.formattedDate)
+                    Text(formattedDate)
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
 
                     Spacer(minLength: 4)
 
-                    Text(viewModel.formattedTime)
+                    Text(formattedTime)
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(.primary)
@@ -213,17 +274,12 @@ struct AddEditExpenseView: View {
             }
             .buttonStyle(.plain)
 
-            // Category chip
-            Button {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    showCategoryPicker.toggle()
-                }
-            } label: {
+            Button(action: onCategoryTap) {
                 HStack(spacing: 5) {
-                    if let cat = viewModel.selectedCategory {
-                        Image(systemName: cat.displayIcon)
+                    if let selectedCategory {
+                        Image(systemName: selectedCategory.displayIcon)
                             .font(.system(size: 13, weight: .medium))
-                        Text(cat.name)
+                        Text(selectedCategory.name)
                             .font(.system(size: 14, weight: .medium, design: .rounded))
                             .lineLimit(1)
                     } else {
@@ -233,15 +289,15 @@ struct AddEditExpenseView: View {
                             .font(.system(size: 14, weight: .medium, design: .rounded))
                     }
                 }
-                .foregroundStyle(viewModel.selectedCategory != nil ? .white : Color(.systemGray))
+                .foregroundStyle(selectedCategory != nil ? .white : Color(.systemGray))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(
                     Capsule(style: .continuous)
-                        .fill(viewModel.selectedCategory != nil ? Color.accentColor : Color.clear)
+                        .fill(selectedCategory != nil ? Color.accentColor : Color.clear)
                 )
                 .overlay {
-                    if viewModel.selectedCategory == nil {
+                    if selectedCategory == nil {
                         Capsule(style: .continuous)
                             .stroke(Color(.systemGray4), lineWidth: 1.2)
                     }
@@ -250,19 +306,24 @@ struct AddEditExpenseView: View {
             .buttonStyle(.plain)
         }
     }
+}
 
-    // MARK: - Category Picker
+private struct ExpenseCategoryPicker: View {
+    let categories: [Category]
+    let selectedCategoryId: String
+    let onClose: () -> Void
+    let onSelectCategory: (Category) -> Void
 
-    private var categoryPickerView: some View {
+    private let columns = [
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10)
+    ]
+
+    var body: some View {
         VStack(spacing: 0) {
-            // Close button for category picker
             HStack {
                 Spacer()
-                Button {
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        showCategoryPicker = false
-                    }
-                } label: {
+                Button(action: onClose) {
                     Text("Close")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(.red)
@@ -277,20 +338,13 @@ struct AddEditExpenseView: View {
             }
             .padding(.bottom, 12)
 
-            let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
-
             ScrollView(showsIndicators: false) {
                 LazyVGrid(columns: columns, spacing: 10) {
-                    ForEach(viewModel.categories) { category in
-                        let isSelected = category.id == viewModel.selectedCategoryId
+                    ForEach(categories) { category in
+                        let isSelected = category.id == selectedCategoryId
 
                         Button {
-                            viewModel.selectedCategoryId = category.id
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                withAnimation(.easeInOut(duration: 0.25)) {
-                                    showCategoryPicker = false
-                                }
-                            }
+                            onSelectCategory(category)
                         } label: {
                             HStack(spacing: 7) {
                                 Image(systemName: category.displayIcon)
@@ -307,7 +361,7 @@ struct AddEditExpenseView: View {
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                                     .fill(isSelected ? Color.accentColor : Color(.systemGray6))
                             )
-                            .opacity(viewModel.selectedCategoryId.isEmpty || isSelected ? 1 : 0.6)
+                            .opacity(selectedCategoryId.isEmpty || isSelected ? 1 : 0.6)
                         }
                         .buttonStyle(.plain)
                     }
@@ -315,64 +369,70 @@ struct AddEditExpenseView: View {
             }
         }
     }
+}
 
-    // MARK: - Keypad
+private struct ExpenseKeypad: View {
+    let onDigitTap: (String) -> Void
+    let onDeleteTap: () -> Void
+    let onSubmitTap: () -> Void
 
-    private var keypad: some View {
+    private let digitRows = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+    private let spacing: CGFloat = 10
+
+    var body: some View {
         GeometryReader { proxy in
-            let spacing: CGFloat = 10
-            let btnWidth = (proxy.size.width - spacing * 2) / 3
-            let btnHeight = (proxy.size.height - spacing * 3) / 4
+            let buttonWidth = (proxy.size.width - spacing * 2) / 3
+            let buttonHeight = (proxy.size.height - spacing * 3) / 4
 
             VStack(spacing: spacing) {
-                ForEach([[1,2,3],[4,5,6],[7,8,9]], id: \.self) { row in
+                ForEach(digitRows, id: \.self) { row in
                     HStack(spacing: spacing) {
-                        ForEach(row, id: \.self) { n in
-                            numberButton("\(n)", width: btnWidth, height: btnHeight)
+                        ForEach(row, id: \.self) { digit in
+                            DigitButton(
+                                title: "\(digit)",
+                                width: buttonWidth,
+                                height: buttonHeight,
+                                action: { onDigitTap("\(digit)") }
+                            )
                         }
                     }
                 }
 
-                // Bottom row: backspace, 0, submit
                 HStack(spacing: spacing) {
-                    Button {
-                        viewModel.deleteLastDigit()
-                    } label: {
-                        Image(systemName: "delete.backward")
-                            .font(.system(size: 22, weight: .regular))
-                            .foregroundStyle(.primary)
-                            .frame(width: btnWidth, height: btnHeight)
-                            .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                    .buttonStyle(NumPadButtonStyle())
+                    IconKeypadButton(
+                        systemImage: "delete.backward",
+                        width: buttonWidth,
+                        height: buttonHeight,
+                        action: onDeleteTap
+                    )
 
-                    numberButton("0", width: btnWidth, height: btnHeight)
+                    DigitButton(
+                        title: "0",
+                        width: buttonWidth,
+                        height: buttonHeight,
+                        action: { onDigitTap("0") }
+                    )
 
-                    // Submit button
-                    Button {
-                        handleSaveTapped()
-                    } label: {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(Color(.label))
-                                .frame(width: btnWidth, height: btnHeight)
-
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 22, weight: .bold))
-                                .foregroundStyle(Color(.systemBackground))
-                        }
-                    }
-                    .buttonStyle(NumPadButtonStyle())
+                    SubmitKeypadButton(
+                        width: buttonWidth,
+                        height: buttonHeight,
+                        action: onSubmitTap
+                    )
                 }
             }
         }
     }
+}
 
-    private func numberButton(_ value: String, width: CGFloat, height: CGFloat) -> some View {
-        Button {
-            viewModel.appendDigit(value)
-        } label: {
-            Text(value)
+private struct DigitButton: View {
+    let title: String
+    let width: CGFloat
+    let height: CGFloat
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
                 .font(.system(size: min(height * 0.4, 34), weight: .regular, design: .rounded))
                 .foregroundStyle(.primary)
                 .frame(width: width, height: height)
@@ -380,22 +440,60 @@ struct AddEditExpenseView: View {
         }
         .buttonStyle(NumPadButtonStyle())
     }
+}
 
-    // MARK: - Date Picker Overlay
+private struct IconKeypadButton: View {
+    let systemImage: String
+    let width: CGFloat
+    let height: CGFloat
+    let action: () -> Void
 
-    private var datePickerOverlay: some View {
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(.primary)
+                .frame(width: width, height: height)
+                .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(NumPadButtonStyle())
+    }
+}
+
+private struct SubmitKeypadButton: View {
+    let width: CGFloat
+    let height: CGFloat
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(.label))
+                    .frame(width: width, height: height)
+
+                Image(systemName: "checkmark")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(Color(.systemBackground))
+            }
+        }
+        .buttonStyle(NumPadButtonStyle())
+    }
+}
+
+private struct ExpenseDatePickerOverlay: View {
+    @Binding var date: Date
+    let onDismiss: () -> Void
+
+    var body: some View {
         ZStack {
             Color.black.opacity(0.25)
                 .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.easeOut(duration: 0.25)) {
-                        showingDatePicker = false
-                    }
-                }
+                .onTapGesture(perform: onDismiss)
 
             VStack {
                 Spacer()
-                DatePicker("Date", selection: $viewModel.date)
+                DatePicker("Date", selection: $date)
                     .datePickerStyle(.graphical)
                     .padding()
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -405,39 +503,12 @@ struct AddEditExpenseView: View {
         }
         .transition(.opacity)
     }
+}
 
-    // MARK: - Actions
+private struct ToastBanner: View {
+    let message: String
 
-    private func handleSaveTapped() {
-        guard let amount = Double(viewModel.amountText), amount > 0 else {
-            showToast("Enter an amount")
-            return
-        }
-
-        guard !viewModel.selectedCategoryId.isEmpty else {
-            showToast("Pick a category")
-            return
-        }
-
-        viewModel.save()
-        dismiss()
-    }
-
-    private func showToast(_ message: String) {
-        withAnimation(.spring(duration: 0.3)) {
-            toastMessage = message
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
-            if toastMessage == message {
-                withAnimation(.spring(duration: 0.3)) {
-                    toastMessage = nil
-                }
-            }
-        }
-    }
-
-    private func toastView(message: String) -> some View {
+    var body: some View {
         Text(message)
             .font(.system(size: 15, weight: .medium, design: .rounded))
             .foregroundStyle(.white)
@@ -451,94 +522,11 @@ struct AddEditExpenseView: View {
     }
 }
 
-// MARK: - Button Style
-
-struct NumPadButtonStyle: ButtonStyle {
+private struct NumPadButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.9 : 1)
             .opacity(configuration.isPressed ? 0.6 : 1)
             .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
-    }
-}
-
-// MARK: - ViewModel Extensions
-
-@MainActor
-private extension AddEditExpenseViewModel {
-    var selectedCategory: Category? {
-        categories.first { $0.id == selectedCategoryId }
-    }
-
-    var amountDisplay: String {
-        amountText.isEmpty ? "0.00" : amountText
-    }
-
-    var hasNoteDetails: Bool {
-        !merchant.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    var formattedDate: String {
-        let calendar = Calendar.current
-        let suffix = date.formatted(.dateTime.day().month(.abbreviated))
-
-        if calendar.isDateInToday(date) {
-            return "Today, \(suffix)"
-        }
-
-        if calendar.isDateInYesterday(date) {
-            return "Yesterday, \(suffix)"
-        }
-
-        if calendar.isDateInTomorrow(date) {
-            return "Tomorrow, \(suffix)"
-        }
-
-        return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
-    }
-
-    var formattedTime: String {
-        date.formatted(date: .omitted, time: .shortened)
-    }
-
-    var canDeleteAmount: Bool {
-        digitsOnlyAmount != "0"
-    }
-
-    func appendDigit(_ digit: String) {
-        guard digit.count == 1, digit.first?.isNumber == true else { return }
-
-        var digits = digitsOnlyAmount
-        if digits == "0" {
-            digits = ""
-        }
-
-        guard digits.count < 9 else { return }
-
-        digits.append(digit)
-        amountText = Self.amountString(fromDigits: digits)
-    }
-
-    func deleteLastDigit() {
-        var digits = digitsOnlyAmount
-        guard !digits.isEmpty else {
-            amountText = "0.00"
-            return
-        }
-
-        digits.removeLast()
-        amountText = Self.amountString(fromDigits: digits)
-    }
-
-    private var digitsOnlyAmount: String {
-        let digits = amountText.filter(\.isWholeNumber)
-        return digits.isEmpty ? "0" : digits
-    }
-
-    static func amountString(fromDigits digits: String) -> String {
-        let normalizedDigits = digits.isEmpty ? "0" : digits
-        let cents = Int(normalizedDigits) ?? 0
-        return String(format: "%.2f", Double(cents) / 100.0)
     }
 }
