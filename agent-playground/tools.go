@@ -53,6 +53,12 @@ func registerCoreTools(reg *tools.Tools, app *App) {
 
 	reg.Register(app.Todo)
 	reg.Register(&tools.WebSearchTool{})
+	reg.Register(&tools.DeepResearchTool{
+		RunSubagent: func(systemPrompt, taskPrompt string) (string, error) {
+			return runSubagent(app, systemPrompt, taskPrompt)
+		},
+		Workspace: workspace,
+	})
 }
 
 func askApproval(command string) bool {

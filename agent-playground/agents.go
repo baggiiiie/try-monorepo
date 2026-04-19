@@ -13,11 +13,11 @@ type Agent struct {
 	MaxIterations int
 }
 
-func runSubagent(app *App, prompt string) (string, error) {
-	agent := NewSubAgent(app)
+func runSubagent(app *App, systemPrompt, taskPrompt string) (string, error) {
+	agent := NewSubAgent(app, systemPrompt)
 	messages := []ChatMessage{
 		{Role: "system", Content: agent.Prompt},
-		{Role: "user", Content: prompt},
+		{Role: "user", Content: taskPrompt},
 	}
 
 	if err := runAgentTurn(app.Runtime, agent, &messages); err != nil {
@@ -41,7 +41,7 @@ func NewMainAgent(app *App) *Agent {
 	})
 	reg.Register(&tools.SubagentTool{
 		Run: func(prompt string) (string, error) {
-			return runSubagent(app, prompt)
+			return runSubagent(app, "", prompt)
 		},
 	})
 
@@ -53,12 +53,16 @@ func NewMainAgent(app *App) *Agent {
 	}
 }
 
-func NewSubAgent(app *App) *Agent {
+func NewSubAgent(app *App, systemPrompt string) *Agent {
+	if systemPrompt == "" {
+		systemPrompt = "You are a subagent. Complete the task and respond with a concise summary of what you did."
+	}
+
 	reg := tools.NewRegistry()
 	registerCoreTools(reg, app)
 
 	return &Agent{
-		Prompt:        "You are a subagent. Complete the task and respond with a concise summary of what you did.",
+		Prompt:        systemPrompt,
 		Tools:         reg,
 		Hooks:         &EventHooks{},
 		MaxIterations: 10,
