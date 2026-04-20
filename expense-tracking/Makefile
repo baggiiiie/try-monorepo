@@ -1,4 +1,4 @@
-.PHONY: simulator build install run server test
+.PHONY: simulator build install run server test docker-build docker-run
 
 SIMULATOR_DEVICE = iPhone 17 Pro
 IOS_DIR = ios
@@ -30,6 +30,13 @@ run: install
 # Server targets
 server:
 	@cd $(SERVER_DIR) && go build -o bin/expense ./cmd/expense/ && ./bin/expense
+
+# Docker targets
+docker-build:
+	@docker build -t expense-tracker $(SERVER_DIR)
+
+docker-run: docker-build
+	@docker run --rm -p 8080:8080 -v expense-data:/data expense-tracker
 
 # Test targets
 test:
