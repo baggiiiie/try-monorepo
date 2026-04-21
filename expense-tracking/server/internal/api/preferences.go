@@ -23,7 +23,7 @@ func updatePreferences(a *app.App) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req updatePreferencesRequest
 		if err := readJSON(r, &req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid request body")
+			writeError(w, r, http.StatusBadRequest, "invalid request body")
 			return
 		}
 
@@ -39,12 +39,12 @@ func updatePreferences(a *app.App) http.HandlerFunc {
 		}
 
 		if err := config.SavePreferences(a.PreferencesPath, prefs); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeError(w, r, http.StatusInternalServerError, err.Error())
 			return
 		}
 
 		if err := a.ReloadPreferences(); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeError(w, r, http.StatusInternalServerError, err.Error())
 			return
 		}
 

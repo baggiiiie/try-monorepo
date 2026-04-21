@@ -25,6 +25,9 @@ UPDATE expenses SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at I
 -- name: ListExpensesUpdatedSince :many
 SELECT * FROM expenses WHERE updated_at > ?;
 
+-- name: ReassignExpensesCategory :exec
+UPDATE expenses SET category_id = ? WHERE category_id = ?;
+
 -- name: SumExpensesByCategory :many
 SELECT e.category_id, c.name AS category_name, SUM(e.amount) AS total
 FROM expenses e

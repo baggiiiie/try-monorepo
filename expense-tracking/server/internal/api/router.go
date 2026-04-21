@@ -6,13 +6,11 @@ import (
 	"expense-tracker/internal/app"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 )
 
 func NewRouter(a *app.App) http.Handler {
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
+	r.Use(observabilityMiddleware)
 
 	r.Get("/api/health", healthHandler)
 

@@ -5,6 +5,9 @@ IOS_DIR = ios
 SERVER_DIR = server
 SCHEME = ExpenseTracker
 BUNDLE_ID = com.ydai.ExpenseTracker
+BUILD_TIMESTAMP ?= $(shell date -u +"%Y%m%d%H%M%S")
+BUILD_GIT_HASH ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo nogit)
+APP_BUILD_VERSION ?= $(BUILD_TIMESTAMP)-$(BUILD_GIT_HASH)
 
 # iOS targets
 simulator:
@@ -17,6 +20,7 @@ build:
 		-sdk iphonesimulator \
 		-destination 'platform=iOS Simulator,name=$(SIMULATOR_DEVICE)' \
 		-derivedDataPath $(IOS_DIR)/.build/DerivedData \
+		APP_BUILD_VERSION=$(APP_BUILD_VERSION) \
 		-quiet \
 		build
 

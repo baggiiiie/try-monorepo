@@ -29,3 +29,8 @@ SELECT COUNT(*) FROM categories WHERE deleted_at IS NULL;
 
 -- name: ListCategoriesUpdatedSince :many
 SELECT * FROM categories WHERE updated_at > ?;
+
+-- name: ReconcileCategoryByName :exec
+UPDATE categories
+SET id = ?, client_id = ?, name = ?, icon = ?, budget = ?, deleted_at = ?, updated_at = ?
+WHERE id = ?;

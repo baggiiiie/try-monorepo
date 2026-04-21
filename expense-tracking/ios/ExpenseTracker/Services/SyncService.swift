@@ -99,6 +99,7 @@ private struct SyncRepository {
 
     func applyPushResponse(_ response: PushResponse) throws {
         try dbQueue.write { db in
+            try db.execute(sql: "PRAGMA defer_foreign_keys = ON")
             try markPushedCategoriesAsSynced(response.categories, in: db)
             try markPushedExpensesAsSynced(response.expenses, in: db)
         }
@@ -106,6 +107,7 @@ private struct SyncRepository {
 
     func applyPullResponse(_ response: PullResponse) throws {
         try dbQueue.write { db in
+            try db.execute(sql: "PRAGMA defer_foreign_keys = ON")
             for category in response.categories {
                 try upsertCategory(category, in: db)
             }
@@ -302,16 +304,50 @@ private struct PendingPushChanges {
     }
 }
 
+private enum SyncHeader {
+    static let requestID = "X-Request-ID"
+    static let clientBuild = "X-Client-Build"
+}
+
+private enum AppBuild {
+    static var version: String {
+        if let explicitBuild = Bundle.main.object(forInfoDictionaryKey: "AppBuildVersion") as? String {
+            let trimmed = explicitBuild.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, !trimmed.contains("$(") {
+                return trimmed
+            }
+        }
+
+        let marketingVersion = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let bundleVersion = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        switch (marketingVersion, bundleVersion) {
+        case let (.some(marketingVersion), .some(bundleVersion)) where !marketingVersion.isEmpty && !bundleVersion.isEmpty:
+            return "\(marketingVersion)-\(bundleVersion)"
+        case let (.some(marketingVersion), _) where !marketingVersion.isEmpty:
+            return marketingVersion
+        case let (_, .some(bundleVersion)) where !bundleVersion.isEmpty:
+            return bundleVersion
+        default:
+            return "dev"
+        }
+    }
+}
+
 private struct SyncAPIClient {
     let preferences: SyncPreferences
 
     func push(request: PushRequest) async throws -> PushResponse {
         let url = try endpoint(path: "/api/sync/push")
+        let requestID = UUID().uuidString.lowercased()
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyObservabilityHeaders(to: &urlRequest, requestID: requestID)
         urlRequest.httpBody = try Self.jsonEncoder.encode(request)
-        return try await perform(urlRequest, responseType: PushResponse.self)
+        return try await perform(urlRequest, requestID: requestID, responseType: PushResponse.self)
     }
 
     func pull(since: Int64) async throws -> PullResponse {
@@ -322,8 +358,10 @@ private struct SyncAPIClient {
             throw SyncError.invalidServerURL
         }
 
-        let request = URLRequest(url: url)
-        return try await perform(request, responseType: PullResponse.self)
+        let requestID = UUID().uuidString.lowercased()
+        var request = URLRequest(url: url)
+        applyObservabilityHeaders(to: &request, requestID: requestID)
+        return try await perform(request, requestID: requestID, responseType: PullResponse.self)
     }
 
     private func endpoint(path: String) throws -> URL {
@@ -334,20 +372,56 @@ private struct SyncAPIClient {
         return baseURL.appending(path: path)
     }
 
-    private func perform<Response: Decodable>(_ request: URLRequest, responseType: Response.Type) async throws -> Response {
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try validate(response: response)
-        return try Self.jsonDecoder.decode(Response.self, from: data)
+    private func applyObservabilityHeaders(to request: inout URLRequest, requestID: String) {
+        request.setValue(requestID, forHTTPHeaderField: SyncHeader.requestID)
+        request.setValue(AppBuild.version, forHTTPHeaderField: SyncHeader.clientBuild)
+        request.setValue("ExpenseTracker/\(AppBuild.version)", forHTTPHeaderField: "User-Agent")
     }
 
-    private func validate(response: URLResponse) throws {
+    private func perform<Response: Decodable>(_ request: URLRequest, requestID: String, responseType: Response.Type) async throws -> Response {
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            try validate(response: response, data: data, fallbackRequestID: requestID)
+            do {
+                return try Self.jsonDecoder.decode(Response.self, from: data)
+            } catch {
+                throw SyncError.decodingFailed(requestID: responseRequestID(from: response) ?? requestID)
+            }
+        } catch let error as SyncError {
+            throw error
+        } catch {
+            throw SyncError.networkFailure(
+                requestID: requestID,
+                description: error.localizedDescription
+            )
+        }
+    }
+
+    private func validate(response: URLResponse, data: Data, fallbackRequestID: String) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw SyncError.invalidResponse
+            throw SyncError.invalidResponse(requestID: fallbackRequestID)
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
-            throw SyncError.serverError(statusCode: httpResponse.statusCode)
+            let responseRequestID = responseRequestID(from: httpResponse) ?? fallbackRequestID
+            let errorMessage = try? Self.jsonDecoder.decode(ServerErrorResponse.self, from: data)
+            throw SyncError.serverError(
+                statusCode: httpResponse.statusCode,
+                message: errorMessage?.error,
+                requestID: errorMessage?.requestID ?? responseRequestID
+            )
         }
+    }
+
+    private func responseRequestID(from response: URLResponse) -> String? {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            return nil
+        }
+        return responseRequestID(from: httpResponse)
+    }
+
+    private func responseRequestID(from response: HTTPURLResponse) -> String? {
+        response.value(forHTTPHeaderField: SyncHeader.requestID)?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static let jsonEncoder: JSONEncoder = {
@@ -396,19 +470,44 @@ private extension PushCategory {
 
 private enum SyncError: LocalizedError {
     case invalidServerURL
-    case invalidResponse
-    case serverError(statusCode: Int)
+    case invalidResponse(requestID: String?)
+    case decodingFailed(requestID: String?)
+    case networkFailure(requestID: String, description: String)
+    case serverError(statusCode: Int, message: String?, requestID: String?)
 
     var errorDescription: String? {
         switch self {
         case .invalidServerURL:
             return "Invalid server URL"
-        case .invalidResponse:
-            return "The server response was invalid"
-        case .serverError(let statusCode):
-            return "Server returned status \(statusCode)"
+        case .invalidResponse(let requestID):
+            return withClientRequestID("The server response was invalid", requestID: requestID)
+        case .decodingFailed(let requestID):
+            return withServerRequestID("The server response could not be decoded", requestID: requestID)
+        case .networkFailure(let requestID, let description):
+            return withClientRequestID(description, requestID: requestID)
+        case .serverError(let statusCode, let message, let requestID):
+            return withServerRequestID(message ?? "Server returned status \(statusCode)", requestID: requestID)
         }
     }
+
+    private func withServerRequestID(_ message: String, requestID: String?) -> String {
+        guard let requestID, !requestID.isEmpty else {
+            return message
+        }
+        return "\(message) (server request id: \(requestID))"
+    }
+
+    private func withClientRequestID(_ message: String, requestID: String?) -> String {
+        guard let requestID, !requestID.isEmpty else {
+            return message
+        }
+        return "\(message) (client request id: \(requestID))"
+    }
+}
+
+private struct ServerErrorResponse: Codable {
+    let error: String
+    let requestID: String?
 }
 
 private struct PushRequest: Codable {

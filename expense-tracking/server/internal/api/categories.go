@@ -25,7 +25,7 @@ func createCategory(a *app.App) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req createCategoryRequest
 		if err := readJSON(r, &req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid request body")
+			writeError(w, r, http.StatusBadRequest, "invalid request body")
 			return
 		}
 
@@ -35,7 +35,7 @@ func createCategory(a *app.App) http.HandlerFunc {
 			Budget: req.Budget,
 		})
 		if err != nil {
-			writeError(w, http.StatusUnprocessableEntity, err.Error())
+			writeError(w, r, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
 
@@ -47,7 +47,7 @@ func listCategories(a *app.App) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		categories, err := a.CategoryService.List(r.Context())
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeError(w, r, http.StatusInternalServerError, err.Error())
 			return
 		}
 
@@ -64,7 +64,7 @@ func updateCategory(a *app.App) http.HandlerFunc {
 
 		var req updateCategoryRequest
 		if err := readJSON(r, &req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid request body")
+			writeError(w, r, http.StatusBadRequest, "invalid request body")
 			return
 		}
 
@@ -82,10 +82,10 @@ func updateCategory(a *app.App) http.HandlerFunc {
 		cat, err := a.CategoryService.Update(r.Context(), id, input)
 		if err != nil {
 			if err.Error() == "category not found" {
-				writeError(w, http.StatusNotFound, err.Error())
+				writeError(w, r, http.StatusNotFound, err.Error())
 				return
 			}
-			writeError(w, http.StatusUnprocessableEntity, err.Error())
+			writeError(w, r, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
 
@@ -98,7 +98,7 @@ func deleteCategory(a *app.App) http.HandlerFunc {
 		id := chi.URLParam(r, "id")
 
 		if err := a.CategoryService.Delete(r.Context(), id); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeError(w, r, http.StatusInternalServerError, err.Error())
 			return
 		}
 

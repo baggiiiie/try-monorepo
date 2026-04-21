@@ -1,11 +1,13 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 	"strconv"
 
 	"expense-tracker/internal/app"
 	"expense-tracker/internal/service"
+	"expense-tracker/internal/wideevent"
 )
 
 func syncPull(a *app.App) http.HandlerFunc {
@@ -16,14 +18,18 @@ func syncPull(a *app.App) http.HandlerFunc {
 			var err error
 			since, err = strconv.ParseInt(sinceStr, 10, 64)
 			if err != nil {
-				writeError(w, http.StatusBadRequest, "invalid since parameter")
+				writeError(w, r, http.StatusBadRequest, "invalid since parameter")
 				return
 			}
 		}
 
 		resp, err := a.SyncService.Pull(r.Context(), since)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			wideevent.Error(r.Context(), "sync.pull.failed",
+				slog.Int64("since", since),
+				slog.Any("error", err),
+			)
+			writeError(w, r, http.StatusInternalServerError, err.Error())
 			return
 		}
 
@@ -35,13 +41,18 @@ func syncPush(a *app.App) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req service.PushRequest
 		if err := readJSON(r, &req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid request body")
+			writeError(w, r, http.StatusBadRequest, "invalid request body")
 			return
 		}
 
 		resp, err := a.SyncService.Push(r.Context(), req)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			wideevent.Error(r.Context(), "sync.push.failed",
+				slog.Int("categories", len(req.Categories)),
+				slog.Int("expenses", len(req.Expenses)),
+				slog.Any("error", err),
+			)
+			writeError(w, r, http.StatusInternalServerError, err.Error())
 			return
 		}
 

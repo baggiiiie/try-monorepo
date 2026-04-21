@@ -2,7 +2,9 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
+	"os"
 
 	"expense-tracker/internal/api"
 	"expense-tracker/internal/app"
@@ -15,6 +17,7 @@ var serveCmd = &cobra.Command{
 	Short: "Start the HTTP API server",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		port, _ := cmd.Flags().GetInt("port")
+		slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
 		a, err := app.Open(dbPath, configPath)
 		if err != nil {
@@ -25,7 +28,7 @@ var serveCmd = &cobra.Command{
 		router := api.NewRouter(a)
 
 		addr := fmt.Sprintf(":%d", port)
-		fmt.Printf("Starting server on %s\n", addr)
+		slog.Info("server.start", slog.String("addr", addr))
 		return http.ListenAndServe(addr, router)
 	},
 }

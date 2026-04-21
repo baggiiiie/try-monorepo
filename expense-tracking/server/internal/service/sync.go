@@ -117,6 +117,9 @@ func (s *SyncService) Push(ctx context.Context, req PushRequest) (*PushResponse,
 	defer tx.Rollback()
 
 	qtx := s.queries.WithTx(tx)
+	if _, err := tx.ExecContext(ctx, "PRAGMA defer_foreign_keys = ON"); err != nil {
+		return nil, err
+	}
 	now := time.Now().Unix()
 
 	resp := &PushResponse{
@@ -183,6 +186,46 @@ func (s *SyncService) pushCategory(ctx context.Context, q *dbsqlc.Queries, input
 	}
 
 	if err == sql.ErrNoRows {
+		// Reconcile categories by active name as well so a fresh app install with
+		// new local UUIDs can attach to the same logical server-side category.
+		if byName, nameErr := q.GetCategoryByName(ctx, input.Name); nameErr == nil {
+			targetID := byName.ID
+			if input.ID != "" {
+				targetID = input.ID
+			}
+
+			if targetID != byName.ID {
+				if err := q.ReassignExpensesCategory(ctx, dbsqlc.ReassignExpensesCategoryParams{
+					CategoryID:  targetID,
+					CategoryID_2: byName.ID,
+				}); err != nil {
+					return nil, err
+				}
+			}
+
+			if err := q.ReconcileCategoryByName(ctx, dbsqlc.ReconcileCategoryByNameParams{
+				ID:        targetID,
+				ClientID:  input.ClientID,
+				Name:      input.Name,
+				Icon:      input.Icon,
+				Budget:    nullInt64(input.Budget),
+				DeletedAt: nullInt64(input.DeletedAt),
+				UpdatedAt: now,
+				ID_2:      byName.ID,
+			}); err != nil {
+				return nil, err
+			}
+
+			updated, err := q.GetCategoryByClientID(ctx, input.ClientID)
+			if err != nil {
+				return nil, err
+			}
+			cat := categoryFromRow(updated)
+			return &cat, nil
+		} else if nameErr != sql.ErrNoRows {
+			return nil, nameErr
+		}
+
 		row, err := q.CreateCategory(ctx, dbsqlc.CreateCategoryParams{
 			ID:        uuid.New().String(),
 			ClientID:  input.ClientID,
