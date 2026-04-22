@@ -129,8 +129,13 @@ final class AddEditExpenseViewModel: ObservableObject {
         do {
             categories = try categoryRepository.fetchActive()
 
-            if selectedCategoryId.isEmpty, let firstCategory = categories.first {
-                selectedCategoryId = firstCategory.id
+            if selectedCategoryId.isEmpty {
+                let defaultId = UserDefaults.standard.string(forKey: "defaultCategoryId") ?? ""
+                if !defaultId.isEmpty, categories.contains(where: { $0.id == defaultId }) {
+                    selectedCategoryId = defaultId
+                } else if let firstCategory = categories.first {
+                    selectedCategoryId = firstCategory.id
+                }
             }
         } catch {
             print("Error loading categories: \(error)")

@@ -28,9 +28,24 @@ struct CategoryListView: View {
                             }
                         }
                         Spacer()
+                        if viewModel.defaultCategoryId == cat.id {
+                            Image(systemName: "star.fill")
+                                .foregroundStyle(.yellow)
+                        }
                     }
                     .contentShape(Rectangle())
                     .onTapGesture { editingCategory = cat }
+                    .swipeActions(edge: .leading) {
+                        Button {
+                            viewModel.setDefault(cat)
+                        } label: {
+                            Label(
+                                viewModel.defaultCategoryId == cat.id ? "Unset Default" : "Set Default",
+                                systemImage: "star.fill"
+                            )
+                        }
+                        .tint(.yellow)
+                    }
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) {
                             viewModel.delete(cat)
