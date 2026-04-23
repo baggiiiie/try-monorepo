@@ -24,12 +24,18 @@ func main() {
 	go func() {
 		<-sigCh
 		stopWatcher()
+		if app.MCP != nil {
+			app.MCP.Close()
+		}
 		if app.Runtime.Sandbox {
 			destroyContainer()
 		}
 		os.Exit(0)
 	}()
 	defer func() {
+		if app.MCP != nil {
+			app.MCP.Close()
+		}
 		if app.Runtime.Sandbox {
 			destroyContainer()
 		}

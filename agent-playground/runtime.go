@@ -16,14 +16,21 @@ const (
 	runtimeConfigPath   = "agent.json"
 )
 
+type MCPServerConfig struct {
+	Name    string   `json:"name"`
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+}
+
 type RuntimeConfig struct {
-	Provider         string   `json:"provider"`
-	Model            string   `json:"model"`
-	BaseURL          string   `json:"base_url"`
-	APIKey           string   `json:"api_key"`
-	AllowedCommands  []string `json:"allowed_commands"`
-	MaxContextTokens int      `json:"max_context_tokens"`
-	Sandbox          *bool    `json:"sandbox"`
+	Provider         string            `json:"provider"`
+	Model            string            `json:"model"`
+	BaseURL          string            `json:"base_url"`
+	APIKey           string            `json:"api_key"`
+	AllowedCommands  []string          `json:"allowed_commands"`
+	MaxContextTokens int               `json:"max_context_tokens"`
+	Sandbox          *bool             `json:"sandbox"`
+	MCPServers       []MCPServerConfig `json:"mcp_servers"`
 }
 
 type Runtime struct {
@@ -35,12 +42,14 @@ type Runtime struct {
 	AllowedCommands  []string
 	MaxContextTokens int
 	Sandbox          bool
+	MCPServers       []MCPServerConfig
 }
 
 type App struct {
 	Runtime       *Runtime
 	Messages      []ChatMessage
 	Todo          *tools.TodoTool
+	MCP           *MCPManager
 	reloadPending atomic.Bool
 }
 
@@ -58,9 +67,12 @@ func NewApp() (*App, error) {
 		return nil, fmt.Errorf("failed to load todos: %w", err)
 	}
 
+	mcpMgr := NewMCPManager(runtime.MCPServers)
+
 	return &App{
 		Runtime: runtime,
 		Todo:    todo,
+		MCP:     mcpMgr,
 		Messages: []ChatMessage{{
 			Role:    "system",
 			Content: runtime.SystemPrompt,
@@ -139,6 +151,7 @@ func LoadRuntime() (*Runtime, error) {
 		AllowedCommands:  allowedCommands,
 		MaxContextTokens: maxContextTokens,
 		Sandbox:          sandbox,
+		MCPServers:       cfg.MCPServers,
 	}, nil
 }
 

@@ -53,6 +53,11 @@ func registerCoreTools(reg *tools.Tools, app *App) {
 
 	reg.Register(app.Todo)
 	reg.Register(&tools.WebSearchTool{})
+
+	if app.MCP != nil {
+		app.MCP.Register(reg)
+	}
+
 	reg.Register(&tools.DeepResearchTool{
 		RunSubagent: func(systemPrompt, taskPrompt string) (string, error) {
 			return runSubagent(app, systemPrompt, taskPrompt)
