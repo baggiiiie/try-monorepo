@@ -48,6 +48,7 @@ struct CategoryListView: View {
                     }
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) {
+                            HapticManager.notify(.warning)
                             viewModel.delete(cat)
                         } label: {
                             Label("Delete", systemImage: "trash")

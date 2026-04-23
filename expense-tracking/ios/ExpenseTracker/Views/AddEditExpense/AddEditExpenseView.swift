@@ -71,8 +71,14 @@ struct AddEditExpenseView: View {
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                         } else {
                             ExpenseKeypad(
-                                onDigitTap: viewModel.appendDigit,
-                                onDeleteTap: viewModel.deleteLastDigit,
+                                onDigitTap: { digit in
+                                    HapticManager.impact(.light)
+                                    viewModel.appendDigit(digit)
+                                },
+                                onDeleteTap: {
+                                    HapticManager.impact(.light)
+                                    viewModel.deleteLastDigit()
+                                },
                                 onSubmitTap: handleSaveTapped
                             )
                             .transition(.move(edge: .leading).combined(with: .opacity))
@@ -114,6 +120,7 @@ struct AddEditExpenseView: View {
 
         do {
             try viewModel.save()
+            HapticManager.notify(.success)
             dismiss()
         } catch {
             showToast(error.localizedDescription.isEmpty ? "Couldn't save expense" : error.localizedDescription)
