@@ -20,6 +20,7 @@
 		597B1F6D7E3E96A8253DE390 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 059617E0131A34F9C0CB29C8 /* SettingsView.swift */; };
 		6536C3FD631F5A8AA30DBBD9 /* ExpenseFeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2929180440B6252D22DF9560 /* ExpenseFeedView.swift */; };
 		6C1908BE81105BBFC9A92CDE /* CategoryFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A73F90AF6896ECA6F7899BD /* CategoryFormView.swift */; };
+		7A73343DACE1BE8009D4617F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7BB09075D54A99B83C25DFDB /* Assets.xcassets */; };
 		996FB990588EFE36A32062CB /* ImportTransactionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF17D76270573322DD958E1D /* ImportTransactionIntent.swift */; };
 		9C65AFEC108C23FDBF7F455F /* SyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 022E7AC1A8F36B3995A2CA2E /* SyncService.swift */; };
 		9F26E72352DD14DC62E1195D /* CurrencyFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0472C45E0D7A3EA1DB74DCBE /* CurrencyFormatter.swift */; };
@@ -49,6 +50,7 @@
 		5BAAA7B32F8A1BBC4D16A568 /* Category.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Category.swift; sourceTree = "<group>"; };
 		5D70302AACD3BAAB5A80952D /* CategoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryListView.swift; sourceTree = "<group>"; };
 		6C4AE335C560EA68596D80D3 /* ExpenseRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseRowView.swift; sourceTree = "<group>"; };
+		7BB09075D54A99B83C25DFDB /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		86E589227AD0811E892B818F /* ExpenseTrackerShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseTrackerShortcuts.swift; sourceTree = "<group>"; };
 		95AA94A22A682C314EFCBFEC /* ApplePaySetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplePaySetupView.swift; sourceTree = "<group>"; };
 		9EE89E8EEEE4A682742B4ED2 /* CategoryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryViewModel.swift; sourceTree = "<group>"; };
@@ -206,6 +208,7 @@
 		E38F2C82473CC4C2FA574079 /* ExpenseTracker */ = {
 			isa = PBXGroup;
 			children = (
+				7BB09075D54A99B83C25DFDB /* Assets.xcassets */,
 				CF2F6AE910D81C2C05B7D56F /* ExpenseTrackerApp.swift */,
 				EAF35A88661C2C25280D8DF3 /* Info.plist */,
 				0826A84D1AE32E6916BD25E8 /* Database */,
@@ -227,6 +230,7 @@
 			buildConfigurationList = D7216D6AA501E6BB769D4995 /* Build configuration list for PBXNativeTarget "ExpenseTracker" */;
 			buildPhases = (
 				38F7F2BFF52A041C3B0EEC03 /* Sources */,
+				4756DB68F54EC8BD6B64F4D2 /* Resources */,
 				3A90A877BE7F15F58CB43D84 /* Frameworks */,
 			);
 			buildRules = (
@@ -250,6 +254,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
+					3513847C6F92D3754D258074 = {
+						DevelopmentTeam = 5H73XF9FU6;
+					};
 				};
 			};
 			buildConfigurationList = 77CF17364857E655D9A461FA /* Build configuration list for PBXProject "ExpenseTracker" */;
@@ -273,6 +280,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		4756DB68F54EC8BD6B64F4D2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7A73343DACE1BE8009D4617F /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		38F7F2BFF52A041C3B0EEC03 /* Sources */ = {
@@ -379,6 +397,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5H73XF9FU6;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ExpenseTracker/Info.plist;
 				INFOPLIST_GENERATION_MODE = GeneratedFile;
@@ -401,6 +420,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5H73XF9FU6;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ExpenseTracker/Info.plist;
 				INFOPLIST_GENERATION_MODE = GeneratedFile;

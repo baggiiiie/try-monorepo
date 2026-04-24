@@ -32,6 +32,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ydai.ExpenseTracker
+        DEVELOPMENT_TEAM: 5H73XF9FU6
         INFOPLIST_GENERATION_MODE: GeneratedFile
         MARKETING_VERSION: "0.0.1"
         CURRENT_PROJECT_VERSION: 1
