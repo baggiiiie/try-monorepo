@@ -14,6 +14,7 @@ setup_test_db() {
 
 start_test_server() {
     SERVER_PORT=$(shuf -i 10000-60000 -n 1 2>/dev/null || echo $((RANDOM % 50000 + 10000)))
+    export EXPENSE_SYNC_SECRET="test-secret-$(date +%s)-$RANDOM"
     $EXPENSE serve --port "$SERVER_PORT" --db "$EXPENSE_DB" &
     SERVER_PID=$!
     export EXPENSE_API="http://localhost:$SERVER_PORT"
@@ -23,6 +24,12 @@ start_test_server() {
     done
     echo "FAIL: server didn't start on port $SERVER_PORT"
     exit 1
+}
+
+# curl wrapper that injects the sync secret on every API call. All e2e tests
+# should use this instead of bare `curl` so the auth header is always set.
+api_curl() {
+    curl -s -H "Authorization: Bearer ${EXPENSE_SYNC_SECRET:-}" "$@"
 }
 
 cleanup() {
@@ -64,7 +71,7 @@ assert_json_contains() {
 assert_http_status() {
     local method="$1" url="$2" expected="$3"
     shift 3
-    status=$(curl -s -o /dev/null -w '%{http_code}' -X "$method" "$@" "$EXPENSE_API$url")
+    status=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${EXPENSE_SYNC_SECRET:-}" -X "$method" "$@" "$EXPENSE_API$url")
     if [[ "$status" != "$expected" ]]; then
         echo "FAIL: $method $url returned $status, expected $expected"
         echo "  at: ${BASH_SOURCE[1]}:${BASH_LINENO[0]}"

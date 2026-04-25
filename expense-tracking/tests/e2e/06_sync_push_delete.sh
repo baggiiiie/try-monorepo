@@ -6,12 +6,12 @@ source "$(dirname "$0")/../helpers.sh"
 setup_test_db
 start_test_server
 
-pull_response=$(curl -s "$EXPENSE_API/api/sync/pull?since=0")
+pull_response=$(api_curl "$EXPENSE_API/api/sync/pull?since=0")
 food_id=$(echo "$pull_response" | jq -r '.categories[] | select(.name == "Food & Dining") | .id')
 client_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
 updated_at=$(date +%s)
 
-after_create=$(curl -s -X POST "$EXPENSE_API/api/sync/push" \
+after_create=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
     -d "{
         \"expenses\": [{
@@ -30,7 +30,7 @@ assert_json_contains "$after_create" '.expenses | length' "1"
 
 # Re-push the same record as deleted.
 delete_marker=$((updated_at + 1))
-after_delete=$(curl -s -X POST "$EXPENSE_API/api/sync/push" \
+after_delete=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
     -d "{
         \"expenses\": [{
@@ -55,7 +55,7 @@ fi
 cli_list=$($EXPENSE list --json)
 assert_json_contains "$cli_list" '.count' "0"
 
-pull_after_delete=$(curl -s "$EXPENSE_API/api/sync/pull?since=0")
+pull_after_delete=$(api_curl "$EXPENSE_API/api/sync/pull?since=0")
 deleted=$(echo "$pull_after_delete" | jq --arg client_id "$client_id" '[.expenses[] | select(.client_id == $client_id)] | length')
 assert_equals "$deleted" "1"
 

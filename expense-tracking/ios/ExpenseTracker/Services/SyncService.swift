@@ -23,6 +23,10 @@ final class SyncService: ObservableObject {
             lastSyncError = "Server URL not configured"
             return
         }
+        guard preferences.hasSyncSecret else {
+            lastSyncError = "Sync secret not configured. Run `expense secret show` on the server and paste the value into Settings."
+            return
+        }
 
         isSyncing = true
         lastSyncError = nil
@@ -79,6 +83,14 @@ private final class SyncPreferences {
     var lastPullAt: Int64 {
         get { Int64(UserDefaults.standard.integer(forKey: AppPreferenceKey.lastPullAt)) }
         set { UserDefaults.standard.set(newValue, forKey: AppPreferenceKey.lastPullAt) }
+    }
+
+    var syncSecret: String? {
+        SyncSecretStore.current
+    }
+
+    var hasSyncSecret: Bool {
+        SyncSecretStore.hasSecret
     }
 }
 
@@ -376,6 +388,9 @@ private struct SyncAPIClient {
         request.setValue(requestID, forHTTPHeaderField: SyncHeader.requestID)
         request.setValue(AppBuild.version, forHTTPHeaderField: SyncHeader.clientBuild)
         request.setValue("ExpenseTracker/\(AppBuild.version)", forHTTPHeaderField: "User-Agent")
+        if let secret = preferences.syncSecret {
+            request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
+        }
     }
 
     private func perform<Response: Decodable>(_ request: URLRequest, requestID: String, responseType: Response.Type) async throws -> Response {

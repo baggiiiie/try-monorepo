@@ -8,6 +8,7 @@ import (
 
 	"expense-tracker/internal/api"
 	"expense-tracker/internal/app"
+	"expense-tracker/internal/auth"
 
 	"github.com/spf13/cobra"
 )
@@ -25,7 +26,22 @@ var serveCmd = &cobra.Command{
 		}
 		defer a.Close()
 
-		router := api.NewRouter(a)
+		secret, generated, err := auth.LoadOrCreate(secretPath)
+		if err != nil {
+			return fmt.Errorf("loading sync secret: %w", err)
+		}
+		if generated {
+			fmt.Fprintln(cmd.OutOrStdout(), "==============================================================")
+			fmt.Fprintln(cmd.OutOrStdout(), "Generated a new sync secret. Paste it into the iOS app Settings:")
+			fmt.Fprintln(cmd.OutOrStdout(), "")
+			fmt.Fprintln(cmd.OutOrStdout(), "  "+secret)
+			fmt.Fprintln(cmd.OutOrStdout(), "")
+			fmt.Fprintln(cmd.OutOrStdout(), "Stored at "+secretPath+" (mode 0600).")
+			fmt.Fprintln(cmd.OutOrStdout(), "Re-run `expense secret show` to print it again.")
+			fmt.Fprintln(cmd.OutOrStdout(), "==============================================================")
+		}
+
+		router := api.NewRouter(a, secret)
 
 		addr := fmt.Sprintf(":%d", port)
 		slog.Info("server.start", slog.String("addr", addr))

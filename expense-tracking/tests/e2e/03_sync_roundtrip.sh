@@ -16,7 +16,7 @@ start_test_server
 $EXPENSE add --amount 10.00 --category "Food & Dining" --merchant "Ya Kun"
 
 # Simulate iOS pull — fetch everything since epoch
-pull_response=$(curl -s "$EXPENSE_API/api/sync/pull?since=0")
+pull_response=$(api_curl "$EXPENSE_API/api/sync/pull?since=0")
 
 # Should contain the expense
 assert_json_contains "$pull_response" '.expenses | length' "1"
@@ -38,7 +38,7 @@ fi
 client_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
 food_id=$(echo "$pull_response" | jq -r '.categories[] | select(.name == "Food & Dining") | .id')
 
-push_response=$(curl -s -X POST "$EXPENSE_API/api/sync/push" \
+push_response=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
     -d "{
         \"expenses\": [{
@@ -66,7 +66,7 @@ assert_equals "$toast_box" "1"
 # Scenario 3: Deduplication — push same client_id again
 # ============================================================
 
-push_again=$(curl -s -X POST "$EXPENSE_API/api/sync/push" \
+push_again=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
     -d "{
         \"expenses\": [{
@@ -94,7 +94,7 @@ yakun_id=$(echo "$cli_list" | jq -r '[.expenses[] | select(.merchant == "Ya Kun"
 $EXPENSE delete "$yakun_id"
 
 # Pull since a recent timestamp — should include the soft-deleted record
-pull_response=$(curl -s "$EXPENSE_API/api/sync/pull?since=0")
+pull_response=$(api_curl "$EXPENSE_API/api/sync/pull?since=0")
 deleted=$(echo "$pull_response" | jq '[.expenses[] | select(.merchant == "Ya Kun")][0].deleted_at')
 
 if [[ "$deleted" == "null" || "$deleted" == "0" ]]; then

@@ -6,6 +6,10 @@ struct SettingsView: View {
     @AppStorage(AppPreferenceKey.currency) private var currency = "SGD"
     @AppStorage(AppPreferenceKey.timezone) private var timezone = "Asia/Singapore"
 
+    @State private var hasSyncSecret: Bool = SyncSecretStore.hasSecret
+    @State private var syncSecretInput: String = ""
+    @State private var showSecretField: Bool = !SyncSecretStore.hasSecret
+
     var body: some View {
         NavigationStack {
             Form {
@@ -14,6 +18,50 @@ struct SettingsView: View {
                         .textContentType(.URL)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+
+                    HStack {
+                        Text("Sync Secret")
+                        Spacer()
+                        Text(hasSyncSecret ? "•••• set" : "not set")
+                            .foregroundStyle(hasSyncSecret ? Color.secondary : Color.red)
+                    }
+
+                    if showSecretField {
+                        SecureField("Paste secret from server", text: $syncSecretInput)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+
+                        HStack {
+                            Button("Save Secret") {
+                                if SyncSecretStore.set(syncSecretInput) {
+                                    syncSecretInput = ""
+                                    hasSyncSecret = SyncSecretStore.hasSecret
+                                    showSecretField = false
+                                }
+                            }
+                            .disabled(syncSecretInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                            Spacer()
+
+                            if hasSyncSecret {
+                                Button("Cancel", role: .cancel) {
+                                    syncSecretInput = ""
+                                    showSecretField = false
+                                }
+                            }
+                        }
+                    } else {
+                        Button("Replace Secret") {
+                            showSecretField = true
+                        }
+                        if hasSyncSecret {
+                            Button("Clear Secret", role: .destructive) {
+                                SyncSecretStore.clear()
+                                hasSyncSecret = SyncSecretStore.hasSecret
+                                showSecretField = true
+                            }
+                        }
+                    }
                 }
 
                 Section("Sync") {
@@ -28,7 +76,7 @@ struct SettingsView: View {
                             }
                         }
                     }
-                    .disabled(syncService.isSyncing || serverURL.isEmpty)
+                    .disabled(syncService.isSyncing || serverURL.isEmpty || !hasSyncSecret)
 
                     if let lastSync = syncService.lastSyncTime {
                         HStack {

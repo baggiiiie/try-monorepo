@@ -6,12 +6,12 @@ source "$(dirname "$0")/../helpers.sh"
 setup_test_db
 start_test_server
 
-pull_response=$(curl -s "$EXPENSE_API/api/sync/pull?since=0")
+pull_response=$(api_curl "$EXPENSE_API/api/sync/pull?since=0")
 food_id=$(echo "$pull_response" | jq -r '.categories[] | select(.name == "Food & Dining") | .id')
 client_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
 updated_at=$(date +%s)
 
-first_push=$(curl -s -X POST "$EXPENSE_API/api/sync/push" \
+first_push=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
     -d "{
         \"expenses\": [{
@@ -28,7 +28,7 @@ first_push=$(curl -s -X POST "$EXPENSE_API/api/sync/push" \
 
 same_timestamp=$(echo "$first_push" | jq -r '.expenses[0].updated_at')
 
-second_push=$(curl -s -X POST "$EXPENSE_API/api/sync/push" \
+second_push=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
     -d "{
         \"expenses\": [{

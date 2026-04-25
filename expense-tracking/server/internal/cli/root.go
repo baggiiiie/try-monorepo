@@ -13,14 +13,15 @@ var (
 	application *app.App
 	dbPath      string
 	configPath  string
+	secretPath  string
 )
 
 var rootCmd = &cobra.Command{
 	Use:   "expense",
 	Short: "Expense tracker CLI",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// Skip app initialization for the serve command — it does its own bootstrap.
-		if cmd.Name() == "serve" || (cmd.Parent() != nil && cmd.Parent().Name() == "serve") {
+		// Skip app initialization for commands that don't need DB access.
+		if skipsAppInit(cmd) {
 			return nil
 		}
 		a, err := app.Open(dbPath, configPath)
@@ -48,8 +49,27 @@ func init() {
 		defaultConfig = "preferences.json"
 	}
 
+	defaultSecret := os.Getenv("EXPENSE_SECRET_FILE")
+	if defaultSecret == "" {
+		defaultSecret = "secret.json"
+	}
+
 	rootCmd.PersistentFlags().StringVar(&dbPath, "db", defaultDB, "path to SQLite database")
 	rootCmd.PersistentFlags().StringVar(&configPath, "config", defaultConfig, "path to preferences file")
+	rootCmd.PersistentFlags().StringVar(&secretPath, "secret-file", defaultSecret, "path to sync secret file")
+}
+
+// skipsAppInit reports whether cmd should bypass the persistent app/database
+// bootstrap. The serve command does its own bootstrap; the secret command
+// only touches the secret file.
+func skipsAppInit(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		switch c.Name() {
+		case "serve", "secret":
+			return true
+		}
+	}
+	return false
 }
 
 func Execute() error {

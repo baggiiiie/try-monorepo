@@ -12,7 +12,7 @@ local_category_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
 local_category_client_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
 expense_client_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
 
-initial_pull=$(curl -s "$EXPENSE_API/api/sync/pull?since=0")
+initial_pull=$(api_curl "$EXPENSE_API/api/sync/pull?since=0")
 assert_json_contains "$initial_pull" '.categories | length' "8"
 
 server_food_id_before=$(echo "$initial_pull" | jq -r '.categories[] | select(.name == "Food & Dining") | .id')
@@ -26,7 +26,7 @@ if [[ "$server_food_id_before" == "$local_category_id" ]]; then
     exit 1
 fi
 
-push_response=$(curl -s -X POST "$EXPENSE_API/api/sync/push" \
+push_response=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
     -d "{
         \"categories\": [{
@@ -69,11 +69,11 @@ assert_equals "$db_food_client_id" "$local_category_client_id"
 db_expense_category_id=$(sqlite3 "$EXPENSE_DB" "SELECT category_id FROM expenses WHERE client_id = '$expense_client_id';")
 assert_equals "$db_expense_category_id" "$local_category_id"
 
-final_pull=$(curl -s "$EXPENSE_API/api/sync/pull?since=0")
+final_pull=$(api_curl "$EXPENSE_API/api/sync/pull?since=0")
 final_food_count=$(echo "$final_pull" | jq '[.categories[] | select(.name == "Food & Dining" and (.deleted_at == null))] | length')
 assert_equals "$final_food_count" "1"
 
-push_again=$(curl -s -X POST "$EXPENSE_API/api/sync/push" \
+push_again=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
     -d "{
         \"categories\": [{

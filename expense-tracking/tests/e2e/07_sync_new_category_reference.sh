@@ -11,7 +11,7 @@ category_client_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
 expense_client_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
 updated_at=$(date +%s)
 
-push_response=$(curl -s -X POST "$EXPENSE_API/api/sync/push" \
+push_response=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
     -d "{
         \"categories\": [{
