@@ -17,4 +17,4 @@ VOLUME /data
 EXPOSE 8080
 
 ENTRYPOINT ["expense"]
-CMD ["serve", "--db", "/data/expense.db", "--config", "/data/preferences.json"]
+CMD ["serve", "--db", "/data/expense.db", "--config", "/data/preferences.json", "--secret-file", "/data/secret.json"]
