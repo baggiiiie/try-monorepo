@@ -18,7 +18,7 @@ var serveCmd = &cobra.Command{
 	Short: "Start the HTTP API server",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		port, _ := cmd.Flags().GetInt("port")
-		slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+		slog.SetDefault(slog.New(newServerLogHandler(os.Stdout)))
 
 		a, err := app.Open(dbPath, configPath)
 		if err != nil {
