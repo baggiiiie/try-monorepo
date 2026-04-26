@@ -12,6 +12,7 @@
 		1F2C749AC7E15D1053A6952D /* AddEditExpenseViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0825A8732885569D58632DF6 /* AddEditExpenseViewModel.swift */; };
 		202F7713026E9AA3673EBB02 /* ExpenseFeedViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0575614071B7B1335EDDE5 /* ExpenseFeedViewModel.swift */; };
 		263C22C7EB51538395C9BF12 /* ApplePaySetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95AA94A22A682C314EFCBFEC /* ApplePaySetupView.swift */; };
+		275A95592A5FB4AFB0857EA1 /* SyncStatusIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C46433CC7C4D552CEC0EF3C /* SyncStatusIndicator.swift */; };
 		27FEC86CF579BB9753580434 /* ExpenseRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C4AE335C560EA68596D80D3 /* ExpenseRowView.swift */; };
 		3550DDB01E97A08732BFBC90 /* ExpenseTrackerShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86E589227AD0811E892B818F /* ExpenseTrackerShortcuts.swift */; };
 		3EEDD93648D5E0D189D14136 /* DefaultCategories.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BB5B6488ED43C125E99C70 /* DefaultCategories.swift */; };
@@ -33,6 +34,8 @@
 		D50A0B6FE213EA481EA7871A /* Expense.swift in Sources */ = {isa = PBXBuildFile; fileRef = 203AAEC6C4CC2DB77063BBD8 /* Expense.swift */; };
 		D8405699FD5BB17FE0A09F96 /* ExpenseTrackerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF2F6AE910D81C2C05B7D56F /* ExpenseTrackerApp.swift */; };
 		EF3C9366818C795E584B38C1 /* CategoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EE89E8EEEE4A682742B4ED2 /* CategoryViewModel.swift */; };
+		F17F5C913E4FD91858608229 /* SyncAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4B58AECA34818297B5347B9 /* SyncAPIClient.swift */; };
+		F1F2AC171D9031D115522DA7 /* SyncRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70691FEFE59883E7EBB1524F /* SyncRepository.swift */; };
 		F2B4C8140B59AC95606B094B /* HapticManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 552B9E2761F20669F6060E22 /* HapticManager.swift */; };
 /* End PBXBuildFile section */
 
@@ -51,14 +54,17 @@
 		5BAAA7B32F8A1BBC4D16A568 /* Category.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Category.swift; sourceTree = "<group>"; };
 		5D70302AACD3BAAB5A80952D /* CategoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryListView.swift; sourceTree = "<group>"; };
 		6C4AE335C560EA68596D80D3 /* ExpenseRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseRowView.swift; sourceTree = "<group>"; };
+		70691FEFE59883E7EBB1524F /* SyncRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncRepository.swift; sourceTree = "<group>"; };
 		7BB09075D54A99B83C25DFDB /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		86E589227AD0811E892B818F /* ExpenseTrackerShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseTrackerShortcuts.swift; sourceTree = "<group>"; };
 		95AA94A22A682C314EFCBFEC /* ApplePaySetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplePaySetupView.swift; sourceTree = "<group>"; };
+		9C46433CC7C4D552CEC0EF3C /* SyncStatusIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStatusIndicator.swift; sourceTree = "<group>"; };
 		9EE89E8EEEE4A682742B4ED2 /* CategoryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryViewModel.swift; sourceTree = "<group>"; };
 		AD1FF63545EC37F6983ABB2C /* WalletSuggestionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletSuggestionsView.swift; sourceTree = "<group>"; };
 		B9BB5B6488ED43C125E99C70 /* DefaultCategories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultCategories.swift; sourceTree = "<group>"; };
 		BEB1FDC92EBDABD4CDE277A0 /* AddEditExpenseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddEditExpenseView.swift; sourceTree = "<group>"; };
 		C3A6FF7C4CA11E5E7D53AC85 /* AppDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabase.swift; sourceTree = "<group>"; };
+		C4B58AECA34818297B5347B9 /* SyncAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncAPIClient.swift; sourceTree = "<group>"; };
 		CB714AD49D208314E26EF4D2 /* WalletSuggestionsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletSuggestionsViewModel.swift; sourceTree = "<group>"; };
 		CD62A2F30FED1F11D8B66656 /* SyncSecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncSecretStore.swift; sourceTree = "<group>"; };
 		CF2F6AE910D81C2C05B7D56F /* ExpenseTrackerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseTrackerApp.swift; sourceTree = "<group>"; };
@@ -118,6 +124,8 @@
 		2550F01959B7629D6F49FEA8 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				C4B58AECA34818297B5347B9 /* SyncAPIClient.swift */,
+				70691FEFE59883E7EBB1524F /* SyncRepository.swift */,
 				CD62A2F30FED1F11D8B66656 /* SyncSecretStore.swift */,
 				022E7AC1A8F36B3995A2CA2E /* SyncService.swift */,
 			);
@@ -182,6 +190,7 @@
 		B1BD05082CCEC0DA829B9453 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				9C46433CC7C4D552CEC0EF3C /* SyncStatusIndicator.swift */,
 				C2699EC3FB2506A4E9A30EE7 /* AddEditExpense */,
 				BE2240E5157687A57E0E126B /* Categories */,
 				A73396540554E68D19FEE302 /* ExpenseFeed */,
@@ -320,8 +329,11 @@
 				996FB990588EFE36A32062CB /* ImportTransactionIntent.swift in Sources */,
 				CCE4DC96A8C46B56FD20C0A6 /* Preferences.swift in Sources */,
 				597B1F6D7E3E96A8253DE390 /* SettingsView.swift in Sources */,
+				F17F5C913E4FD91858608229 /* SyncAPIClient.swift in Sources */,
+				F1F2AC171D9031D115522DA7 /* SyncRepository.swift in Sources */,
 				50A6349A9A38EB6E4380B491 /* SyncSecretStore.swift in Sources */,
 				9C65AFEC108C23FDBF7F455F /* SyncService.swift in Sources */,
+				275A95592A5FB4AFB0857EA1 /* SyncStatusIndicator.swift in Sources */,
 				162F373C6D9536C0074015E2 /* WalletSuggestion.swift in Sources */,
 				BBFAF53790F6B974FDB11E3C /* WalletSuggestionsView.swift in Sources */,
 				B48B59B2EC534750D3DF7AE6 /* WalletSuggestionsViewModel.swift in Sources */,

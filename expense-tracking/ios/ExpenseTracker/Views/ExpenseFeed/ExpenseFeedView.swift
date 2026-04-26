@@ -83,16 +83,10 @@ struct ExpenseFeedView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    if syncService.isSyncing {
-                        ProgressView()
-                    } else if let error = syncService.lastSyncError {
-                        Image(systemName: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90")
-                            .foregroundStyle(.red)
-                            .help(error)
-                    } else if syncService.lastSyncTime != nil {
-                        Image(systemName: "checkmark.icloud")
-                            .foregroundStyle(.green)
-                    }
+                    SyncStatusIndicator(
+                        status: syncService.status,
+                        lastSucceededAt: syncService.lastSucceededAt
+                    )
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button { showingAddExpense = true } label: {
@@ -101,7 +95,16 @@ struct ExpenseFeedView: View {
                 }
             }
             .refreshable {
+                // Safe to await: SyncService runs the work in an unstructured
+                // task, so a cancellation of this Task (e.g. user scrolls away
+                // from the refresh control) won't abort the request.
                 await syncService.sync()
+                refreshViewModels()
+            }
+            .onChange(of: syncService.lastSucceededAt) { _, newValue in
+                // After every successful sync, refresh local view models so
+                // newly pulled data appears without requiring a manual reload.
+                guard newValue != nil else { return }
                 refreshViewModels()
             }
             .sheet(isPresented: $showingAddExpense) {
@@ -113,10 +116,6 @@ struct ExpenseFeedView: View {
                     .onDisappear(perform: refreshViewModels)
             }
             .onAppear(perform: refreshViewModels)
-            .task {
-                await syncService.sync()
-                refreshViewModels()
-            }
         }
     }
 

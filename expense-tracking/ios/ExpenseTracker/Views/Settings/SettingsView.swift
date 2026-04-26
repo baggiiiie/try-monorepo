@@ -10,6 +10,10 @@ struct SettingsView: View {
     @State private var syncSecretInput: String = ""
     @State private var showSecretField: Bool = !SyncSecretStore.hasSecret
 
+    private var trimmedServerURL: String {
+        serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -37,6 +41,8 @@ struct SettingsView: View {
                                     syncSecretInput = ""
                                     hasSyncSecret = SyncSecretStore.hasSecret
                                     showSecretField = false
+                                    // New credentials available: trigger a sync now.
+                                    Task { await syncService.sync() }
                                 }
                             }
                             .disabled(syncSecretInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -56,6 +62,9 @@ struct SettingsView: View {
                         }
                         if hasSyncSecret {
                             Button("Clear Secret", role: .destructive) {
+                                // Any in-flight sync is using the secret we're about
+                                // to remove, so cancel it deliberately.
+                                syncService.cancel()
                                 SyncSecretStore.clear()
                                 hasSyncSecret = SyncSecretStore.hasSecret
                                 showSecretField = true
@@ -71,14 +80,14 @@ struct SettingsView: View {
                         HStack {
                             Text("Sync Now")
                             Spacer()
-                            if syncService.isSyncing {
+                            if syncService.status == .syncing {
                                 ProgressView()
                             }
                         }
                     }
-                    .disabled(syncService.isSyncing || serverURL.isEmpty || !hasSyncSecret)
+                    .disabled(syncService.status == .syncing || trimmedServerURL.isEmpty || !hasSyncSecret)
 
-                    if let lastSync = syncService.lastSyncTime {
+                    if let lastSync = syncService.lastSucceededAt {
                         HStack {
                             Text("Last Synced")
                             Spacer()
@@ -87,11 +96,13 @@ struct SettingsView: View {
                         }
                     }
 
-                    if let error = syncService.lastSyncError {
+                    if case .failed(let error) = syncService.status,
+                       error.isUserVisible,
+                       let message = error.errorDescription {
                         HStack {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.red)
-                            Text(error)
+                            Text(message)
                                 .font(.caption)
                                 .foregroundStyle(.red)
                         }
