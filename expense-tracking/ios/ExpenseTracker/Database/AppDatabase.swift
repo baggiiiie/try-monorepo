@@ -160,6 +160,60 @@ struct AppDatabase {
             )
         }
 
+        migrator.registerMigration("v7-align-ids-with-client-ids") { db in
+            // Path C: collapse to a single id per row by snapping every row's
+            // id back to its (immutable, client-minted) client_id. Existing
+            // FK columns still reference the old server-assigned id, so
+            // repoint them first, then update the parent ids. defer_foreign_keys
+            // tolerates the intermediate violations until COMMIT.
+            try db.execute(sql: "PRAGMA defer_foreign_keys = ON")
+
+            try db.execute(sql: """
+                UPDATE expenses
+                SET category_id = COALESCE(
+                    (SELECT client_id FROM categories WHERE categories.id = expenses.category_id),
+                    expenses.category_id
+                )
+                """)
+            try db.execute(sql: """
+                UPDATE recurring_expenses
+                SET category_id = COALESCE(
+                    (SELECT client_id FROM categories WHERE categories.id = recurring_expenses.category_id),
+                    recurring_expenses.category_id
+                )
+                """)
+            try db.execute(sql: """
+                UPDATE recurring_expense_runs
+                SET expense_id = COALESCE(
+                    (SELECT client_id FROM expenses WHERE expenses.id = recurring_expense_runs.expense_id),
+                    recurring_expense_runs.expense_id
+                )
+                """)
+            try db.execute(sql: """
+                UPDATE recurring_expense_runs
+                SET recurring_expense_id = COALESCE(
+                    (SELECT client_id FROM recurring_expenses WHERE recurring_expenses.id = recurring_expense_runs.recurring_expense_id),
+                    recurring_expense_runs.recurring_expense_id
+                )
+                """)
+            // wallet_suggestions.linked_expense_id is a soft reference (no FK
+            // constraint) but still must be repointed to keep the data sound.
+            try db.execute(sql: """
+                UPDATE wallet_suggestions
+                SET linked_expense_id = (
+                    SELECT client_id FROM expenses WHERE expenses.id = wallet_suggestions.linked_expense_id
+                )
+                WHERE linked_expense_id IS NOT NULL
+                  AND EXISTS (
+                    SELECT 1 FROM expenses WHERE expenses.id = wallet_suggestions.linked_expense_id
+                  )
+                """)
+
+            try db.execute(sql: "UPDATE categories SET id = client_id WHERE id != client_id")
+            try db.execute(sql: "UPDATE expenses SET id = client_id WHERE id != client_id")
+            try db.execute(sql: "UPDATE recurring_expenses SET id = client_id WHERE id != client_id")
+        }
+
         return migrator
     }
 
