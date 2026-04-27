@@ -30,20 +30,35 @@ struct ExpenseTrackerApp: App {
                         Label("Categories", systemImage: "tag")
                     }
 
+                RecurringExpensesView(database: database)
+                    .tabItem {
+                        Label("Recurring", systemImage: "repeat")
+                    }
+
                 SettingsView(syncService: syncService)
                     .tabItem {
                         Label("Settings", systemImage: "gear")
                     }
             }
             .task {
+                materializeDueRecurringExpenses()
                 // App-level initial sync. Lives across tab switches and is
                 // immune to view-cycle cancellation.
                 await syncService.sync()
             }
             .onChange(of: scenePhase) { _, newPhase in
                 guard newPhase == .active else { return }
+                materializeDueRecurringExpenses()
                 Task { await syncService.sync() }
             }
+        }
+    }
+
+    private func materializeDueRecurringExpenses() {
+        do {
+            try database.recurringExpenseRepository.materializeDueExpenses()
+        } catch {
+            print("Error materializing recurring expenses: \(error)")
         }
     }
 }

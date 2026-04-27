@@ -24,6 +24,10 @@ struct AppDatabase {
         WalletSuggestionRepository(dbQueue: dbQueue)
     }
 
+    var recurringExpenseRepository: RecurringExpenseRepository {
+        RecurringExpenseRepository(dbQueue: dbQueue)
+    }
+
     init(path: String) throws {
         var config = Configuration()
         config.foreignKeysEnabled = true
@@ -117,6 +121,45 @@ struct AppDatabase {
             }
         }
 
+        migrator.registerMigration("v6-recurring-expenses") { db in
+            try db.create(table: "recurring_expenses") { t in
+                t.column("id", .text).primaryKey()
+                t.column("client_id", .text).notNull().unique()
+                t.column("amount", .integer).notNull()
+                t.column("currency", .text).notNull()
+                t.column("category_id", .text).notNull().references("categories")
+                t.column("description", .text).notNull().defaults(to: "")
+                t.column("merchant", .text).notNull().defaults(to: "")
+                t.column("frequency", .text).notNull()
+                t.column("day_of_month", .integer)
+                t.column("start_date", .integer).notNull()
+                t.column("end_date", .integer)
+                t.column("next_run_date", .integer).notNull()
+                t.column("last_run_date", .integer)
+                t.column("created_at", .integer).notNull()
+                t.column("updated_at", .integer).notNull()
+                t.column("deleted_at", .integer)
+            }
+
+            try db.create(index: "idx_recurring_expenses_next_run_date", on: "recurring_expenses", columns: ["next_run_date"])
+            try db.create(index: "idx_recurring_expenses_category_id", on: "recurring_expenses", columns: ["category_id"])
+
+            try db.create(table: "recurring_expense_runs") { t in
+                t.column("id", .text).primaryKey()
+                t.column("recurring_expense_id", .text).notNull().references("recurring_expenses")
+                t.column("expense_id", .text).notNull().references("expenses")
+                t.column("occurrence_date", .integer).notNull()
+                t.column("created_at", .integer).notNull()
+            }
+
+            try db.create(
+                index: "idx_recurring_expense_runs_unique_occurrence",
+                on: "recurring_expense_runs",
+                columns: ["recurring_expense_id", "occurrence_date"],
+                unique: true
+            )
+        }
+
         return migrator
     }
 
@@ -159,6 +202,18 @@ struct ExpenseDraft {
     let merchant: String
     let date: Int64
     let source: ExpenseSource
+}
+
+struct RecurringExpenseDraft {
+    let amount: Int64
+    let currency: String
+    let categoryId: String
+    let description: String
+    let merchant: String
+    let frequency: RecurringFrequency
+    let dayOfMonth: Int?
+    let startDate: Int64
+    let endDate: Int64?
 }
 
 struct CategoryRepository {
@@ -303,5 +358,285 @@ struct WalletSuggestionRepository {
                 arguments: [WalletSuggestionStatus.dismissed.rawValue, suggestion.id]
             )
         }
+    }
+}
+
+struct RecurringExpenseWithCategory: Identifiable {
+    let recurringExpense: RecurringExpense
+    let categoryName: String
+    let categoryIcon: String
+
+    var id: String { recurringExpense.id }
+}
+
+struct RecurringExpenseRepository {
+    let dbQueue: DatabaseQueue
+
+    func fetchActive() throws -> [RecurringExpenseWithCategory] {
+        try dbQueue.read { db in
+            let recurringExpenses = try RecurringExpense
+                .filter(RecurringExpense.Columns.deletedAt == nil)
+                .order(RecurringExpense.Columns.nextRunDate, RecurringExpense.Columns.createdAt.desc)
+                .fetchAll(db)
+
+            let categoryIds = Set(recurringExpenses.map(\.categoryId))
+            let categories = try Category
+                .filter(categoryIds.contains(Category.Columns.id))
+                .fetchAll(db)
+            let categoryMap = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+
+            return recurringExpenses.map { recurringExpense in
+                let category = categoryMap[recurringExpense.categoryId]
+                return RecurringExpenseWithCategory(
+                    recurringExpense: recurringExpense,
+                    categoryName: category?.name ?? "Unknown",
+                    categoryIcon: category?.displayIcon ?? "repeat"
+                )
+            }
+        }
+    }
+
+    func save(_ draft: RecurringExpenseDraft, editing existingRecurringExpense: RecurringExpense?) throws {
+        let now = Int64(Date().timeIntervalSince1970)
+        let nextRunDate = RecurringExpenseSchedule.nextRunTimestamp(
+            after: nil,
+            frequency: draft.frequency,
+            dayOfMonth: draft.dayOfMonth,
+            startDate: AppDateFormatter.date(fromUnixTimestamp: draft.startDate)
+        )
+
+        try dbQueue.write { db in
+            if var existingRecurringExpense {
+                existingRecurringExpense.amount = draft.amount
+                existingRecurringExpense.currency = draft.currency
+                existingRecurringExpense.categoryId = draft.categoryId
+                existingRecurringExpense.description = draft.description
+                existingRecurringExpense.merchant = draft.merchant
+                existingRecurringExpense.frequency = draft.frequency.rawValue
+                existingRecurringExpense.dayOfMonth = draft.dayOfMonth
+                existingRecurringExpense.startDate = draft.startDate
+                existingRecurringExpense.endDate = draft.endDate
+                existingRecurringExpense.nextRunDate = nextRunDate
+                existingRecurringExpense.updatedAt = now
+                try existingRecurringExpense.update(db)
+                return
+            }
+
+            let recurringExpense = RecurringExpense(
+                id: UUID().uuidString,
+                clientId: UUID().uuidString,
+                amount: draft.amount,
+                currency: draft.currency,
+                categoryId: draft.categoryId,
+                description: draft.description,
+                merchant: draft.merchant,
+                frequency: draft.frequency.rawValue,
+                dayOfMonth: draft.dayOfMonth,
+                startDate: draft.startDate,
+                endDate: draft.endDate,
+                nextRunDate: nextRunDate,
+                lastRunDate: nil,
+                createdAt: now,
+                updatedAt: now,
+                deletedAt: nil
+            )
+            try recurringExpense.insert(db)
+        }
+    }
+
+    func softDelete(_ recurringExpense: RecurringExpense) throws {
+        let deletedAt = Int64(Date().timeIntervalSince1970)
+
+        try dbQueue.write { db in
+            var recurringExpense = recurringExpense
+            recurringExpense.deletedAt = deletedAt
+            recurringExpense.updatedAt = deletedAt
+            try recurringExpense.update(db)
+        }
+    }
+
+    @discardableResult
+    func materializeDueExpenses(now: Date = Date(), calendar: Calendar = .current) throws -> Int {
+        let today = calendar.startOfDay(for: now)
+        let todayTimestamp = AppDateFormatter.unixTimestamp(from: today)
+        var createdCount = 0
+
+        try dbQueue.write { db in
+            let dueRecurringExpenses = try RecurringExpense
+                .filter(RecurringExpense.Columns.deletedAt == nil)
+                .filter(RecurringExpense.Columns.nextRunDate <= todayTimestamp)
+                .filter(sql: "end_date IS NULL OR end_date >= next_run_date")
+                .fetchAll(db)
+
+            for recurringExpense in dueRecurringExpenses {
+                var workingRecurringExpense = recurringExpense
+                var nextRunDate = AppDateFormatter.date(fromUnixTimestamp: workingRecurringExpense.nextRunDate)
+                let frequency = RecurringFrequency(rawValue: workingRecurringExpense.frequency) ?? .monthly
+                var guardCount = 0
+
+                while calendar.startOfDay(for: nextRunDate) <= today && guardCount < 120 {
+                    let occurrenceDate = calendar.startOfDay(for: nextRunDate)
+                    let occurrenceTimestamp = AppDateFormatter.unixTimestamp(from: occurrenceDate)
+
+                    if let endDateTimestamp = workingRecurringExpense.endDate,
+                       occurrenceTimestamp > endDateTimestamp {
+                        break
+                    }
+
+                    let existingRunCount = try RecurringExpenseRun
+                        .filter(Column("recurring_expense_id") == workingRecurringExpense.id)
+                        .filter(Column("occurrence_date") == occurrenceTimestamp)
+                        .fetchCount(db)
+
+                    if existingRunCount == 0 {
+                        let expense = Expense(
+                            id: UUID().uuidString,
+                            clientId: UUID().uuidString,
+                            amount: workingRecurringExpense.amount,
+                            currency: workingRecurringExpense.currency,
+                            categoryId: workingRecurringExpense.categoryId,
+                            description: workingRecurringExpense.description,
+                            merchant: workingRecurringExpense.merchant,
+                            date: occurrenceTimestamp,
+                            source: ExpenseSource.recurring.rawValue,
+                            createdAt: Int64(Date().timeIntervalSince1970),
+                            updatedAt: Int64(Date().timeIntervalSince1970),
+                            deletedAt: nil
+                        )
+                        try expense.insert(db)
+
+                        let run = RecurringExpenseRun(
+                            id: UUID().uuidString,
+                            recurringExpenseId: workingRecurringExpense.id,
+                            expenseId: expense.id,
+                            occurrenceDate: occurrenceTimestamp,
+                            createdAt: Int64(Date().timeIntervalSince1970)
+                        )
+                        try run.insert(db)
+                        createdCount += 1
+                    }
+
+                    workingRecurringExpense.lastRunDate = occurrenceTimestamp
+                    nextRunDate = RecurringExpenseSchedule.nextRunDate(
+                        after: occurrenceDate,
+                        frequency: frequency,
+                        dayOfMonth: workingRecurringExpense.dayOfMonth,
+                        startDate: AppDateFormatter.date(fromUnixTimestamp: workingRecurringExpense.startDate),
+                        calendar: calendar
+                    )
+                    workingRecurringExpense.nextRunDate = AppDateFormatter.unixTimestamp(from: nextRunDate)
+                    guardCount += 1
+                }
+
+                workingRecurringExpense.updatedAt = Int64(Date().timeIntervalSince1970)
+                try workingRecurringExpense.update(db)
+            }
+        }
+
+        return createdCount
+    }
+}
+
+enum RecurringExpenseSchedule {
+    static func nextRunTimestamp(
+        after previousRunDate: Date?,
+        frequency: RecurringFrequency,
+        dayOfMonth: Int?,
+        startDate: Date,
+        calendar: Calendar = .current
+    ) -> Int64 {
+        let date = nextRunDateValue(
+            after: previousRunDate,
+            frequency: frequency,
+            dayOfMonth: dayOfMonth,
+            startDate: startDate,
+            calendar: calendar
+        )
+        return AppDateFormatter.unixTimestamp(from: date)
+    }
+
+    static func nextRunDate(
+        after previousRunDate: Date?,
+        frequency: RecurringFrequency,
+        dayOfMonth: Int?,
+        startDate: Date,
+        calendar: Calendar = .current
+    ) -> Date {
+        nextRunDateValue(
+            after: previousRunDate,
+            frequency: frequency,
+            dayOfMonth: dayOfMonth,
+            startDate: startDate,
+            calendar: calendar
+        )
+    }
+
+    private static func nextRunDateValue(
+        after previousRunDate: Date?,
+        frequency: RecurringFrequency,
+        dayOfMonth: Int?,
+        startDate: Date,
+        calendar: Calendar
+    ) -> Date {
+        let normalizedStartDate = calendar.startOfDay(for: startDate)
+
+        guard let previousRunDate else {
+            if frequency == .monthly {
+                return firstMonthlyRunDate(onOrAfter: normalizedStartDate, dayOfMonth: dayOfMonth, calendar: calendar)
+            }
+
+            return normalizedStartDate
+        }
+
+        switch frequency {
+        case .weekly:
+            return calendar.date(byAdding: .weekOfYear, value: 1, to: calendar.startOfDay(for: previousRunDate)) ?? normalizedStartDate
+        case .monthly:
+            return nextMonthlyRunDate(after: previousRunDate, dayOfMonth: dayOfMonth, calendar: calendar)
+        case .yearly:
+            return calendar.date(byAdding: .year, value: 1, to: calendar.startOfDay(for: previousRunDate)) ?? normalizedStartDate
+        }
+    }
+
+    private static func nextMonthlyRunDate(after previousRunDate: Date, dayOfMonth: Int?, calendar: Calendar) -> Date {
+        let previousStart = calendar.startOfDay(for: previousRunDate)
+        let targetDay = max(1, min(dayOfMonth ?? calendar.component(.day, from: previousStart), 31))
+        guard let nextMonth = calendar.date(byAdding: .month, value: 1, to: previousStart) else {
+            return previousStart
+        }
+
+        let components = calendar.dateComponents([.year, .month], from: nextMonth)
+        let daysInMonth = calendar.range(of: .day, in: .month, for: nextMonth)?.count ?? targetDay
+
+        var nextComponents = DateComponents()
+        nextComponents.year = components.year
+        nextComponents.month = components.month
+        nextComponents.day = min(targetDay, daysInMonth)
+        return calendar.date(from: nextComponents) ?? nextMonth
+    }
+
+    private static func firstMonthlyRunDate(onOrAfter startDate: Date, dayOfMonth: Int?, calendar: Calendar) -> Date {
+        let targetDay = max(1, min(dayOfMonth ?? calendar.component(.day, from: startDate), 31))
+        let currentMonthCandidate = monthlyRunDate(inMonthOf: startDate, targetDay: targetDay, calendar: calendar)
+
+        if currentMonthCandidate >= startDate {
+            return currentMonthCandidate
+        }
+
+        guard let nextMonth = calendar.date(byAdding: .month, value: 1, to: startDate) else {
+            return startDate
+        }
+        return monthlyRunDate(inMonthOf: nextMonth, targetDay: targetDay, calendar: calendar)
+    }
+
+    private static func monthlyRunDate(inMonthOf date: Date, targetDay: Int, calendar: Calendar) -> Date {
+        let components = calendar.dateComponents([.year, .month], from: date)
+        let daysInMonth = calendar.range(of: .day, in: .month, for: date)?.count ?? targetDay
+
+        var runComponents = DateComponents()
+        runComponents.year = components.year
+        runComponents.month = components.month
+        runComponents.day = min(targetDay, daysInMonth)
+        return calendar.date(from: runComponents) ?? calendar.startOfDay(for: date)
     }
 }

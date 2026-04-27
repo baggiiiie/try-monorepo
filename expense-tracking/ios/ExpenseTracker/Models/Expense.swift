@@ -9,6 +9,7 @@ enum RecordSyncStatus: String {
 enum ExpenseSource: String {
     case manual
     case shortcut
+    case recurring
 }
 
 struct Expense: Codable, Identifiable, FetchableRecord, PersistableRecord {
