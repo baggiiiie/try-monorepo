@@ -337,6 +337,18 @@ struct ExpenseRepository {
             }
         }
     }
+
+    func softDelete(_ expense: Expense) throws {
+        let deletedAt = Int64(Date().timeIntervalSince1970)
+
+        try dbQueue.write { db in
+            var expense = expense
+            expense.deletedAt = deletedAt
+            expense.updatedAt = deletedAt
+            expense.syncStatus = RecordSyncStatus.pendingPush.rawValue
+            try expense.update(db)
+        }
+    }
 }
 
 struct WalletSuggestionRepository {

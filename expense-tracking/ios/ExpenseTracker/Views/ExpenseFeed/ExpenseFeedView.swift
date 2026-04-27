@@ -17,13 +17,17 @@ struct ExpenseFeedView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVStack(spacing: 0) {
+            List {
+                Section {
                     MonthlyTotalHeader(total: viewModel.monthlyTotal)
                         .padding(.top, 28)
                         .padding(.bottom, 20)
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
+                }
 
-                    if suggestionsViewModel.pendingCount > 0 {
+                if suggestionsViewModel.pendingCount > 0 {
+                    Section {
                         NavigationLink {
                             WalletSuggestionsView(database: database)
                         } label: {
@@ -36,45 +40,48 @@ struct ExpenseFeedView: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
-                            .padding()
                         }
                         .tint(.primary)
+                        .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
                     }
+                }
 
-                    ForEach(viewModel.groupedExpenses, id: \.date) { group in
-                        VStack(spacing: 0) {
-                            HStack {
-                                Text(group.displayDate)
-                                Spacer()
-                                Text(group.dailyTotal)
+                ForEach(viewModel.groupedExpenses, id: \.date) { group in
+                    Section {
+                        ForEach(group.expenses) { item in
+                            Button {
+                                expenseToEdit = item.expense
+                            } label: {
+                                ExpenseRowView(
+                                    expense: item.expense,
+                                    categoryName: item.categoryName,
+                                    categoryIcon: item.categoryIcon,
+                                    categoryColor: item.categoryColor
+                                )
                             }
-                            .font(.system(.callout, design: .rounded).weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal)
-                            .padding(.top, 16)
-                            .padding(.bottom, 4)
-
-                            Divider()
-                                .padding(.horizontal)
-
-                            ForEach(group.expenses) { item in
-                                Button {
-                                    expenseToEdit = item.expense
+                            .tint(.primary)
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    HapticManager.notify(.warning)
+                                    viewModel.delete(item.expense)
                                 } label: {
-                                    ExpenseRowView(
-                                        expense: item.expense,
-                                        categoryName: item.categoryName,
-                                        categoryIcon: item.categoryIcon,
-                                        categoryColor: item.categoryColor
-                                    )
+                                    Label("Delete", systemImage: "trash")
                                 }
-                                .tint(.primary)
-                                .padding(.horizontal)
                             }
                         }
+                    } header: {
+                        HStack {
+                            Text(group.displayDate)
+                            Spacer()
+                            Text(group.dailyTotal)
+                        }
+                        .font(.system(.callout, design: .rounded).weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(nil)
                     }
                 }
             }
+            .listStyle(.plain)
             .navigationTitle("Expenses")
             .overlay {
                 if viewModel.groupedExpenses.isEmpty {
@@ -151,11 +158,11 @@ private struct MonthlyTotalHeader: View {
 
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(total.currency)
-                    .font(.system(size: 42, weight: .regular, design: .rounded))
+                    .font(.system(size: 32, weight: .regular, design: .rounded))
                     .foregroundStyle(.secondary)
 
                 Text(total.amountText)
-                    .font(.system(size: 62, weight: .regular, design: .rounded))
+                    .font(.system(size: 48, weight: .regular, design: .rounded))
                     .minimumScaleFactor(0.72)
                     .lineLimit(1)
             }

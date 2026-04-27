@@ -69,6 +69,15 @@ final class ExpenseFeedViewModel: ObservableObject {
         }
     }
 
+    func delete(_ expense: Expense) {
+        do {
+            try expenseRepository.softDelete(expense)
+            refresh()
+        } catch {
+            print("Error deleting expense: \(error)")
+        }
+    }
+
     private static func groupExpenses(_ items: [ExpenseWithCategory]) -> [ExpenseGroup] {
         let groupedByDay = Dictionary(grouping: items) { item in
             AppDateFormatter.dayKey(from: item.expense.displayDate)
