@@ -22,10 +22,8 @@ struct RecurringExpensesView: View {
                         RecurringExpenseRow(item: item)
                     }
                     .tint(.primary)
-                    .swipeActions {
-                        Button("Delete", role: .destructive) {
-                            viewModel.delete(item.recurringExpense)
-                        }
+                    .deleteSwipeAction {
+                        viewModel.delete(item.recurringExpense)
                     }
                 }
             }

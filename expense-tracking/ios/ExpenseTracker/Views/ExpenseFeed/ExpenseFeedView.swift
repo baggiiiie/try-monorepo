@@ -60,13 +60,9 @@ struct ExpenseFeedView: View {
                                 )
                             }
                             .tint(.primary)
-                            .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) {
-                                    HapticManager.notify(.warning)
-                                    viewModel.delete(item.expense)
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
+                            .deleteSwipeAction {
+                                HapticManager.notify(.warning)
+                                viewModel.delete(item.expense)
                             }
                         }
                     } header: {
