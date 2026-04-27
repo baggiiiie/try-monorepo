@@ -35,9 +35,19 @@ struct ExpenseGroup {
     let expenses: [ExpenseWithCategory]
 }
 
+struct MonthlyExpenseTotal {
+    let cents: Int64
+    let currency: String
+
+    var amountText: String {
+        MoneyFormatter.decimalString(fromCents: cents)
+    }
+}
+
 @MainActor
 final class ExpenseFeedViewModel: ObservableObject {
     @Published var groupedExpenses: [ExpenseGroup] = []
+    @Published var monthlyTotal = MonthlyExpenseTotal(cents: 0, currency: "SGD")
 
     private let expenseRepository: ExpenseRepository
 
@@ -50,6 +60,7 @@ final class ExpenseFeedViewModel: ObservableObject {
         do {
             let items = try expenseRepository.fetchFeedItems()
             groupedExpenses = Self.groupExpenses(items)
+            monthlyTotal = Self.monthlyTotal(from: items)
         } catch {
             print("Error loading expenses: \(error)")
         }
@@ -73,5 +84,23 @@ final class ExpenseFeedViewModel: ObservableObject {
                     expenses: value
                 )
             }
+    }
+
+    private static func monthlyTotal(
+        from items: [ExpenseWithCategory],
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> MonthlyExpenseTotal {
+        guard let monthInterval = calendar.dateInterval(of: .month, for: now) else {
+            return MonthlyExpenseTotal(cents: 0, currency: "SGD")
+        }
+
+        let currentMonthItems = items.filter { item in
+            monthInterval.contains(item.expense.displayDate)
+        }
+
+        let totalCents = currentMonthItems.reduce(Int64(0)) { $0 + $1.expense.amount }
+        let currency = currentMonthItems.first?.expense.currency ?? items.first?.expense.currency ?? "SGD"
+        return MonthlyExpenseTotal(cents: totalCents, currency: currency)
     }
 }

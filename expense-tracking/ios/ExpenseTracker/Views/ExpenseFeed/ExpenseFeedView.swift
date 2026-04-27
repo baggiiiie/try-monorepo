@@ -19,6 +19,10 @@ struct ExpenseFeedView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 0) {
+                    MonthlyTotalHeader(total: viewModel.monthlyTotal)
+                        .padding(.top, 28)
+                        .padding(.bottom, 20)
+
                     if suggestionsViewModel.pendingCount > 0 {
                         NavigationLink {
                             WalletSuggestionsView(database: database)
@@ -122,5 +126,43 @@ struct ExpenseFeedView: View {
     private func refreshViewModels() {
         viewModel.refresh()
         suggestionsViewModel.refresh()
+    }
+}
+
+private struct MonthlyTotalHeader: View {
+    let total: MonthlyExpenseTotal
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                Text("Spent")
+                    .fontWeight(.semibold)
+
+                Text("this month")
+                    .fontWeight(.semibold)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule()
+                            .stroke(Color(.systemGray5), lineWidth: 1)
+                    )
+            }
+            .font(.system(.title3, design: .rounded))
+
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(total.currency)
+                    .font(.system(size: 42, weight: .regular, design: .rounded))
+                    .foregroundStyle(.secondary)
+
+                Text(total.amountText)
+                    .font(.system(size: 62, weight: .regular, design: .rounded))
+                    .minimumScaleFactor(0.72)
+                    .lineLimit(1)
+            }
+            .monospacedDigit()
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Spent this month \(total.currency) \(total.amountText)")
     }
 }
