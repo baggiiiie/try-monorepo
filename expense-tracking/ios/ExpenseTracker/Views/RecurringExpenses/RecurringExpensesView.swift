@@ -28,15 +28,12 @@ struct RecurringExpensesView: View {
                 }
             }
             .navigationTitle("Recurring")
-            .overlay {
-                if viewModel.recurringExpenses.isEmpty {
-                    ContentUnavailableView(
-                        "No Recurring Expenses",
-                        systemImage: "repeat",
-                        description: Text("Add rent, subscriptions, or bills that repeat automatically")
-                    )
-                }
-            }
+            .emptyState(
+                viewModel.recurringExpenses.isEmpty,
+                title: "No Recurring Expenses",
+                systemImage: "repeat",
+                description: "Add rent, subscriptions, or bills that repeat automatically"
+            )
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -198,13 +195,7 @@ private struct RecurringExpenseFormView: View {
             .navigationTitle(viewModel.isEditing ? "Edit Recurring" : "New Recurring")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", action: onCancel)
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save", action: onSave)
-                }
+                FormToolbar(onCancel: onCancel, onSave: onSave)
             }
         }
     }

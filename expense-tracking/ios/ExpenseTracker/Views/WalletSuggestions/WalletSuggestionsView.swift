@@ -12,23 +12,21 @@ struct WalletSuggestionsView: View {
     var body: some View {
         NavigationStack {
             List {
-                if viewModel.suggestions.isEmpty {
-                    ContentUnavailableView(
-                        "No Pending Suggestions",
-                        systemImage: "creditcard",
-                        description: Text("Apple Pay transactions will appear here")
+                ForEach(viewModel.suggestions) { suggestion in
+                    WalletSuggestionRow(
+                        suggestion: suggestion,
+                        database: database,
+                        onAccept: { viewModel.refresh() },
+                        onDismiss: { viewModel.dismiss(suggestion) }
                     )
-                } else {
-                    ForEach(viewModel.suggestions) { suggestion in
-                        WalletSuggestionRow(
-                            suggestion: suggestion,
-                            database: database,
-                            onAccept: { viewModel.refresh() },
-                            onDismiss: { viewModel.dismiss(suggestion) }
-                        )
-                    }
                 }
             }
+            .emptyState(
+                viewModel.suggestions.isEmpty,
+                title: "No Pending Suggestions",
+                systemImage: "creditcard",
+                description: "Apple Pay transactions will appear here"
+            )
             .navigationTitle("Wallet Suggestions")
             .onAppear(perform: viewModel.refresh)
         }

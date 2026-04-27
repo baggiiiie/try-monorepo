@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AA0000010000000000000001 /* AddEditExpenseComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000002 /* AddEditExpenseComponents.swift */; };
+		AA0000030000000000000003 /* AppEmptyState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000040000000000000004 /* AppEmptyState.swift */; };
+		AA0000050000000000000005 /* FormToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000060000000000000006 /* FormToolbar.swift */; };
+		AA0000070000000000000007 /* ToastBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000080000000000000008 /* ToastBanner.swift */; };
+		AA0000090000000000000009 /* Keypad.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000A000000000000000A /* Keypad.swift */; };
+		AA00000B000000000000000B /* StringValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000C000000000000000C /* StringValidation.swift */; };
 		05650ED6F572DB41DECBD372 /* WalletSuggestionRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE59A85B142575E00FCFF21A /* WalletSuggestionRepository.swift */; };
 		093BED6A374236EF42B2A9E6 /* RecurringExpensesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E3170C82907294E3A57E51D /* RecurringExpensesView.swift */; };
 		0BC6C16C028E3ACE2201D5F5 /* RecurringExpenseRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB3E0A3E21F53A75BFA50A2A /* RecurringExpenseRepository.swift */; };
@@ -50,6 +56,12 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		AA0000020000000000000002 /* AddEditExpenseComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddEditExpenseComponents.swift; sourceTree = "<group>"; };
+		AA0000040000000000000004 /* AppEmptyState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEmptyState.swift; sourceTree = "<group>"; };
+		AA0000060000000000000006 /* FormToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormToolbar.swift; sourceTree = "<group>"; };
+		AA0000080000000000000008 /* ToastBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastBanner.swift; sourceTree = "<group>"; };
+		AA00000A000000000000000A /* Keypad.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keypad.swift; sourceTree = "<group>"; };
+		AA00000C000000000000000C /* StringValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StringValidation.swift; sourceTree = "<group>"; };
 		022E7AC1A8F36B3995A2CA2E /* SyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncService.swift; sourceTree = "<group>"; };
 		0472C45E0D7A3EA1DB74DCBE /* CurrencyFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrencyFormatter.swift; sourceTree = "<group>"; };
 		059617E0131A34F9C0CB29C8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -185,6 +197,7 @@
 			children = (
 				0472C45E0D7A3EA1DB74DCBE /* CurrencyFormatter.swift */,
 				552B9E2761F20669F6060E22 /* HapticManager.swift */,
+				AA00000C000000000000000C /* StringValidation.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -228,6 +241,7 @@
 			children = (
 				A8EC2ECCE1B377B22FFE4004 /* DeleteSwipeAction.swift */,
 				9C46433CC7C4D552CEC0EF3C /* SyncStatusIndicator.swift */,
+				AA00000D000000000000000D /* Components */,
 				C2699EC3FB2506A4E9A30EE7 /* AddEditExpense */,
 				BE2240E5157687A57E0E126B /* Categories */,
 				A73396540554E68D19FEE302 /* ExpenseFeed */,
@@ -247,10 +261,22 @@
 			path = Categories;
 			sourceTree = "<group>";
 		};
+		AA00000D000000000000000D /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000040000000000000004 /* AppEmptyState.swift */,
+				AA0000060000000000000006 /* FormToolbar.swift */,
+				AA00000A000000000000000A /* Keypad.swift */,
+				AA0000080000000000000008 /* ToastBanner.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
 		C2699EC3FB2506A4E9A30EE7 /* AddEditExpense */ = {
 			isa = PBXGroup;
 			children = (
 				BEB1FDC92EBDABD4CDE277A0 /* AddEditExpenseView.swift */,
+				AA0000020000000000000002 /* AddEditExpenseComponents.swift */,
 			);
 			path = AddEditExpense;
 			sourceTree = "<group>";
@@ -348,6 +374,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				45AE9D3D2DC41E4F1F15D0A1 /* AddEditExpenseView.swift in Sources */,
+				AA0000010000000000000001 /* AddEditExpenseComponents.swift in Sources */,
+				AA0000030000000000000003 /* AppEmptyState.swift in Sources */,
+				AA0000050000000000000005 /* FormToolbar.swift in Sources */,
+				AA0000070000000000000007 /* ToastBanner.swift in Sources */,
+				AA0000090000000000000009 /* Keypad.swift in Sources */,
+				AA00000B000000000000000B /* StringValidation.swift in Sources */,
 				1F2C749AC7E15D1053A6952D /* AddEditExpenseViewModel.swift in Sources */,
 				A9377237445D93AE9585A7A9 /* AppDatabase.swift in Sources */,
 				263C22C7EB51538395C9BF12 /* ApplePaySetupView.swift in Sources */,

@@ -36,16 +36,14 @@ struct CategoryFormView: View {
             .navigationTitle(isEditing ? "Edit Category" : "New Category")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                FormToolbar(
+                    isSaveDisabled: name.trimmedForValidation.isEmpty,
+                    onCancel: { dismiss() },
+                    onSave: {
                         save()
                         dismiss()
                     }
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
+                )
             }
             .onAppear {
                 if let category {
@@ -60,7 +58,7 @@ struct CategoryFormView: View {
     }
 
     private func save() {
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedName = name.trimmedForValidation
         let resolvedIcon = Category.resolvedIcon(name: trimmedName, icon: icon)
         let budget = MoneyFormatter.cents(fromDecimalString: budgetText)
 

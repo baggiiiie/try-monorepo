@@ -79,15 +79,12 @@ struct ExpenseFeedView: View {
             }
             .listStyle(.plain)
             .navigationTitle("Expenses")
-            .overlay {
-                if viewModel.groupedExpenses.isEmpty {
-                    ContentUnavailableView(
-                        "No Expenses",
-                        systemImage: "tray",
-                        description: Text("Tap + to add your first expense")
-                    )
-                }
-            }
+            .emptyState(
+                viewModel.groupedExpenses.isEmpty,
+                title: "No Expenses",
+                systemImage: "tray",
+                description: "Tap + to add your first expense"
+            )
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     SyncStatusIndicator(

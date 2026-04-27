@@ -11,7 +11,7 @@ struct SettingsView: View {
     @State private var showSecretField: Bool = !SyncSecretStore.hasSecret
 
     private var trimmedServerURL: String {
-        serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        serverURL.trimmedForValidation
     }
 
     var body: some View {
@@ -45,7 +45,7 @@ struct SettingsView: View {
                                     Task { await syncService.sync() }
                                 }
                             }
-                            .disabled(syncSecretInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .disabled(syncSecretInput.trimmedForValidation.isEmpty)
 
                             Spacer()
 
