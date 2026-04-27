@@ -7,8 +7,7 @@ setup_test_db
 start_test_server
 
 local_category_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
-category_client_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
-expense_client_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
+expense_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
 updated_at=$(date +%s)
 
 push_response=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
@@ -16,13 +15,12 @@ push_response=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -d "{
         \"categories\": [{
             \"id\": \"$local_category_id\",
-            \"client_id\": \"$category_client_id\",
             \"name\": \"Offline Category\",
             \"icon\": \"🧪\",
             \"updated_at\": $updated_at
         }],
         \"expenses\": [{
-            \"client_id\": \"$expense_client_id\",
+            \"id\": \"$expense_id\",
             \"amount\": 650,
             \"currency\": \"SGD\",
             \"category_id\": \"$local_category_id\",

@@ -64,7 +64,6 @@ struct RecurringExpenseRepository {
 
             let recurringExpense = RecurringExpense(
                 id: UUID().uuidString,
-                clientId: UUID().uuidString,
                 amount: draft.amount,
                 currency: draft.currency,
                 categoryId: draft.categoryId,
@@ -132,7 +131,6 @@ struct RecurringExpenseRepository {
                         let now = Int64(Date().timeIntervalSince1970)
                         let expense = Expense(
                             id: UUID().uuidString,
-                            clientId: UUID().uuidString,
                             amount: workingRecurringExpense.amount,
                             currency: workingRecurringExpense.currency,
                             categoryId: workingRecurringExpense.categoryId,

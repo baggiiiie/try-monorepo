@@ -22,14 +22,13 @@ func (q *Queries) CountActiveCategories(ctx context.Context) (int64, error) {
 }
 
 const createCategory = `-- name: CreateCategory :one
-INSERT INTO categories (id, client_id, name, icon, budget, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, client_id, name, icon, budget, created_at, updated_at, deleted_at
+INSERT INTO categories (id, name, icon, budget, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?)
+RETURNING id, name, icon, budget, created_at, updated_at, deleted_at
 `
 
 type CreateCategoryParams struct {
 	ID        string        `json:"id"`
-	ClientID  string        `json:"client_id"`
 	Name      string        `json:"name"`
 	Icon      string        `json:"icon"`
 	Budget    sql.NullInt64 `json:"budget"`
@@ -40,7 +39,6 @@ type CreateCategoryParams struct {
 func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error) {
 	row := q.db.QueryRowContext(ctx, createCategory,
 		arg.ID,
-		arg.ClientID,
 		arg.Name,
 		arg.Icon,
 		arg.Budget,
@@ -50,27 +48,6 @@ func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) 
 	var i Category
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
-		&i.Name,
-		&i.Icon,
-		&i.Budget,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-	)
-	return i, err
-}
-
-const getCategoryByClientID = `-- name: GetCategoryByClientID :one
-SELECT id, client_id, name, icon, budget, created_at, updated_at, deleted_at FROM categories WHERE client_id = ?
-`
-
-func (q *Queries) GetCategoryByClientID(ctx context.Context, clientID string) (Category, error) {
-	row := q.db.QueryRowContext(ctx, getCategoryByClientID, clientID)
-	var i Category
-	err := row.Scan(
-		&i.ID,
-		&i.ClientID,
 		&i.Name,
 		&i.Icon,
 		&i.Budget,
@@ -82,7 +59,7 @@ func (q *Queries) GetCategoryByClientID(ctx context.Context, clientID string) (C
 }
 
 const getCategoryByID = `-- name: GetCategoryByID :one
-SELECT id, client_id, name, icon, budget, created_at, updated_at, deleted_at FROM categories WHERE id = ? AND deleted_at IS NULL
+SELECT id, name, icon, budget, created_at, updated_at, deleted_at FROM categories WHERE id = ? AND deleted_at IS NULL
 `
 
 func (q *Queries) GetCategoryByID(ctx context.Context, id string) (Category, error) {
@@ -90,7 +67,6 @@ func (q *Queries) GetCategoryByID(ctx context.Context, id string) (Category, err
 	var i Category
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
 		&i.Name,
 		&i.Icon,
 		&i.Budget,
@@ -102,7 +78,7 @@ func (q *Queries) GetCategoryByID(ctx context.Context, id string) (Category, err
 }
 
 const getCategoryByName = `-- name: GetCategoryByName :one
-SELECT id, client_id, name, icon, budget, created_at, updated_at, deleted_at FROM categories WHERE name = ? AND deleted_at IS NULL
+SELECT id, name, icon, budget, created_at, updated_at, deleted_at FROM categories WHERE name = ? AND deleted_at IS NULL
 `
 
 func (q *Queries) GetCategoryByName(ctx context.Context, name string) (Category, error) {
@@ -110,7 +86,6 @@ func (q *Queries) GetCategoryByName(ctx context.Context, name string) (Category,
 	var i Category
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
 		&i.Name,
 		&i.Icon,
 		&i.Budget,
@@ -122,7 +97,7 @@ func (q *Queries) GetCategoryByName(ctx context.Context, name string) (Category,
 }
 
 const getCategoryIncludingDeleted = `-- name: GetCategoryIncludingDeleted :one
-SELECT id, client_id, name, icon, budget, created_at, updated_at, deleted_at FROM categories WHERE id = ?
+SELECT id, name, icon, budget, created_at, updated_at, deleted_at FROM categories WHERE id = ?
 `
 
 func (q *Queries) GetCategoryIncludingDeleted(ctx context.Context, id string) (Category, error) {
@@ -130,7 +105,6 @@ func (q *Queries) GetCategoryIncludingDeleted(ctx context.Context, id string) (C
 	var i Category
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
 		&i.Name,
 		&i.Icon,
 		&i.Budget,
@@ -142,7 +116,7 @@ func (q *Queries) GetCategoryIncludingDeleted(ctx context.Context, id string) (C
 }
 
 const listCategories = `-- name: ListCategories :many
-SELECT id, client_id, name, icon, budget, created_at, updated_at, deleted_at FROM categories WHERE deleted_at IS NULL ORDER BY name
+SELECT id, name, icon, budget, created_at, updated_at, deleted_at FROM categories WHERE deleted_at IS NULL ORDER BY name
 `
 
 func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
@@ -156,7 +130,6 @@ func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 		var i Category
 		if err := rows.Scan(
 			&i.ID,
-			&i.ClientID,
 			&i.Name,
 			&i.Icon,
 			&i.Budget,
@@ -178,7 +151,7 @@ func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 }
 
 const listCategoriesUpdatedSince = `-- name: ListCategoriesUpdatedSince :many
-SELECT id, client_id, name, icon, budget, created_at, updated_at, deleted_at FROM categories WHERE updated_at > ?
+SELECT id, name, icon, budget, created_at, updated_at, deleted_at FROM categories WHERE updated_at > ?
 `
 
 func (q *Queries) ListCategoriesUpdatedSince(ctx context.Context, updatedAt int64) ([]Category, error) {
@@ -192,7 +165,6 @@ func (q *Queries) ListCategoriesUpdatedSince(ctx context.Context, updatedAt int6
 		var i Category
 		if err := rows.Scan(
 			&i.ID,
-			&i.ClientID,
 			&i.Name,
 			&i.Icon,
 			&i.Budget,
@@ -215,13 +187,12 @@ func (q *Queries) ListCategoriesUpdatedSince(ctx context.Context, updatedAt int6
 
 const reconcileCategoryByName = `-- name: ReconcileCategoryByName :exec
 UPDATE categories
-SET id = ?, client_id = ?, name = ?, icon = ?, budget = ?, deleted_at = ?, updated_at = ?
+SET id = ?, name = ?, icon = ?, budget = ?, deleted_at = ?, updated_at = ?
 WHERE id = ?
 `
 
 type ReconcileCategoryByNameParams struct {
 	ID        string        `json:"id"`
-	ClientID  string        `json:"client_id"`
 	Name      string        `json:"name"`
 	Icon      string        `json:"icon"`
 	Budget    sql.NullInt64 `json:"budget"`
@@ -233,7 +204,6 @@ type ReconcileCategoryByNameParams struct {
 func (q *Queries) ReconcileCategoryByName(ctx context.Context, arg ReconcileCategoryByNameParams) error {
 	_, err := q.db.ExecContext(ctx, reconcileCategoryByName,
 		arg.ID,
-		arg.ClientID,
 		arg.Name,
 		arg.Icon,
 		arg.Budget,

@@ -3,7 +3,6 @@ import GRDB
 
 struct Category: Codable, Identifiable, FetchableRecord, PersistableRecord {
     var id: String
-    var clientId: String
     var name: String
     var icon: String
     var budget: Int64?
@@ -40,7 +39,6 @@ struct Category: Codable, Identifiable, FetchableRecord, PersistableRecord {
 
     enum Columns {
         static let id = Column("id")
-        static let clientId = Column("client_id")
         static let name = Column("name")
         static let icon = Column("icon")
         static let budget = Column("budget")

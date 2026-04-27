@@ -1,6 +1,6 @@
 -- name: CreateCategory :one
-INSERT INTO categories (id, client_id, name, icon, budget, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO categories (id, name, icon, budget, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetCategoryByID :one
@@ -8,9 +8,6 @@ SELECT * FROM categories WHERE id = ? AND deleted_at IS NULL;
 
 -- name: GetCategoryIncludingDeleted :one
 SELECT * FROM categories WHERE id = ?;
-
--- name: GetCategoryByClientID :one
-SELECT * FROM categories WHERE client_id = ?;
 
 -- name: GetCategoryByName :one
 SELECT * FROM categories WHERE name = ? AND deleted_at IS NULL;
@@ -32,5 +29,5 @@ SELECT * FROM categories WHERE updated_at > ?;
 
 -- name: ReconcileCategoryByName :exec
 UPDATE categories
-SET id = ?, client_id = ?, name = ?, icon = ?, budget = ?, deleted_at = ?, updated_at = ?
+SET id = ?, name = ?, icon = ?, budget = ?, deleted_at = ?, updated_at = ?
 WHERE id = ?;

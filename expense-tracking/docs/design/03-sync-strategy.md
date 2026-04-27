@@ -22,15 +22,15 @@ POST /api/sync/push
 }
 ```
 
-When pushing a new category and expenses that reference it in the same request, the category payload may include its local `id`. The server uses that local ID (and `client_id`) as an alias and rewrites any matching `expense.category_id` values to the canonical server category ID before inserting expenses.
+When pushing a new category and expenses that reference it in the same request, the category payload includes its client-generated canonical `id`. The server uses that ID as an alias and rewrites any matching `expense.category_id` values before inserting expenses.
 
 The server processes each record:
 
-1. If `client_id` doesn't exist on server → insert (assign server `id`).
-2. If `client_id` exists → update if client's `updated_at` is newer.
-3. Return the canonical server state of all affected records (with server IDs and timestamps).
+1. If `id` doesn't exist on server → insert with that ID.
+2. If `id` exists → update if client's `updated_at` is newer.
+3. Return the canonical server state of all affected records.
 
-The client updates its local records with the server-assigned IDs and timestamps.
+The client updates its local records with server timestamps and any server-applied state.
 
 ### Pull (Server → Client)
 
@@ -75,6 +75,6 @@ Soft deletes are essential. When a record is deleted:
 ## Failure Handling
 
 - **Push fails**: No local state changes. Retry on next sync.
-- **Push succeeds, response lost**: The client retries the push. The server uses `client_id` to detect the duplicate and returns the existing record.
+- **Push succeeds, response lost**: The client retries the push. The server uses `id` to detect the duplicate and returns the existing record.
 - **Pull fails**: No local state changes. Retry on next sync.
 - **Partial sync**: Push and pull are independent operations. If push succeeds but pull fails, the push timestamp is updated but the pull timestamp is not. Next sync will skip the push (nothing new) and retry the pull.

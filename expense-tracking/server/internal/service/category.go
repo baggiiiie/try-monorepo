@@ -44,7 +44,6 @@ type CategoryInput struct {
 
 type Category struct {
 	ID        string `json:"id"`
-	ClientID  string `json:"client_id"`
 	Name      string `json:"name"`
 	Icon      string `json:"icon"`
 	Budget    *int64 `json:"budget"`
@@ -64,9 +63,9 @@ func (s *CategoryService) EnsureDefaults(ctx context.Context) error {
 
 	now := time.Now().Unix()
 	for _, dc := range defaultCategories {
+		id := uuid.New().String()
 		_, err := s.queries.CreateCategory(ctx, dbsqlc.CreateCategoryParams{
-			ID:        uuid.New().String(),
-			ClientID:  uuid.New().String(),
+			ID:        id,
 			Name:      dc.Name,
 			Icon:      dc.Icon,
 			CreatedAt: now,
@@ -97,9 +96,9 @@ func (s *CategoryService) Create(ctx context.Context, input CategoryInput) (*Cat
 	}
 
 	now := time.Now().Unix()
+	id := uuid.New().String()
 	row, err := s.queries.CreateCategory(ctx, dbsqlc.CreateCategoryParams{
-		ID:        uuid.New().String(),
-		ClientID:  uuid.New().String(),
+		ID:        id,
 		Name:      input.Name,
 		Icon:      input.Icon,
 		Budget:    nullInt64(input.Budget),
@@ -181,7 +180,6 @@ func toInt64Ptr(v sql.NullInt64) *int64 {
 func categoryFromRow(r dbsqlc.Category) Category {
 	cat := Category{
 		ID:        r.ID,
-		ClientID:  r.ClientID,
 		Name:      r.Name,
 		Icon:      r.Icon,
 		Budget:    toInt64Ptr(r.Budget),

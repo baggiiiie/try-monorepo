@@ -214,6 +214,117 @@ struct AppDatabase {
             try db.execute(sql: "UPDATE recurring_expenses SET id = client_id WHERE id != client_id")
         }
 
+        migrator.registerMigration("v8-drop-client-id") { db in
+            // After v7 every row has id == client_id, so the column is now
+            // redundant. client_id was declared UNIQUE in earlier schemas, and
+            // SQLite cannot DROP COLUMN when an automatic unique index still
+            // references that column. Rebuild the affected tables instead.
+            try db.execute(sql: "PRAGMA defer_foreign_keys = ON")
+
+            try db.execute(sql: """
+                CREATE TABLE categories_new (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    name TEXT NOT NULL,
+                    icon TEXT NOT NULL DEFAULT '',
+                    budget INTEGER,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    deleted_at INTEGER,
+                    sync_status TEXT NOT NULL DEFAULT 'pending_push'
+                )
+                """)
+            try db.execute(sql: """
+                INSERT INTO categories_new (id, name, icon, budget, created_at, updated_at, deleted_at, sync_status)
+                SELECT id, name, icon, budget, created_at, updated_at, deleted_at, sync_status
+                FROM categories
+                """)
+
+            try db.execute(sql: """
+                CREATE TABLE expenses_new (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    amount INTEGER NOT NULL,
+                    currency TEXT NOT NULL,
+                    category_id TEXT NOT NULL REFERENCES categories(id),
+                    description TEXT NOT NULL DEFAULT '',
+                    merchant TEXT NOT NULL DEFAULT '',
+                    date INTEGER NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'manual',
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    deleted_at INTEGER,
+                    sync_status TEXT NOT NULL DEFAULT 'pending_push'
+                )
+                """)
+            try db.execute(sql: """
+                INSERT INTO expenses_new (id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at, sync_status)
+                SELECT id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at, sync_status
+                FROM expenses
+                """)
+
+            try db.execute(sql: """
+                CREATE TABLE recurring_expenses_new (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    amount INTEGER NOT NULL,
+                    currency TEXT NOT NULL,
+                    category_id TEXT NOT NULL REFERENCES categories(id),
+                    description TEXT NOT NULL DEFAULT '',
+                    merchant TEXT NOT NULL DEFAULT '',
+                    frequency TEXT NOT NULL,
+                    day_of_month INTEGER,
+                    start_date INTEGER NOT NULL,
+                    end_date INTEGER,
+                    next_run_date INTEGER NOT NULL,
+                    last_run_date INTEGER,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    deleted_at INTEGER
+                )
+                """)
+            try db.execute(sql: """
+                INSERT INTO recurring_expenses_new (id, amount, currency, category_id, description, merchant, frequency, day_of_month, start_date, end_date, next_run_date, last_run_date, created_at, updated_at, deleted_at)
+                SELECT id, amount, currency, category_id, description, merchant, frequency, day_of_month, start_date, end_date, next_run_date, last_run_date, created_at, updated_at, deleted_at
+                FROM recurring_expenses
+                """)
+
+            try db.execute(sql: """
+                CREATE TABLE recurring_expense_runs_new (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    recurring_expense_id TEXT NOT NULL REFERENCES recurring_expenses(id),
+                    expense_id TEXT NOT NULL REFERENCES expenses(id),
+                    occurrence_date INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL
+                )
+                """)
+            try db.execute(sql: """
+                INSERT INTO recurring_expense_runs_new (id, recurring_expense_id, expense_id, occurrence_date, created_at)
+                SELECT id, recurring_expense_id, expense_id, occurrence_date, created_at
+                FROM recurring_expense_runs
+                """)
+
+            try db.execute(sql: "DROP TABLE recurring_expense_runs")
+            try db.execute(sql: "DROP TABLE recurring_expenses")
+            try db.execute(sql: "DROP TABLE expenses")
+            try db.execute(sql: "DROP TABLE categories")
+
+            try db.execute(sql: "ALTER TABLE categories_new RENAME TO categories")
+            try db.execute(sql: "ALTER TABLE expenses_new RENAME TO expenses")
+            try db.execute(sql: "ALTER TABLE recurring_expenses_new RENAME TO recurring_expenses")
+            try db.execute(sql: "ALTER TABLE recurring_expense_runs_new RENAME TO recurring_expense_runs")
+
+            try db.create(index: "idx_categories_updated_at", on: "categories", columns: ["updated_at"])
+            try db.create(index: "idx_expenses_category_id", on: "expenses", columns: ["category_id"])
+            try db.create(index: "idx_expenses_date", on: "expenses", columns: ["date"])
+            try db.create(index: "idx_expenses_updated_at", on: "expenses", columns: ["updated_at"])
+            try db.create(index: "idx_recurring_expenses_next_run_date", on: "recurring_expenses", columns: ["next_run_date"])
+            try db.create(index: "idx_recurring_expenses_category_id", on: "recurring_expenses", columns: ["category_id"])
+            try db.create(
+                index: "idx_recurring_expense_runs_unique_occurrence",
+                on: "recurring_expense_runs",
+                columns: ["recurring_expense_id", "occurrence_date"],
+                unique: true
+            )
+        }
+
         return migrator
     }
 
@@ -227,7 +338,6 @@ struct AppDatabase {
             for (name, icon) in DefaultCategories.all {
                 let category = Category(
                     id: UUID().uuidString,
-                    clientId: UUID().uuidString,
                     name: name,
                     icon: icon,
                     budget: nil,

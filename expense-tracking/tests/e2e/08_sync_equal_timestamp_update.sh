@@ -8,14 +8,14 @@ start_test_server
 
 pull_response=$(api_curl "$EXPENSE_API/api/sync/pull?since=0")
 food_id=$(echo "$pull_response" | jq -r '.categories[] | select(.name == "Food & Dining") | .id')
-client_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
+expense_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
 updated_at=$(date +%s)
 
 first_push=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
     -d "{
         \"expenses\": [{
-            \"client_id\": \"$client_id\",
+            \"id\": \"$expense_id\",
             \"amount\": 1000,
             \"currency\": \"SGD\",
             \"category_id\": \"$food_id\",
@@ -32,7 +32,7 @@ second_push=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
     -d "{
         \"expenses\": [{
-            \"client_id\": \"$client_id\",
+            \"id\": \"$expense_id\",
             \"amount\": 1000,
             \"currency\": \"SGD\",
             \"category_id\": \"$food_id\",

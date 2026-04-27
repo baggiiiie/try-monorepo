@@ -46,7 +46,6 @@ struct ExpenseRepository {
 
             let expense = Expense(
                 id: UUID().uuidString,
-                clientId: UUID().uuidString,
                 amount: draft.amount,
                 currency: draft.currency,
                 categoryId: draft.categoryId,

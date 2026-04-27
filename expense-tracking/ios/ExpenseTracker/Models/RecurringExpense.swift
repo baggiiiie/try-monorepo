@@ -19,7 +19,6 @@ enum RecurringFrequency: String, CaseIterable, Identifiable {
 
 struct RecurringExpense: Codable, Identifiable, FetchableRecord, PersistableRecord {
     var id: String
-    var clientId: String
     var amount: Int64
     var currency: String
     var categoryId: String
@@ -41,7 +40,6 @@ struct RecurringExpense: Codable, Identifiable, FetchableRecord, PersistableReco
 
     enum Columns {
         static let id = Column("id")
-        static let clientId = Column("client_id")
         static let amount = Column("amount")
         static let currency = Column("currency")
         static let categoryId = Column("category_id")

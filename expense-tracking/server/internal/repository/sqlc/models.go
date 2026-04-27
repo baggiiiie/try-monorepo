@@ -10,7 +10,6 @@ import (
 
 type Category struct {
 	ID        string        `json:"id"`
-	ClientID  string        `json:"client_id"`
 	Name      string        `json:"name"`
 	Icon      string        `json:"icon"`
 	Budget    sql.NullInt64 `json:"budget"`
@@ -21,7 +20,6 @@ type Category struct {
 
 type Expense struct {
 	ID          string        `json:"id"`
-	ClientID    string        `json:"client_id"`
 	Amount      int64         `json:"amount"`
 	Currency    string        `json:"currency"`
 	CategoryID  string        `json:"category_id"`

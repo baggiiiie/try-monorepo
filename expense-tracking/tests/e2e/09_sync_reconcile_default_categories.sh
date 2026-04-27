@@ -9,8 +9,7 @@ start_test_server
 
 updated_at=$(date +%s)
 local_category_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
-local_category_client_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
-expense_client_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
+expense_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
 
 initial_pull=$(api_curl "$EXPENSE_API/api/sync/pull?since=0")
 assert_json_contains "$initial_pull" '.categories | length' "8"
@@ -31,13 +30,12 @@ push_response=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -d "{
         \"categories\": [{
             \"id\": \"$local_category_id\",
-            \"client_id\": \"$local_category_client_id\",
             \"name\": \"Food & Dining\",
             \"icon\": \"🍽️\",
             \"updated_at\": $updated_at
         }],
         \"expenses\": [{
-            \"client_id\": \"$expense_client_id\",
+            \"id\": \"$expense_id\",
             \"amount\": 1234,
             \"currency\": \"SGD\",
             \"category_id\": \"$local_category_id\",
@@ -62,11 +60,9 @@ food_count=$(sqlite3 "$EXPENSE_DB" "SELECT COUNT(*) FROM categories WHERE name =
 assert_equals "$food_count" "1"
 
 db_food_id=$(sqlite3 "$EXPENSE_DB" "SELECT id FROM categories WHERE name = 'Food & Dining' AND deleted_at IS NULL;")
-db_food_client_id=$(sqlite3 "$EXPENSE_DB" "SELECT client_id FROM categories WHERE name = 'Food & Dining' AND deleted_at IS NULL;")
 assert_equals "$db_food_id" "$local_category_id"
-assert_equals "$db_food_client_id" "$local_category_client_id"
 
-db_expense_category_id=$(sqlite3 "$EXPENSE_DB" "SELECT category_id FROM expenses WHERE client_id = '$expense_client_id';")
+db_expense_category_id=$(sqlite3 "$EXPENSE_DB" "SELECT category_id FROM expenses WHERE id = '$expense_id';")
 assert_equals "$db_expense_category_id" "$local_category_id"
 
 final_pull=$(api_curl "$EXPENSE_API/api/sync/pull?since=0")
@@ -78,13 +74,12 @@ push_again=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -d "{
         \"categories\": [{
             \"id\": \"$local_category_id\",
-            \"client_id\": \"$local_category_client_id\",
             \"name\": \"Food & Dining\",
             \"icon\": \"🍽️\",
             \"updated_at\": $updated_at
         }],
         \"expenses\": [{
-            \"client_id\": \"$expense_client_id\",
+            \"id\": \"$expense_id\",
             \"amount\": 1234,
             \"currency\": \"SGD\",
             \"category_id\": \"$local_category_id\",

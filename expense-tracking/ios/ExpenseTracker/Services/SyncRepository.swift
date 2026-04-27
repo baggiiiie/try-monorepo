@@ -21,15 +21,17 @@ struct SyncRepository {
 
     func applyPushResponse(_ response: PushResponse) throws {
         try dbQueue.write { db in
-            try db.execute(sql: "PRAGMA defer_foreign_keys = ON")
-            try markPushedCategoriesAsSynced(response.categories, in: db)
-            try markPushedExpensesAsSynced(response.expenses, in: db)
+            for category in response.categories {
+                try markCategorySynced(category, in: db)
+            }
+            for expense in response.expenses {
+                try markExpenseSynced(expense, in: db)
+            }
         }
     }
 
     func applyPullResponse(_ response: PullResponse) throws {
         try dbQueue.write { db in
-            try db.execute(sql: "PRAGMA defer_foreign_keys = ON")
             for category in response.categories {
                 try upsertCategory(category, in: db)
             }
@@ -41,109 +43,34 @@ struct SyncRepository {
 
     // MARK: - Push reconciliation
 
-    private func markPushedCategoriesAsSynced(_ categories: [PullCategory], in db: Database) throws {
-        for serverCategory in categories {
-            guard let localCategory = try Category
-                .filter(Category.Columns.clientId == serverCategory.clientId)
-                .fetchOne(db) else {
-                continue
-            }
-
-            if localCategory.id != serverCategory.id {
-                try updateExpenseCategoryReferences(from: localCategory.id, to: serverCategory.id, in: db)
-                try db.execute(
-                    sql: "UPDATE categories SET id = ?, updated_at = ?, sync_status = ? WHERE client_id = ?",
-                    arguments: [
-                        serverCategory.id,
-                        serverCategory.updatedAt,
-                        RecordSyncStatus.synced.rawValue,
-                        serverCategory.clientId,
-                    ]
-                )
-            } else {
-                try db.execute(
-                    sql: "UPDATE categories SET updated_at = ?, sync_status = ? WHERE client_id = ?",
-                    arguments: [
-                        serverCategory.updatedAt,
-                        RecordSyncStatus.synced.rawValue,
-                        serverCategory.clientId,
-                    ]
-                )
-            }
-        }
+    private func markCategorySynced(_ serverCategory: PullCategory, in db: Database) throws {
+        try db.execute(
+            sql: "UPDATE categories SET updated_at = ?, sync_status = ? WHERE id = ?",
+            arguments: [
+                serverCategory.updatedAt,
+                RecordSyncStatus.synced.rawValue,
+                serverCategory.id,
+            ]
+        )
     }
 
-    private func markPushedExpensesAsSynced(_ expenses: [PullExpense], in db: Database) throws {
-        for serverExpense in expenses {
-            guard let localExpense = try Expense
-                .filter(Expense.Columns.clientId == serverExpense.clientId)
-                .fetchOne(db) else {
-                continue
-            }
-
-            if localExpense.id != serverExpense.id {
-                try updateRecurringExpenseRunReferences(fromExpenseId: localExpense.id, toExpenseId: serverExpense.id, in: db)
-                try db.execute(
-                    sql: "UPDATE expenses SET id = ?, category_id = ?, updated_at = ?, sync_status = ? WHERE client_id = ?",
-                    arguments: [
-                        serverExpense.id,
-                        serverExpense.categoryId,
-                        serverExpense.updatedAt,
-                        RecordSyncStatus.synced.rawValue,
-                        serverExpense.clientId,
-                    ]
-                )
-            } else {
-                try db.execute(
-                    sql: "UPDATE expenses SET category_id = ?, updated_at = ?, sync_status = ? WHERE client_id = ?",
-                    arguments: [
-                        serverExpense.categoryId,
-                        serverExpense.updatedAt,
-                        RecordSyncStatus.synced.rawValue,
-                        serverExpense.clientId,
-                    ]
-                )
-            }
-        }
+    private func markExpenseSynced(_ serverExpense: PullExpense, in db: Database) throws {
+        try db.execute(
+            sql: "UPDATE expenses SET category_id = ?, updated_at = ?, sync_status = ? WHERE id = ?",
+            arguments: [
+                serverExpense.categoryId,
+                serverExpense.updatedAt,
+                RecordSyncStatus.synced.rawValue,
+                serverExpense.id,
+            ]
+        )
     }
 
     // MARK: - Pull upserts
 
     private func upsertCategory(_ serverCategory: PullCategory, in db: Database) throws {
-        let localCategory = try Category
-            .filter(Category.Columns.clientId == serverCategory.clientId)
-            .fetchOne(db)
-
-        if let localCategory {
-            if localCategory.id != serverCategory.id {
-                try updateExpenseCategoryReferences(from: localCategory.id, to: serverCategory.id, in: db)
-            }
-
-            try db.execute(
-                sql: """
-                    UPDATE categories
-                    SET id = ?, name = ?, icon = ?, budget = ?,
-                        created_at = ?, updated_at = ?, deleted_at = ?, sync_status = ?
-                    WHERE client_id = ?
-                    """,
-                arguments: [
-                    serverCategory.id,
-                    serverCategory.name,
-                    serverCategory.icon,
-                    serverCategory.budget,
-                    serverCategory.createdAt,
-                    serverCategory.updatedAt,
-                    serverCategory.deletedAt,
-                    RecordSyncStatus.synced.rawValue,
-                    serverCategory.clientId,
-                ]
-            )
-            return
-        }
-
         let category = Category(
             id: serverCategory.id,
-            clientId: serverCategory.clientId,
             name: serverCategory.name,
             icon: serverCategory.icon,
             budget: serverCategory.budget,
@@ -152,48 +79,12 @@ struct SyncRepository {
             deletedAt: serverCategory.deletedAt,
             syncStatus: RecordSyncStatus.synced.rawValue
         )
-        try category.insert(db)
+        try category.save(db)
     }
 
     private func upsertExpense(_ serverExpense: PullExpense, in db: Database) throws {
-        let localExpense = try Expense
-            .filter(Expense.Columns.clientId == serverExpense.clientId)
-            .fetchOne(db)
-
-        if let localExpense {
-            if localExpense.id != serverExpense.id {
-                try updateRecurringExpenseRunReferences(fromExpenseId: localExpense.id, toExpenseId: serverExpense.id, in: db)
-            }
-            try db.execute(
-                sql: """
-                    UPDATE expenses
-                    SET id = ?, amount = ?, currency = ?, category_id = ?,
-                        description = ?, merchant = ?, date = ?, source = ?,
-                        created_at = ?, updated_at = ?, deleted_at = ?, sync_status = ?
-                    WHERE client_id = ?
-                    """,
-                arguments: [
-                    serverExpense.id,
-                    serverExpense.amount,
-                    serverExpense.currency,
-                    serverExpense.categoryId,
-                    serverExpense.description,
-                    serverExpense.merchant,
-                    serverExpense.date,
-                    serverExpense.source,
-                    serverExpense.createdAt,
-                    serverExpense.updatedAt,
-                    serverExpense.deletedAt,
-                    RecordSyncStatus.synced.rawValue,
-                    serverExpense.clientId,
-                ]
-            )
-            return
-        }
-
         let expense = Expense(
             id: serverExpense.id,
-            clientId: serverExpense.clientId,
             amount: serverExpense.amount,
             currency: serverExpense.currency,
             categoryId: serverExpense.categoryId,
@@ -206,25 +97,7 @@ struct SyncRepository {
             deletedAt: serverExpense.deletedAt,
             syncStatus: RecordSyncStatus.synced.rawValue
         )
-        try expense.insert(db)
-    }
-
-    private func updateExpenseCategoryReferences(from oldCategoryId: String, to newCategoryId: String, in db: Database) throws {
-        try db.execute(
-            sql: "UPDATE expenses SET category_id = ? WHERE category_id = ?",
-            arguments: [newCategoryId, oldCategoryId]
-        )
-        try db.execute(
-            sql: "UPDATE recurring_expenses SET category_id = ? WHERE category_id = ?",
-            arguments: [newCategoryId, oldCategoryId]
-        )
-    }
-
-    private func updateRecurringExpenseRunReferences(fromExpenseId oldExpenseId: String, toExpenseId newExpenseId: String, in db: Database) throws {
-        try db.execute(
-            sql: "UPDATE recurring_expense_runs SET expense_id = ? WHERE expense_id = ?",
-            arguments: [newExpenseId, oldExpenseId]
-        )
+        try expense.save(db)
     }
 }
 

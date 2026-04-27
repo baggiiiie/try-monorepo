@@ -34,15 +34,15 @@ fi
 # Scenario 2: "iOS" pushes data, CLI sees it
 # ============================================================
 
-# Simulate iOS push — send a new expense with a client_id
-client_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
+# Simulate iOS push — send a new expense with an id
+expense_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
 food_id=$(echo "$pull_response" | jq -r '.categories[] | select(.name == "Food & Dining") | .id')
 
 push_response=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
     -d "{
         \"expenses\": [{
-            \"client_id\": \"$client_id\",
+            \"id\": \"$expense_id\",
             \"amount\": 2500,
             \"currency\": \"SGD\",
             \"category_id\": \"$food_id\",
@@ -63,14 +63,14 @@ toast_box=$(echo "$cli_list" | jq '[.expenses[] | select(.merchant == "Toast Box
 assert_equals "$toast_box" "1"
 
 # ============================================================
-# Scenario 3: Deduplication — push same client_id again
+# Scenario 3: Deduplication — push same id again
 # ============================================================
 
 push_again=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
     -d "{
         \"expenses\": [{
-            \"client_id\": \"$client_id\",
+            \"id\": \"$expense_id\",
             \"amount\": 2500,
             \"currency\": \"SGD\",
             \"category_id\": \"$food_id\",

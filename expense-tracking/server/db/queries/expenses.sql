@@ -1,13 +1,13 @@
 -- name: CreateExpense :one
-INSERT INTO expenses (id, client_id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO expenses (id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetExpenseByID :one
 SELECT * FROM expenses WHERE id = ? AND deleted_at IS NULL;
 
--- name: GetExpenseByClientID :one
-SELECT * FROM expenses WHERE client_id = ?;
+-- name: GetExpenseIncludingDeleted :one
+SELECT * FROM expenses WHERE id = ?;
 
 -- name: ListExpenses :many
 SELECT e.*, c.name AS category_name

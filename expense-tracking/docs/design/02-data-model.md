@@ -8,8 +8,7 @@ The central entity. Represents a single spending event.
 
 | Field        | Type     | Description                                              |
 | ------------ | -------- | -------------------------------------------------------- |
-| id           | UUID     | Server-assigned canonical ID                             |
-| client_id    | UUID     | Client-generated ID (used for deduplication during sync) |
+| id           | UUID     | Client-generated canonical ID                            |
 | amount       | integer  | Amount in cents (avoids floating point issues)           |
 | currency     | text     | ISO 4217 currency code (e.g., "USD", "CAD")             |
 | category_id  | UUID     | FK to Category                                           |
@@ -27,8 +26,7 @@ User-defined spending categories.
 
 | Field      | Type     | Description                          |
 | ---------- | -------- | ------------------------------------ |
-| id         | UUID     | Server-assigned canonical ID         |
-| client_id  | UUID     | Client-generated ID                  |
+| id         | UUID     | Client-generated canonical ID        |
 | name       | text     | Display name (e.g., "Groceries")     |
 | icon       | text     | Emoji or SF Symbol name              |
 | budget     | integer  | Optional monthly budget in cents     |
@@ -57,5 +55,5 @@ Transactions detected via FinanceKit or iOS Shortcuts automation that the user h
 
 - **Amounts in cents**: All monetary values are stored as integers in the smallest currency unit. $12.50 → 1250. This avoids floating-point rounding issues.
 - **Soft deletes**: Records are never physically deleted. `deleted_at` is set instead. This is critical for sync — the client needs to know that a record was deleted on the server.
-- **client_id for deduplication**: The client generates a UUID before syncing. The server uses this to detect duplicate submissions (e.g., if the sync request succeeds but the client doesn't get the response).
+- **IDs for deduplication**: The client generates the canonical UUID before syncing. The server uses `id` to detect duplicate submissions (e.g., if the sync request succeeds but the client doesn't get the response).
 - **WalletSuggestion is local-only**: Raw financial data from FinanceKit stays on the device. Only user-confirmed expenses leave the device. This is both a privacy decision and a simplicity decision.

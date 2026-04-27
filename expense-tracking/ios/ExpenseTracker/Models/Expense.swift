@@ -14,7 +14,6 @@ enum ExpenseSource: String {
 
 struct Expense: Codable, Identifiable, FetchableRecord, PersistableRecord {
     var id: String
-    var clientId: String
     var amount: Int64
     var currency: String
     var categoryId: String
@@ -33,7 +32,6 @@ struct Expense: Codable, Identifiable, FetchableRecord, PersistableRecord {
 
     enum Columns {
         static let id = Column("id")
-        static let clientId = Column("client_id")
         static let amount = Column("amount")
         static let currency = Column("currency")
         static let categoryId = Column("category_id")

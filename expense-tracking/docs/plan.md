@@ -24,7 +24,7 @@ Make the server accessible to the iOS app.
 2. Implement CRUD endpoints (`/api/expenses`, `/api/categories`, `/api/preferences`)
 3. Implement sync endpoints (`/api/sync/push`, `/api/sync/pull`)
 4. Add `last_push_at` / `last_pull_at` tracking
-5. Handle `client_id` deduplication on push
+5. Handle `id` deduplication on push
 6. Test sync flow manually with curl — push new records, pull changes, verify soft deletes propagate
 7. Use chi for routing
 

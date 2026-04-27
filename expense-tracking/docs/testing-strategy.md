@@ -37,7 +37,7 @@ tests/
 │   ├── 01_crud.sh              # create/read/update/delete via HTTP
 │   ├── 02_sync_push.sh         # push records, verify server state via CLI
 │   ├── 03_sync_pull.sh         # add via CLI, pull via HTTP, verify response
-│   └── 04_sync_dedup.sh        # push same client_id twice, verify no duplicate
+│   └── 04_sync_dedup.sh        # push same id twice, verify no duplicate
 └── e2e/
     ├── 01_cli_to_api.sh        # add via CLI, fetch via API, verify match
     ├── 02_api_to_cli.sh        # create via API, list via CLI, verify match

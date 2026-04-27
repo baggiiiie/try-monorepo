@@ -11,14 +11,13 @@ import (
 )
 
 const createExpense = `-- name: CreateExpense :one
-INSERT INTO expenses (id, client_id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, client_id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at
+INSERT INTO expenses (id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at
 `
 
 type CreateExpenseParams struct {
 	ID          string `json:"id"`
-	ClientID    string `json:"client_id"`
 	Amount      int64  `json:"amount"`
 	Currency    string `json:"currency"`
 	CategoryID  string `json:"category_id"`
@@ -33,7 +32,6 @@ type CreateExpenseParams struct {
 func (q *Queries) CreateExpense(ctx context.Context, arg CreateExpenseParams) (Expense, error) {
 	row := q.db.QueryRowContext(ctx, createExpense,
 		arg.ID,
-		arg.ClientID,
 		arg.Amount,
 		arg.Currency,
 		arg.CategoryID,
@@ -47,31 +45,6 @@ func (q *Queries) CreateExpense(ctx context.Context, arg CreateExpenseParams) (E
 	var i Expense
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
-		&i.Amount,
-		&i.Currency,
-		&i.CategoryID,
-		&i.Description,
-		&i.Merchant,
-		&i.Date,
-		&i.Source,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-	)
-	return i, err
-}
-
-const getExpenseByClientID = `-- name: GetExpenseByClientID :one
-SELECT id, client_id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at FROM expenses WHERE client_id = ?
-`
-
-func (q *Queries) GetExpenseByClientID(ctx context.Context, clientID string) (Expense, error) {
-	row := q.db.QueryRowContext(ctx, getExpenseByClientID, clientID)
-	var i Expense
-	err := row.Scan(
-		&i.ID,
-		&i.ClientID,
 		&i.Amount,
 		&i.Currency,
 		&i.CategoryID,
@@ -87,7 +60,7 @@ func (q *Queries) GetExpenseByClientID(ctx context.Context, clientID string) (Ex
 }
 
 const getExpenseByID = `-- name: GetExpenseByID :one
-SELECT id, client_id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at FROM expenses WHERE id = ? AND deleted_at IS NULL
+SELECT id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at FROM expenses WHERE id = ? AND deleted_at IS NULL
 `
 
 func (q *Queries) GetExpenseByID(ctx context.Context, id string) (Expense, error) {
@@ -95,7 +68,29 @@ func (q *Queries) GetExpenseByID(ctx context.Context, id string) (Expense, error
 	var i Expense
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
+		&i.Amount,
+		&i.Currency,
+		&i.CategoryID,
+		&i.Description,
+		&i.Merchant,
+		&i.Date,
+		&i.Source,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const getExpenseIncludingDeleted = `-- name: GetExpenseIncludingDeleted :one
+SELECT id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at FROM expenses WHERE id = ?
+`
+
+func (q *Queries) GetExpenseIncludingDeleted(ctx context.Context, id string) (Expense, error) {
+	row := q.db.QueryRowContext(ctx, getExpenseIncludingDeleted, id)
+	var i Expense
+	err := row.Scan(
+		&i.ID,
 		&i.Amount,
 		&i.Currency,
 		&i.CategoryID,
@@ -111,7 +106,7 @@ func (q *Queries) GetExpenseByID(ctx context.Context, id string) (Expense, error
 }
 
 const listExpenses = `-- name: ListExpenses :many
-SELECT e.id, e.client_id, e.amount, e.currency, e.category_id, e.description, e.merchant, e.date, e.source, e.created_at, e.updated_at, e.deleted_at, c.name AS category_name
+SELECT e.id, e.amount, e.currency, e.category_id, e.description, e.merchant, e.date, e.source, e.created_at, e.updated_at, e.deleted_at, c.name AS category_name
 FROM expenses e
 LEFT JOIN categories c ON e.category_id = c.id
 WHERE e.deleted_at IS NULL
@@ -120,7 +115,6 @@ ORDER BY e.date DESC, e.created_at DESC
 
 type ListExpensesRow struct {
 	ID           string         `json:"id"`
-	ClientID     string         `json:"client_id"`
 	Amount       int64          `json:"amount"`
 	Currency     string         `json:"currency"`
 	CategoryID   string         `json:"category_id"`
@@ -145,7 +139,6 @@ func (q *Queries) ListExpenses(ctx context.Context) ([]ListExpensesRow, error) {
 		var i ListExpensesRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.ClientID,
 			&i.Amount,
 			&i.Currency,
 			&i.CategoryID,
@@ -172,7 +165,7 @@ func (q *Queries) ListExpenses(ctx context.Context) ([]ListExpensesRow, error) {
 }
 
 const listExpensesUpdatedSince = `-- name: ListExpensesUpdatedSince :many
-SELECT id, client_id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at FROM expenses WHERE updated_at > ?
+SELECT id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at FROM expenses WHERE updated_at > ?
 `
 
 func (q *Queries) ListExpensesUpdatedSince(ctx context.Context, updatedAt int64) ([]Expense, error) {
@@ -186,7 +179,6 @@ func (q *Queries) ListExpensesUpdatedSince(ctx context.Context, updatedAt int64)
 		var i Expense
 		if err := rows.Scan(
 			&i.ID,
-			&i.ClientID,
 			&i.Amount,
 			&i.Currency,
 			&i.CategoryID,

@@ -29,7 +29,6 @@ struct CategoryRepository {
 
             let category = Category(
                 id: UUID().uuidString,
-                clientId: UUID().uuidString,
                 name: draft.name,
                 icon: draft.icon,
                 budget: draft.budget,

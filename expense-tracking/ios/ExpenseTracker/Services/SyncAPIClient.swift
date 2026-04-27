@@ -242,7 +242,7 @@ struct PushRequest: Codable {
 }
 
 struct PushExpense: Codable {
-    let clientId: String
+    let id: String
     let amount: Int64
     let currency: String
     let categoryId: String
@@ -256,7 +256,6 @@ struct PushExpense: Codable {
 
 struct PushCategory: Codable {
     let id: String
-    let clientId: String
     let name: String
     let icon: String
     let budget: Int64?
@@ -277,7 +276,6 @@ struct PullResponse: Codable {
 
 struct PullExpense: Codable {
     let id: String
-    let clientId: String
     let amount: Int64
     let currency: String
     let categoryId: String
@@ -292,7 +290,6 @@ struct PullExpense: Codable {
 
 struct PullCategory: Codable {
     let id: String
-    let clientId: String
     let name: String
     let icon: String
     let budget: Int64?
@@ -304,7 +301,7 @@ struct PullCategory: Codable {
 extension PushExpense {
     init(_ expense: Expense) {
         self.init(
-            clientId: expense.clientId,
+            id: expense.id,
             amount: expense.amount,
             currency: expense.currency,
             categoryId: expense.categoryId,
@@ -322,7 +319,6 @@ extension PushCategory {
     init(_ category: Category) {
         self.init(
             id: category.id,
-            clientId: category.clientId,
             name: category.name,
             icon: category.icon,
             budget: category.budget,

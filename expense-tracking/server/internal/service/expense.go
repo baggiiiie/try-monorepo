@@ -39,7 +39,6 @@ type ExpenseInput struct {
 
 type Expense struct {
 	ID          string `json:"id"`
-	ClientID    string `json:"client_id"`
 	Amount      int64  `json:"amount"`
 	Currency    string `json:"currency"`
 	CategoryID  string `json:"category_id"`
@@ -85,9 +84,9 @@ func (s *ExpenseService) Create(ctx context.Context, input ExpenseInput) (*Expen
 	}
 
 	now := time.Now().Unix()
+	id := uuid.New().String()
 	row, err := s.queries.CreateExpense(ctx, dbsqlc.CreateExpenseParams{
-		ID:          uuid.New().String(),
-		ClientID:    uuid.New().String(),
+		ID:          id,
 		Amount:      input.Amount,
 		Currency:    currency,
 		CategoryID:  categoryID,
@@ -206,7 +205,6 @@ func (s *ExpenseService) Delete(ctx context.Context, id string) error {
 func expenseFromRow(r dbsqlc.Expense, categoryName string) Expense {
 	exp := Expense{
 		ID:          r.ID,
-		ClientID:    r.ClientID,
 		Amount:      r.Amount,
 		Currency:    r.Currency,
 		CategoryID:  r.CategoryID,
@@ -225,7 +223,6 @@ func expenseFromRow(r dbsqlc.Expense, categoryName string) Expense {
 func expenseFromListRow(r dbsqlc.ListExpensesRow) Expense {
 	exp := Expense{
 		ID:          r.ID,
-		ClientID:    r.ClientID,
 		Amount:      r.Amount,
 		Currency:    r.Currency,
 		CategoryID:  r.CategoryID,
