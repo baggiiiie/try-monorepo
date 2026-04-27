@@ -82,6 +82,7 @@ struct SyncRepository {
             }
 
             if localExpense.id != serverExpense.id {
+                try updateRecurringExpenseRunReferences(fromExpenseId: localExpense.id, toExpenseId: serverExpense.id, in: db)
                 try db.execute(
                     sql: "UPDATE expenses SET id = ?, category_id = ?, updated_at = ?, sync_status = ? WHERE client_id = ?",
                     arguments: [
@@ -159,7 +160,10 @@ struct SyncRepository {
             .filter(Expense.Columns.clientId == serverExpense.clientId)
             .fetchOne(db)
 
-        if localExpense != nil {
+        if let localExpense {
+            if localExpense.id != serverExpense.id {
+                try updateRecurringExpenseRunReferences(fromExpenseId: localExpense.id, toExpenseId: serverExpense.id, in: db)
+            }
             try db.execute(
                 sql: """
                     UPDATE expenses
@@ -209,6 +213,17 @@ struct SyncRepository {
         try db.execute(
             sql: "UPDATE expenses SET category_id = ? WHERE category_id = ?",
             arguments: [newCategoryId, oldCategoryId]
+        )
+        try db.execute(
+            sql: "UPDATE recurring_expenses SET category_id = ? WHERE category_id = ?",
+            arguments: [newCategoryId, oldCategoryId]
+        )
+    }
+
+    private func updateRecurringExpenseRunReferences(fromExpenseId oldExpenseId: String, toExpenseId newExpenseId: String, in db: Database) throws {
+        try db.execute(
+            sql: "UPDATE recurring_expense_runs SET expense_id = ? WHERE expense_id = ?",
+            arguments: [newExpenseId, oldExpenseId]
         )
     }
 }
