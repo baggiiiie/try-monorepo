@@ -50,7 +50,6 @@ final class RecurringExpensesViewModel: ObservableObject {
 
     func refresh() {
         do {
-            try recurringExpenseRepository.materializeDueExpenses()
             recurringExpenses = try recurringExpenseRepository.fetchActive()
             categories = try categoryRepository.fetchActive()
         } catch {

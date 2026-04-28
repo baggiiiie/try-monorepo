@@ -33,6 +33,7 @@ struct RecurringExpense: Codable, Identifiable, FetchableRecord, PersistableReco
     var createdAt: Int64
     var updatedAt: Int64
     var deletedAt: Int64?
+    var syncStatus: String = RecordSyncStatus.pendingPush.rawValue
 
     static let databaseTableName = "recurring_expenses"
     static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
@@ -54,6 +55,7 @@ struct RecurringExpense: Codable, Identifiable, FetchableRecord, PersistableReco
         static let createdAt = Column("created_at")
         static let updatedAt = Column("updated_at")
         static let deletedAt = Column("deleted_at")
+        static let syncStatus = Column("sync_status")
     }
 
     var displayAmount: String {
@@ -63,16 +65,4 @@ struct RecurringExpense: Codable, Identifiable, FetchableRecord, PersistableReco
     var displayNextRunDate: Date {
         AppDateFormatter.date(fromUnixTimestamp: nextRunDate)
     }
-}
-
-struct RecurringExpenseRun: Codable, FetchableRecord, PersistableRecord {
-    var id: String
-    var recurringExpenseId: String
-    var expenseId: String
-    var occurrenceDate: Int64
-    var createdAt: Int64
-
-    static let databaseTableName = "recurring_expense_runs"
-    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
-    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
 }

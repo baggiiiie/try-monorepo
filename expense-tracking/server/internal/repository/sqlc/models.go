@@ -31,3 +31,29 @@ type Expense struct {
 	UpdatedAt   int64         `json:"updated_at"`
 	DeletedAt   sql.NullInt64 `json:"deleted_at"`
 }
+
+type RecurringExpense struct {
+	ID          string        `json:"id"`
+	Amount      int64         `json:"amount"`
+	Currency    string        `json:"currency"`
+	CategoryID  string        `json:"category_id"`
+	Description string        `json:"description"`
+	Merchant    string        `json:"merchant"`
+	Frequency   string        `json:"frequency"`
+	DayOfMonth  sql.NullInt64 `json:"day_of_month"`
+	StartDate   int64         `json:"start_date"`
+	EndDate     sql.NullInt64 `json:"end_date"`
+	NextRunDate int64         `json:"next_run_date"`
+	LastRunDate sql.NullInt64 `json:"last_run_date"`
+	CreatedAt   int64         `json:"created_at"`
+	UpdatedAt   int64         `json:"updated_at"`
+	DeletedAt   sql.NullInt64 `json:"deleted_at"`
+}
+
+type RecurringExpenseRun struct {
+	ID                 string `json:"id"`
+	RecurringExpenseID string `json:"recurring_expense_id"`
+	ExpenseID          string `json:"expense_id"`
+	OccurrenceDate     int64  `json:"occurrence_date"`
+	CreatedAt          int64  `json:"created_at"`
+}

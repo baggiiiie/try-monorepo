@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 
-	"expense-tracker/internal/config"
 	dbmigrations "expense-tracker/db"
+	"expense-tracker/internal/config"
 	dbsqlc "expense-tracker/internal/repository/sqlc"
 	"expense-tracker/internal/service"
 
@@ -15,14 +15,15 @@ import (
 )
 
 type App struct {
-	DB              *sql.DB
-	Queries         *dbsqlc.Queries
-	Preferences     config.Preferences
-	PreferencesPath string
-	ExpenseService  *service.ExpenseService
-	CategoryService *service.CategoryService
-	ReportService   *service.ReportService
-	SyncService     *service.SyncService
+	DB               *sql.DB
+	Queries          *dbsqlc.Queries
+	Preferences      config.Preferences
+	PreferencesPath  string
+	ExpenseService   *service.ExpenseService
+	CategoryService  *service.CategoryService
+	ReportService    *service.ReportService
+	SyncService      *service.SyncService
+	RecurringService *service.RecurringService
 }
 
 func Open(dbPath, configPath string) (*App, error) {
@@ -48,17 +49,19 @@ func Open(dbPath, configPath string) (*App, error) {
 	categoryService := service.NewCategoryService(queries, db)
 	expenseService := service.NewExpenseService(queries, db, &prefs, configPath)
 	reportService := service.NewReportService(queries, &prefs)
-	syncService := service.NewSyncService(queries, db)
+	recurringService := service.NewRecurringService(db, prefs.Timezone)
+	syncService := service.NewSyncService(queries, db, prefs.Timezone)
 
 	app := &App{
-		DB:              db,
-		Queries:         queries,
-		Preferences:     prefs,
-		PreferencesPath: configPath,
-		ExpenseService:  expenseService,
-		CategoryService: categoryService,
-		ReportService:   reportService,
-		SyncService:     syncService,
+		DB:               db,
+		Queries:          queries,
+		Preferences:      prefs,
+		PreferencesPath:  configPath,
+		ExpenseService:   expenseService,
+		CategoryService:  categoryService,
+		ReportService:    reportService,
+		SyncService:      syncService,
+		RecurringService: recurringService,
 	}
 
 	// Seed default categories
@@ -81,6 +84,8 @@ func (a *App) ReloadPreferences() error {
 	a.Preferences = p
 	a.ExpenseService.UpdatePreferences(&p)
 	a.ReportService.UpdatePreferences(&p)
+	a.SyncService.UpdateTimezone(p.Timezone)
+	a.RecurringService.UpdateTimezone(p.Timezone)
 	return nil
 }
 

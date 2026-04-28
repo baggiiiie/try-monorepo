@@ -325,6 +325,16 @@ struct AppDatabase {
             )
         }
 
+        migrator.registerMigration("v9-recurring-expense-sync-status") { db in
+            try db.alter(table: "recurring_expenses") { t in
+                t.add(column: "sync_status", .text).notNull().defaults(to: RecordSyncStatus.pendingPush.rawValue)
+            }
+        }
+
+        migrator.registerMigration("v10-drop-local-recurring-runs") { db in
+            try db.drop(table: "recurring_expense_runs")
+        }
+
         return migrator
     }
 

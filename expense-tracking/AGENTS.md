@@ -3,3 +3,5 @@
   - `make build` — build the iOS app for simulator
   - `make install` — build and install the app on the booted simulator
   - `make run` — build, install, and launch the app
+- For server SQL, define queries under `server/db/queries` and generate Go accessors with sqlc instead of embedding raw SQL in service code.
+- For server database schema changes, create goose migrations under `server/db/migrations`.

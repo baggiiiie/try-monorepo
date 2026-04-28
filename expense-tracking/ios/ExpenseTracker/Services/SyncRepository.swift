@@ -15,7 +15,10 @@ struct SyncRepository {
             let categories = try Category
                 .filter(Category.Columns.syncStatus == RecordSyncStatus.pendingPush.rawValue)
                 .fetchAll(db)
-            return PendingPushChanges(expenses: expenses, categories: categories)
+            let recurringExpenses = try RecurringExpense
+                .filter(RecurringExpense.Columns.syncStatus == RecordSyncStatus.pendingPush.rawValue)
+                .fetchAll(db)
+            return PendingPushChanges(expenses: expenses, categories: categories, recurringExpenses: recurringExpenses)
         }
     }
 
@@ -23,6 +26,9 @@ struct SyncRepository {
         try dbQueue.write { db in
             for category in response.categories {
                 try markCategorySynced(category, in: db)
+            }
+            for recurringExpense in response.recurringExpenses {
+                try markRecurringExpenseSynced(recurringExpense, in: db)
             }
             for expense in response.expenses {
                 try markExpenseSynced(expense, in: db)
@@ -34,6 +40,9 @@ struct SyncRepository {
         try dbQueue.write { db in
             for category in response.categories {
                 try upsertCategory(category, in: db)
+            }
+            for recurringExpense in response.recurringExpenses {
+                try upsertRecurringExpense(recurringExpense, in: db)
             }
             for expense in response.expenses {
                 try upsertExpense(expense, in: db)
@@ -62,6 +71,20 @@ struct SyncRepository {
                 serverExpense.updatedAt,
                 RecordSyncStatus.synced.rawValue,
                 serverExpense.id,
+            ]
+        )
+    }
+
+    private func markRecurringExpenseSynced(_ serverRecurringExpense: PullRecurringExpense, in db: Database) throws {
+        try db.execute(
+            sql: "UPDATE recurring_expenses SET category_id = ?, next_run_date = ?, last_run_date = ?, updated_at = ?, sync_status = ? WHERE id = ?",
+            arguments: [
+                serverRecurringExpense.categoryId,
+                serverRecurringExpense.nextRunDate,
+                serverRecurringExpense.lastRunDate,
+                serverRecurringExpense.updatedAt,
+                RecordSyncStatus.synced.rawValue,
+                serverRecurringExpense.id,
             ]
         )
     }
@@ -99,6 +122,28 @@ struct SyncRepository {
         )
         try expense.save(db)
     }
+
+    private func upsertRecurringExpense(_ serverRecurringExpense: PullRecurringExpense, in db: Database) throws {
+        let recurringExpense = RecurringExpense(
+            id: serverRecurringExpense.id,
+            amount: serverRecurringExpense.amount,
+            currency: serverRecurringExpense.currency,
+            categoryId: serverRecurringExpense.categoryId,
+            description: serverRecurringExpense.description,
+            merchant: serverRecurringExpense.merchant,
+            frequency: serverRecurringExpense.frequency,
+            dayOfMonth: serverRecurringExpense.dayOfMonth,
+            startDate: serverRecurringExpense.startDate,
+            endDate: serverRecurringExpense.endDate,
+            nextRunDate: serverRecurringExpense.nextRunDate,
+            lastRunDate: serverRecurringExpense.lastRunDate,
+            createdAt: serverRecurringExpense.createdAt,
+            updatedAt: serverRecurringExpense.updatedAt,
+            deletedAt: serverRecurringExpense.deletedAt,
+            syncStatus: RecordSyncStatus.synced.rawValue
+        )
+        try recurringExpense.save(db)
+    }
 }
 
 // MARK: - Pending changes
@@ -106,15 +151,17 @@ struct SyncRepository {
 struct PendingPushChanges {
     let expenses: [Expense]
     let categories: [Category]
+    let recurringExpenses: [RecurringExpense]
 
     var hasChanges: Bool {
-        !expenses.isEmpty || !categories.isEmpty
+        !expenses.isEmpty || !categories.isEmpty || !recurringExpenses.isEmpty
     }
 
     var request: PushRequest {
         PushRequest(
             expenses: expenses.map(PushExpense.init),
-            categories: categories.map(PushCategory.init)
+            categories: categories.map(PushCategory.init),
+            recurringExpenses: recurringExpenses.map(PushRecurringExpense.init)
         )
     }
 }

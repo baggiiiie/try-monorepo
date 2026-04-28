@@ -134,6 +134,7 @@ See [docs/design/06-apple-pay-automation.md](docs/design/06-apple-pay-automation
 
 - Manual expense entry (CLI + iOS)
 - Category management with budgets
+- Server-owned recurring expense rules
 - Apple Pay automation (Shortcuts → App Intent)
 - Offline-first iOS with sync
 - Configurable preferences (currency, timezone)
@@ -141,7 +142,6 @@ See [docs/design/06-apple-pay-automation.md](docs/design/06-apple-pay-automation
 ### Out of scope (for now)
 
 - Authentication / multi-user
-- Recurring expense rules
 - Multi-currency conversion
 
 ## Design Docs

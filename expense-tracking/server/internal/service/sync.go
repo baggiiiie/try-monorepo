@@ -10,17 +10,21 @@ import (
 )
 
 type SyncService struct {
-	queries *dbsqlc.Queries
-	db      *sql.DB
+	queries  *dbsqlc.Queries
+	db       *sql.DB
+	location *time.Location
 }
 
-func NewSyncService(q *dbsqlc.Queries, db *sql.DB) *SyncService {
-	return &SyncService{queries: q, db: db}
+func NewSyncService(q *dbsqlc.Queries, db *sql.DB, timezone string) *SyncService {
+	return &SyncService{queries: q, db: db, location: loadLocation(timezone)}
 }
+
+func (s *SyncService) UpdateTimezone(timezone string) { s.location = loadLocation(timezone) }
 
 type PushRequest struct {
-	Expenses   []PushExpense  `json:"expenses"`
-	Categories []PushCategory `json:"categories"`
+	Expenses          []PushExpense          `json:"expenses"`
+	Categories        []PushCategory         `json:"categories"`
+	RecurringExpenses []PushRecurringExpense `json:"recurring_expenses"`
 }
 
 type PushExpense struct {
@@ -46,18 +50,24 @@ type PushCategory struct {
 }
 
 type PullResponse struct {
-	Expenses   []Expense  `json:"expenses"`
-	Categories []Category `json:"categories"`
-	ServerTime int64      `json:"server_time"`
+	Expenses          []Expense          `json:"expenses"`
+	Categories        []Category         `json:"categories"`
+	RecurringExpenses []RecurringExpense `json:"recurring_expenses"`
+	ServerTime        int64              `json:"server_time"`
 }
 
 type PushResponse struct {
-	Expenses   []Expense  `json:"expenses"`
-	Categories []Category `json:"categories"`
-	ServerTime int64      `json:"server_time"`
+	Expenses          []Expense          `json:"expenses"`
+	Categories        []Category         `json:"categories"`
+	RecurringExpenses []RecurringExpense `json:"recurring_expenses"`
+	ServerTime        int64              `json:"server_time"`
 }
 
 func (s *SyncService) Pull(ctx context.Context, since int64) (*PullResponse, error) {
+	if err := materializeDueRecurringExpenses(ctx, s.queries, time.Now(), s.location); err != nil {
+		return nil, err
+	}
+
 	expenses, err := s.queries.ListExpensesUpdatedSince(ctx, since)
 	if err != nil {
 		return nil, err
@@ -67,13 +77,19 @@ func (s *SyncService) Pull(ctx context.Context, since int64) (*PullResponse, err
 		return nil, err
 	}
 
-	resp := &PullResponse{
-		Expenses:   make([]Expense, 0, len(expenses)),
-		Categories: make([]Category, 0, len(categories)),
-		ServerTime: time.Now().Unix(),
+	recurringExpenses, err := s.listRecurringExpensesUpdatedSince(ctx, since)
+	if err != nil {
+		return nil, err
 	}
 
-	includedCategoryIDs := make(map[string]struct{}, len(categories)+len(expenses))
+	resp := &PullResponse{
+		Expenses:          make([]Expense, 0, len(expenses)),
+		Categories:        make([]Category, 0, len(categories)),
+		RecurringExpenses: recurringExpenses,
+		ServerTime:        time.Now().Unix(),
+	}
+
+	includedCategoryIDs := make(map[string]struct{}, len(categories)+len(expenses)+len(recurringExpenses))
 	for _, c := range categories {
 		resp.Categories = append(resp.Categories, categoryFromRow(c))
 		includedCategoryIDs[c.ID] = struct{}{}
@@ -82,6 +98,18 @@ func (s *SyncService) Pull(ctx context.Context, since int64) (*PullResponse, err
 	// A delta pull can include an expense whose category was created/updated
 	// before the client's `since` cursor. Include those referenced categories
 	// as dependency rows so SQLite foreign keys are satisfied on the client.
+	for _, r := range recurringExpenses {
+		if _, ok := includedCategoryIDs[r.CategoryID]; ok {
+			continue
+		}
+		category, err := s.queries.GetCategoryIncludingDeleted(ctx, r.CategoryID)
+		if err != nil {
+			return nil, fmt.Errorf("loading category %q for recurring expense %q: %w", r.CategoryID, r.ID, err)
+		}
+		resp.Categories = append(resp.Categories, categoryFromRow(category))
+		includedCategoryIDs[r.CategoryID] = struct{}{}
+	}
+
 	for _, e := range expenses {
 		resp.Expenses = append(resp.Expenses, Expense{
 			ID:          e.ID,
@@ -125,9 +153,10 @@ func (s *SyncService) Push(ctx context.Context, req PushRequest) (*PushResponse,
 	now := time.Now().Unix()
 
 	resp := &PushResponse{
-		Expenses:   make([]Expense, 0, len(req.Expenses)),
-		Categories: make([]Category, 0, len(req.Categories)),
-		ServerTime: now,
+		Expenses:          make([]Expense, 0, len(req.Expenses)),
+		Categories:        make([]Category, 0, len(req.Categories)),
+		RecurringExpenses: make([]RecurringExpense, 0, len(req.RecurringExpenses)),
+		ServerTime:        now,
 	}
 	categoryAliases := make(map[string]string, len(req.Categories)*2)
 
@@ -143,6 +172,27 @@ func (s *SyncService) Push(ctx context.Context, req PushRequest) (*PushResponse,
 		if c.ID != "" {
 			categoryAliases[c.ID] = cat.ID
 		}
+	}
+
+	for _, r := range req.RecurringExpenses {
+		if r.ID == "" {
+			return nil, fmt.Errorf("recurring expense id is required")
+		}
+		resolvedCategoryID, err := s.resolveCategoryID(ctx, qtx, r.CategoryID, categoryAliases)
+		if err != nil {
+			return nil, fmt.Errorf("resolving recurring category %q: %w", r.CategoryID, err)
+		}
+		r.CategoryID = resolvedCategoryID
+
+		recurringExpense, err := s.pushRecurringExpense(ctx, qtx, r, now)
+		if err != nil {
+			return nil, fmt.Errorf("pushing recurring expense: %w", err)
+		}
+		resp.RecurringExpenses = append(resp.RecurringExpenses, *recurringExpense)
+	}
+
+	if err := materializeDueRecurringExpenses(ctx, qtx, time.Now(), s.location); err != nil {
+		return nil, err
 	}
 
 	for _, e := range req.Expenses {
@@ -392,6 +442,28 @@ func sameExpenseState(existing dbsqlc.Expense, input PushExpense, source string)
 		deletedStateEqual(existing.DeletedAt, input.DeletedAt)
 }
 
+func sameRecurringExpenseState(existing RecurringExpense, input PushRecurringExpense) bool {
+	return existing.Amount == input.Amount &&
+		existing.Currency == input.Currency &&
+		existing.CategoryID == input.CategoryID &&
+		existing.Description == input.Description &&
+		existing.Merchant == input.Merchant &&
+		existing.Frequency == input.Frequency &&
+		int64PtrEqual(existing.DayOfMonth, input.DayOfMonth) &&
+		existing.StartDate == input.StartDate &&
+		int64PtrEqual(existing.EndDate, input.EndDate) &&
+		existing.NextRunDate == input.NextRunDate &&
+		int64PtrEqual(existing.LastRunDate, input.LastRunDate) &&
+		int64PtrEqual(existing.DeletedAt, input.DeletedAt)
+}
+
+func int64PtrEqual(a, b *int64) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
 func nullInt64Equal(existing sql.NullInt64, incoming *int64) bool {
 	if incoming == nil {
 		return !existing.Valid
@@ -404,4 +476,80 @@ func deletedStateEqual(existing sql.NullInt64, incoming *int64) bool {
 		return !existing.Valid
 	}
 	return existing.Valid
+}
+
+func (s *SyncService) listRecurringExpensesUpdatedSince(ctx context.Context, since int64) ([]RecurringExpense, error) {
+	rows, err := s.queries.ListRecurringExpensesUpdatedSince(ctx, since)
+	if err != nil {
+		return nil, err
+	}
+
+	recurringExpenses := make([]RecurringExpense, 0, len(rows))
+	for _, row := range rows {
+		recurringExpenses = append(recurringExpenses, recurringExpenseFromRow(row))
+	}
+	return recurringExpenses, nil
+}
+
+func (s *SyncService) pushRecurringExpense(ctx context.Context, q *dbsqlc.Queries, input PushRecurringExpense, now int64) (*RecurringExpense, error) {
+	existing, err := s.getRecurringExpense(ctx, q, input.ID)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	if err == sql.ErrNoRows {
+		if err := q.CreateRecurringExpense(ctx, dbsqlc.CreateRecurringExpenseParams{
+			ID:          input.ID,
+			Amount:      input.Amount,
+			Currency:    input.Currency,
+			CategoryID:  input.CategoryID,
+			Description: input.Description,
+			Merchant:    input.Merchant,
+			Frequency:   input.Frequency,
+			DayOfMonth:  nullInt64(input.DayOfMonth),
+			StartDate:   input.StartDate,
+			EndDate:     nullInt64(input.EndDate),
+			NextRunDate: input.NextRunDate,
+			LastRunDate: nullInt64(input.LastRunDate),
+			CreatedAt:   now,
+			UpdatedAt:   now,
+			DeletedAt:   nullInt64(input.DeletedAt),
+		}); err != nil {
+			return nil, err
+		}
+		return s.getRecurringExpense(ctx, q, input.ID)
+	}
+
+	shouldApply := input.UpdatedAt > existing.UpdatedAt || (input.UpdatedAt == existing.UpdatedAt && !sameRecurringExpenseState(*existing, input))
+	if shouldApply {
+		if err := q.UpdateRecurringExpense(ctx, dbsqlc.UpdateRecurringExpenseParams{
+			Amount:      input.Amount,
+			Currency:    input.Currency,
+			CategoryID:  input.CategoryID,
+			Description: input.Description,
+			Merchant:    input.Merchant,
+			Frequency:   input.Frequency,
+			DayOfMonth:  nullInt64(input.DayOfMonth),
+			StartDate:   input.StartDate,
+			EndDate:     nullInt64(input.EndDate),
+			NextRunDate: input.NextRunDate,
+			LastRunDate: nullInt64(input.LastRunDate),
+			UpdatedAt:   now,
+			DeletedAt:   nullInt64(input.DeletedAt),
+			ID:          input.ID,
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	return s.getRecurringExpense(ctx, q, input.ID)
+}
+
+func (s *SyncService) getRecurringExpense(ctx context.Context, q *dbsqlc.Queries, id string) (*RecurringExpense, error) {
+	row, err := q.GetRecurringExpense(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	r := recurringExpenseFromRow(row)
+	return &r, nil
 }

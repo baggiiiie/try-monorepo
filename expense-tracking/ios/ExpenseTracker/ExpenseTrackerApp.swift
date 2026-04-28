@@ -41,24 +41,14 @@ struct ExpenseTrackerApp: App {
                     }
             }
             .task {
-                materializeDueRecurringExpenses()
                 // App-level initial sync. Lives across tab switches and is
                 // immune to view-cycle cancellation.
                 await syncService.sync()
             }
             .onChange(of: scenePhase) { _, newPhase in
                 guard newPhase == .active else { return }
-                materializeDueRecurringExpenses()
                 Task { await syncService.sync() }
             }
-        }
-    }
-
-    private func materializeDueRecurringExpenses() {
-        do {
-            try database.recurringExpenseRepository.materializeDueExpenses()
-        } catch {
-            print("Error materializing recurring expenses: \(error)")
         }
     }
 }

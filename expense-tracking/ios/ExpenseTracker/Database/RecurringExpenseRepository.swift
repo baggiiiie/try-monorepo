@@ -38,15 +38,17 @@ struct RecurringExpenseRepository {
 
     func save(_ draft: RecurringExpenseDraft, editing existingRecurringExpense: RecurringExpense?) throws {
         let now = Int64(Date().timeIntervalSince1970)
-        let nextRunDate = RecurringExpenseSchedule.nextRunTimestamp(
-            after: nil,
-            frequency: draft.frequency,
-            dayOfMonth: draft.dayOfMonth,
-            startDate: AppDateFormatter.date(fromUnixTimestamp: draft.startDate)
-        )
-
         try dbQueue.write { db in
             if var existingRecurringExpense {
+                let scheduleChanged = existingRecurringExpense.frequency != draft.frequency.rawValue ||
+                    existingRecurringExpense.dayOfMonth != draft.dayOfMonth ||
+                    existingRecurringExpense.startDate != draft.startDate
+                let nextRunDate = scheduleChanged ? RecurringExpenseSchedule.nextRunTimestamp(
+                    after: existingRecurringExpense.lastRunDate.map { AppDateFormatter.date(fromUnixTimestamp: $0) },
+                    frequency: draft.frequency,
+                    dayOfMonth: draft.dayOfMonth,
+                    startDate: AppDateFormatter.date(fromUnixTimestamp: draft.startDate)
+                ) : existingRecurringExpense.nextRunDate
                 existingRecurringExpense.amount = draft.amount
                 existingRecurringExpense.currency = draft.currency
                 existingRecurringExpense.categoryId = draft.categoryId
@@ -58,9 +60,17 @@ struct RecurringExpenseRepository {
                 existingRecurringExpense.endDate = draft.endDate
                 existingRecurringExpense.nextRunDate = nextRunDate
                 existingRecurringExpense.updatedAt = now
+                existingRecurringExpense.syncStatus = RecordSyncStatus.pendingPush.rawValue
                 try existingRecurringExpense.update(db)
                 return
             }
+
+            let nextRunDate = RecurringExpenseSchedule.nextRunTimestamp(
+                after: nil,
+                frequency: draft.frequency,
+                dayOfMonth: draft.dayOfMonth,
+                startDate: AppDateFormatter.date(fromUnixTimestamp: draft.startDate)
+            )
 
             let recurringExpense = RecurringExpense(
                 id: UUID().uuidString,
@@ -77,7 +87,8 @@ struct RecurringExpenseRepository {
                 lastRunDate: nil,
                 createdAt: now,
                 updatedAt: now,
-                deletedAt: nil
+                deletedAt: nil,
+                syncStatus: RecordSyncStatus.pendingPush.rawValue
             )
             try recurringExpense.insert(db)
         }
@@ -90,88 +101,8 @@ struct RecurringExpenseRepository {
             var recurringExpense = recurringExpense
             recurringExpense.deletedAt = deletedAt
             recurringExpense.updatedAt = deletedAt
+            recurringExpense.syncStatus = RecordSyncStatus.pendingPush.rawValue
             try recurringExpense.update(db)
         }
-    }
-
-    @discardableResult
-    func materializeDueExpenses(now: Date = Date(), calendar: Calendar = .current) throws -> Int {
-        let today = calendar.startOfDay(for: now)
-        let todayTimestamp = AppDateFormatter.unixTimestamp(from: today)
-        var createdCount = 0
-
-        try dbQueue.write { db in
-            let dueRecurringExpenses = try RecurringExpense
-                .filter(RecurringExpense.Columns.deletedAt == nil)
-                .filter(RecurringExpense.Columns.nextRunDate <= todayTimestamp)
-                .filter(sql: "end_date IS NULL OR end_date >= next_run_date")
-                .fetchAll(db)
-
-            for recurringExpense in dueRecurringExpenses {
-                var workingRecurringExpense = recurringExpense
-                var nextRunDate = AppDateFormatter.date(fromUnixTimestamp: workingRecurringExpense.nextRunDate)
-                let frequency = RecurringFrequency(rawValue: workingRecurringExpense.frequency) ?? .monthly
-                var guardCount = 0
-
-                while calendar.startOfDay(for: nextRunDate) <= today && guardCount < 120 {
-                    let occurrenceDate = calendar.startOfDay(for: nextRunDate)
-                    let occurrenceTimestamp = AppDateFormatter.unixTimestamp(from: occurrenceDate)
-
-                    if let endDateTimestamp = workingRecurringExpense.endDate,
-                       occurrenceTimestamp > endDateTimestamp {
-                        break
-                    }
-
-                    let existingRunCount = try RecurringExpenseRun
-                        .filter(Column("recurring_expense_id") == workingRecurringExpense.id)
-                        .filter(Column("occurrence_date") == occurrenceTimestamp)
-                        .fetchCount(db)
-
-                    if existingRunCount == 0 {
-                        let now = Int64(Date().timeIntervalSince1970)
-                        let expense = Expense(
-                            id: UUID().uuidString,
-                            amount: workingRecurringExpense.amount,
-                            currency: workingRecurringExpense.currency,
-                            categoryId: workingRecurringExpense.categoryId,
-                            description: workingRecurringExpense.description,
-                            merchant: workingRecurringExpense.merchant,
-                            date: occurrenceTimestamp,
-                            source: ExpenseSource.recurring.rawValue,
-                            createdAt: now,
-                            updatedAt: now,
-                            deletedAt: nil
-                        )
-                        try expense.insert(db)
-
-                        let run = RecurringExpenseRun(
-                            id: UUID().uuidString,
-                            recurringExpenseId: workingRecurringExpense.id,
-                            expenseId: expense.id,
-                            occurrenceDate: occurrenceTimestamp,
-                            createdAt: now
-                        )
-                        try run.insert(db)
-                        createdCount += 1
-                    }
-
-                    workingRecurringExpense.lastRunDate = occurrenceTimestamp
-                    nextRunDate = RecurringExpenseSchedule.nextRunDate(
-                        after: occurrenceDate,
-                        frequency: frequency,
-                        dayOfMonth: workingRecurringExpense.dayOfMonth,
-                        startDate: AppDateFormatter.date(fromUnixTimestamp: workingRecurringExpense.startDate),
-                        calendar: calendar
-                    )
-                    workingRecurringExpense.nextRunDate = AppDateFormatter.unixTimestamp(from: nextRunDate)
-                    guardCount += 1
-                }
-
-                workingRecurringExpense.updatedAt = Int64(Date().timeIntervalSince1970)
-                try workingRecurringExpense.update(db)
-            }
-        }
-
-        return createdCount
     }
 }

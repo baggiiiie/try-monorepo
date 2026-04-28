@@ -239,6 +239,7 @@ struct ServerErrorResponse: Codable {
 struct PushRequest: Codable {
     let expenses: [PushExpense]
     let categories: [PushCategory]
+    let recurringExpenses: [PushRecurringExpense]
 }
 
 struct PushExpense: Codable {
@@ -263,14 +264,33 @@ struct PushCategory: Codable {
     let deletedAt: Int64?
 }
 
+struct PushRecurringExpense: Codable {
+    let id: String
+    let amount: Int64
+    let currency: String
+    let categoryId: String
+    let description: String
+    let merchant: String
+    let frequency: String
+    let dayOfMonth: Int?
+    let startDate: Int64
+    let endDate: Int64?
+    let nextRunDate: Int64
+    let lastRunDate: Int64?
+    let updatedAt: Int64
+    let deletedAt: Int64?
+}
+
 struct PushResponse: Codable {
     let expenses: [PullExpense]
     let categories: [PullCategory]
+    let recurringExpenses: [PullRecurringExpense]
 }
 
 struct PullResponse: Codable {
     let expenses: [PullExpense]
     let categories: [PullCategory]
+    let recurringExpenses: [PullRecurringExpense]
     let serverTime: Int64
 }
 
@@ -293,6 +313,24 @@ struct PullCategory: Codable {
     let name: String
     let icon: String
     let budget: Int64?
+    let createdAt: Int64
+    let updatedAt: Int64
+    let deletedAt: Int64?
+}
+
+struct PullRecurringExpense: Codable {
+    let id: String
+    let amount: Int64
+    let currency: String
+    let categoryId: String
+    let description: String
+    let merchant: String
+    let frequency: String
+    let dayOfMonth: Int?
+    let startDate: Int64
+    let endDate: Int64?
+    let nextRunDate: Int64
+    let lastRunDate: Int64?
     let createdAt: Int64
     let updatedAt: Int64
     let deletedAt: Int64?
@@ -324,6 +362,27 @@ extension PushCategory {
             budget: category.budget,
             updatedAt: category.updatedAt,
             deletedAt: category.deletedAt
+        )
+    }
+}
+
+extension PushRecurringExpense {
+    init(_ recurringExpense: RecurringExpense) {
+        self.init(
+            id: recurringExpense.id,
+            amount: recurringExpense.amount,
+            currency: recurringExpense.currency,
+            categoryId: recurringExpense.categoryId,
+            description: recurringExpense.description,
+            merchant: recurringExpense.merchant,
+            frequency: recurringExpense.frequency,
+            dayOfMonth: recurringExpense.dayOfMonth,
+            startDate: recurringExpense.startDate,
+            endDate: recurringExpense.endDate,
+            nextRunDate: recurringExpense.nextRunDate,
+            lastRunDate: recurringExpense.lastRunDate,
+            updatedAt: recurringExpense.updatedAt,
+            deletedAt: recurringExpense.deletedAt
         )
     }
 }

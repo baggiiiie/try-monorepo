@@ -50,17 +50,14 @@ final class ExpenseFeedViewModel: ObservableObject {
     @Published var monthlyTotal = MonthlyExpenseTotal(cents: 0, currency: "SGD")
 
     private let expenseRepository: ExpenseRepository
-    private let recurringExpenseRepository: RecurringExpenseRepository
 
     init(database: AppDatabase) {
         self.expenseRepository = database.expenseRepository
-        self.recurringExpenseRepository = database.recurringExpenseRepository
         refresh()
     }
 
     func refresh() {
         do {
-            try recurringExpenseRepository.materializeDueExpenses()
             let items = try expenseRepository.fetchFeedItems()
             groupedExpenses = Self.groupExpenses(items)
             monthlyTotal = Self.monthlyTotal(from: items)

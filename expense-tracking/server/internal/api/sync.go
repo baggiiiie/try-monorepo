@@ -50,6 +50,7 @@ func syncPush(a *app.App) http.HandlerFunc {
 			wideevent.Error(r.Context(), "sync.push.failed",
 				slog.Int("categories", len(req.Categories)),
 				slog.Int("expenses", len(req.Expenses)),
+				slog.Int("recurring_expenses", len(req.RecurringExpenses)),
 				slog.Any("error", err),
 			)
 			writeError(w, r, http.StatusInternalServerError, err.Error())
