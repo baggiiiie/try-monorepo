@@ -16,8 +16,8 @@ struct WalletSuggestionRepository {
     func dismiss(_ suggestion: WalletSuggestion) throws {
         try dbQueue.write { db in
             try db.execute(
-                sql: "UPDATE wallet_suggestions SET status = ? WHERE id = ?",
-                arguments: [WalletSuggestionStatus.dismissed.rawValue, suggestion.id]
+                sql: "DELETE FROM wallet_suggestions WHERE id = ?",
+                arguments: [suggestion.id]
             )
         }
     }
