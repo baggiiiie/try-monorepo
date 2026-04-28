@@ -36,9 +36,6 @@ struct ExpenseFeedView: View {
                                     .foregroundStyle(.blue)
                                 Text("\(suggestionsViewModel.pendingCount) pending suggestion\(suggestionsViewModel.pendingCount == 1 ? "" : "s")")
                                 Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
                             }
                         }
                         .tint(.primary)
