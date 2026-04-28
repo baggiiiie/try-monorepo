@@ -2,13 +2,14 @@
     "provider": "ollama",
     "sandbox": false,
     "model": "Qwen3.6:latest",
+    "code_mode": true,
     "mcp_servers": [
         {
             "name": "example",
             "command": "npx",
             "args": [
                 "tsx",
-                "/Users/ydai/repos/personal/tries/code-mode/src/index.ts"
+                "/Users/ydai/repos/personal/tries/agent-playground-mcp/src/index.ts"
             ]
         }
     ]

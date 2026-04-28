@@ -55,7 +55,14 @@ func registerCoreTools(reg *tools.Tools, app *App) {
 	reg.Register(&tools.WebSearchTool{})
 
 	if app.MCP != nil {
-		app.MCP.Register(reg)
+		if app.Runtime != nil && app.Runtime.CodeMode {
+			// Code mode: hide the per-tool registrations and expose just two
+			// LLM-facing tools that operate over the whole MCP surface.
+			reg.Register(&tools.SearchToolsTool{Registry: app.MCP})
+			reg.Register(&tools.ExecuteCodeTool{Registry: app.MCP, Workspace: workspace})
+		} else {
+			app.MCP.Register(reg)
+		}
 	}
 
 	reg.Register(&tools.DeepResearchTool{

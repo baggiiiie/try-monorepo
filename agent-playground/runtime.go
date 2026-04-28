@@ -30,6 +30,7 @@ type RuntimeConfig struct {
 	AllowedCommands  []string          `json:"allowed_commands"`
 	MaxContextTokens int               `json:"max_context_tokens"`
 	Sandbox          *bool             `json:"sandbox"`
+	CodeMode         bool              `json:"code_mode"`
 	MCPServers       []MCPServerConfig `json:"mcp_servers"`
 }
 
@@ -42,6 +43,7 @@ type Runtime struct {
 	AllowedCommands  []string
 	MaxContextTokens int
 	Sandbox          bool
+	CodeMode         bool
 	MCPServers       []MCPServerConfig
 }
 
@@ -151,6 +153,7 @@ func LoadRuntime() (*Runtime, error) {
 		AllowedCommands:  allowedCommands,
 		MaxContextTokens: maxContextTokens,
 		Sandbox:          sandbox,
+		CodeMode:         cfg.CodeMode,
 		MCPServers:       cfg.MCPServers,
 	}, nil
 }

@@ -76,6 +76,29 @@ func (m *MCPManager) Register(reg *tools.Tools) {
 	}
 }
 
+// AllTools returns every tool from every connected server, paired with its
+// server name. Implements tools.MCPRegistry.
+func (m *MCPManager) AllTools() []tools.QualifiedTool {
+	var out []tools.QualifiedTool
+	for _, s := range m.Servers {
+		for _, td := range s.Tools {
+			out = append(out, tools.QualifiedTool{Server: s.Name, Tool: td})
+		}
+	}
+	return out
+}
+
+// CallTool dispatches a call to the named server's MCP client.
+// Implements tools.MCPRegistry.
+func (m *MCPManager) CallTool(serverName, toolName string, args map[string]any) (*mcp.CallResult, error) {
+	for _, s := range m.Servers {
+		if s.Name == serverName {
+			return s.Client.CallTool(toolName, args)
+		}
+	}
+	return nil, fmt.Errorf("unknown MCP server %q", serverName)
+}
+
 func (m *MCPManager) Close() {
 	for _, s := range m.Servers {
 		s.Client.Close()
