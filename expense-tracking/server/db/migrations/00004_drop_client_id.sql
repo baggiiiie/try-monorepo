@@ -30,7 +30,10 @@ CREATE TABLE expenses_new (
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     deleted_at INTEGER,
-    FOREIGN KEY (category_id) REFERENCES categories(id)
+    -- Reference the temporary table until it is renamed below. If this points
+    -- at the old categories table, SQLite rejects DROP TABLE categories at
+    -- COMMIT while expenses_new still has a deferred FK to it.
+    FOREIGN KEY (category_id) REFERENCES categories_new(id)
 );
 
 INSERT INTO expenses_new (id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at)
