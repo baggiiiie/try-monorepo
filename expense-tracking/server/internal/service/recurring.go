@@ -57,6 +57,83 @@ func NewRecurringService(db *sql.DB, timezone string) *RecurringService {
 
 func (s *RecurringService) UpdateTimezone(timezone string) { s.location = loadLocation(timezone) }
 
+type RecurringExpenseInput struct {
+	Amount      int64
+	Currency    string
+	CategoryID  string
+	Category    string // category name, resolved to ID
+	Description string
+	Merchant    string
+	Frequency   string // weekly, monthly, yearly
+	DayOfMonth  *int64
+	StartDate   int64  // unix seconds
+	EndDate     *int64 // unix seconds, optional
+}
+
+func (s *RecurringService) Create(ctx context.Context, input RecurringExpenseInput) (*RecurringExpense, error) {
+	if input.Amount <= 0 {
+		return nil, fmt.Errorf("amount must be positive")
+	}
+	switch input.Frequency {
+	case "weekly", "monthly", "yearly":
+	default:
+		return nil, fmt.Errorf("frequency must be one of weekly, monthly, yearly")
+	}
+	if input.StartDate == 0 {
+		return nil, fmt.Errorf("start_date is required")
+	}
+	if input.EndDate != nil && *input.EndDate < input.StartDate {
+		return nil, fmt.Errorf("end_date must be on or after start_date")
+	}
+	if input.Currency == "" {
+		return nil, fmt.Errorf("currency is required")
+	}
+
+	categoryID := input.CategoryID
+	if categoryID == "" && input.Category != "" {
+		cat, err := s.queries.GetCategoryByName(ctx, input.Category)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return nil, fmt.Errorf("category %q not found. Run 'expense category list' to see available categories", input.Category)
+			}
+			return nil, err
+		}
+		categoryID = cat.ID
+	}
+	if categoryID == "" {
+		return nil, fmt.Errorf("category is required")
+	}
+
+	now := time.Now().Unix()
+	id := uuid.New().String()
+	if err := s.queries.CreateRecurringExpense(ctx, dbsqlc.CreateRecurringExpenseParams{
+		ID:          id,
+		Amount:      input.Amount,
+		Currency:    input.Currency,
+		CategoryID:  categoryID,
+		Description: input.Description,
+		Merchant:    input.Merchant,
+		Frequency:   input.Frequency,
+		DayOfMonth:  nullInt64(input.DayOfMonth),
+		StartDate:   input.StartDate,
+		EndDate:     nullInt64(input.EndDate),
+		NextRunDate: input.StartDate,
+		LastRunDate: nullInt64(nil),
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		DeletedAt:   nullInt64(nil),
+	}); err != nil {
+		return nil, fmt.Errorf("creating recurring expense: %w", err)
+	}
+
+	row, err := s.queries.GetRecurringExpense(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	r := recurringExpenseFromRow(row)
+	return &r, nil
+}
+
 func (s *RecurringService) MaterializeDue(ctx context.Context, now time.Time) error {
 	return materializeDueRecurringExpenses(ctx, s.queries, now, s.location)
 }
