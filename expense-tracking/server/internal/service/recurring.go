@@ -51,8 +51,8 @@ type RecurringService struct {
 	location *time.Location
 }
 
-func NewRecurringService(db *sql.DB, timezone string) *RecurringService {
-	return &RecurringService{queries: dbsqlc.New(db), location: loadLocation(timezone)}
+func NewRecurringService(q *dbsqlc.Queries, timezone string) *RecurringService {
+	return &RecurringService{queries: q, location: loadLocation(timezone)}
 }
 
 func (s *RecurringService) UpdateTimezone(timezone string) { s.location = loadLocation(timezone) }

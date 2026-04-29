@@ -3,11 +3,10 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"expense-tracker/internal/service"
 	"fmt"
 	"math"
 	"os"
-
-	"expense-tracker/internal/service"
 
 	"github.com/spf13/cobra"
 )
@@ -57,7 +56,7 @@ var categoryListCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			result := map[string]interface{}{
+			result := map[string]any{
 				"categories": categories,
 			}
 			enc := json.NewEncoder(os.Stdout)

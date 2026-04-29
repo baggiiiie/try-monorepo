@@ -6,17 +6,18 @@ import (
 	"fmt"
 	"time"
 
+	"expense-tracker/internal/repository"
 	dbsqlc "expense-tracker/internal/repository/sqlc"
 )
 
 type SyncService struct {
+	store    *repository.Store
 	queries  *dbsqlc.Queries
-	db       *sql.DB
 	location *time.Location
 }
 
-func NewSyncService(q *dbsqlc.Queries, db *sql.DB, timezone string) *SyncService {
-	return &SyncService{queries: q, db: db, location: loadLocation(timezone)}
+func NewSyncService(store *repository.Store, timezone string) *SyncService {
+	return &SyncService{store: store, queries: store.Queries(), location: loadLocation(timezone)}
 }
 
 func (s *SyncService) UpdateTimezone(timezone string) { s.location = loadLocation(timezone) }
@@ -140,79 +141,72 @@ func (s *SyncService) Pull(ctx context.Context, since int64) (*PullResponse, err
 }
 
 func (s *SyncService) Push(ctx context.Context, req PushRequest) (*PushResponse, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
-	qtx := s.queries.WithTx(tx)
-	if _, err := tx.ExecContext(ctx, "PRAGMA defer_foreign_keys = ON"); err != nil {
-		return nil, err
-	}
 	now := time.Now().Unix()
-
 	resp := &PushResponse{
 		Expenses:          make([]Expense, 0, len(req.Expenses)),
 		Categories:        make([]Category, 0, len(req.Categories)),
 		RecurringExpenses: make([]RecurringExpense, 0, len(req.RecurringExpenses)),
 		ServerTime:        now,
 	}
-	categoryAliases := make(map[string]string, len(req.Categories)*2)
 
-	for _, c := range req.Categories {
-		if c.ID == "" {
-			return nil, fmt.Errorf("category id is required")
-		}
-		cat, err := s.pushCategory(ctx, qtx, c, now)
-		if err != nil {
-			return nil, fmt.Errorf("pushing category: %w", err)
-		}
-		resp.Categories = append(resp.Categories, *cat)
-		if c.ID != "" {
-			categoryAliases[c.ID] = cat.ID
-		}
-	}
+	err := s.store.WithTx(ctx, func(qtx *dbsqlc.Queries) error {
+		categoryAliases := make(map[string]string, len(req.Categories)*2)
 
-	for _, r := range req.RecurringExpenses {
-		if r.ID == "" {
-			return nil, fmt.Errorf("recurring expense id is required")
+		for _, c := range req.Categories {
+			if c.ID == "" {
+				return fmt.Errorf("category id is required")
+			}
+			cat, err := s.pushCategory(ctx, qtx, c, now)
+			if err != nil {
+				return fmt.Errorf("pushing category: %w", err)
+			}
+			resp.Categories = append(resp.Categories, *cat)
+			if c.ID != "" {
+				categoryAliases[c.ID] = cat.ID
+			}
 		}
-		resolvedCategoryID, err := s.resolveCategoryID(ctx, qtx, r.CategoryID, categoryAliases)
-		if err != nil {
-			return nil, fmt.Errorf("resolving recurring category %q: %w", r.CategoryID, err)
-		}
-		r.CategoryID = resolvedCategoryID
 
-		recurringExpense, err := s.pushRecurringExpense(ctx, qtx, r, now)
-		if err != nil {
-			return nil, fmt.Errorf("pushing recurring expense: %w", err)
-		}
-		resp.RecurringExpenses = append(resp.RecurringExpenses, *recurringExpense)
-	}
+		for _, r := range req.RecurringExpenses {
+			if r.ID == "" {
+				return fmt.Errorf("recurring expense id is required")
+			}
+			resolvedCategoryID, err := s.resolveCategoryID(ctx, qtx, r.CategoryID, categoryAliases)
+			if err != nil {
+				return fmt.Errorf("resolving recurring category %q: %w", r.CategoryID, err)
+			}
+			r.CategoryID = resolvedCategoryID
 
-	if err := materializeDueRecurringExpenses(ctx, qtx, time.Now(), s.location); err != nil {
-		return nil, err
-	}
-
-	for _, e := range req.Expenses {
-		if e.ID == "" {
-			return nil, fmt.Errorf("expense id is required")
+			recurringExpense, err := s.pushRecurringExpense(ctx, qtx, r, now)
+			if err != nil {
+				return fmt.Errorf("pushing recurring expense: %w", err)
+			}
+			resp.RecurringExpenses = append(resp.RecurringExpenses, *recurringExpense)
 		}
-		resolvedCategoryID, err := s.resolveCategoryID(ctx, qtx, e.CategoryID, categoryAliases)
-		if err != nil {
-			return nil, fmt.Errorf("resolving category %q: %w", e.CategoryID, err)
-		}
-		e.CategoryID = resolvedCategoryID
 
-		exp, err := s.pushExpense(ctx, qtx, e, now)
-		if err != nil {
-			return nil, fmt.Errorf("pushing expense: %w", err)
+		if err := materializeDueRecurringExpenses(ctx, qtx, time.Now(), s.location); err != nil {
+			return err
 		}
-		resp.Expenses = append(resp.Expenses, *exp)
-	}
 
-	if err := tx.Commit(); err != nil {
+		for _, e := range req.Expenses {
+			if e.ID == "" {
+				return fmt.Errorf("expense id is required")
+			}
+			resolvedCategoryID, err := s.resolveCategoryID(ctx, qtx, e.CategoryID, categoryAliases)
+			if err != nil {
+				return fmt.Errorf("resolving category %q: %w", e.CategoryID, err)
+			}
+			e.CategoryID = resolvedCategoryID
+
+			exp, err := s.pushExpense(ctx, qtx, e, now)
+			if err != nil {
+				return fmt.Errorf("pushing expense: %w", err)
+			}
+			resp.Expenses = append(resp.Expenses, *exp)
+		}
+
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 

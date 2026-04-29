@@ -7,6 +7,7 @@ import (
 
 	dbmigrations "expense-tracker/db"
 	"expense-tracker/internal/config"
+	"expense-tracker/internal/repository"
 	dbsqlc "expense-tracker/internal/repository/sqlc"
 	"expense-tracker/internal/service"
 
@@ -44,13 +45,14 @@ func Open(dbPath, configPath string) (*App, error) {
 		return nil, fmt.Errorf("running migrations: %w", err)
 	}
 
-	queries := dbsqlc.New(db)
+	store := repository.NewStore(db)
+	queries := store.Queries()
 
-	categoryService := service.NewCategoryService(queries, db)
-	expenseService := service.NewExpenseService(queries, db, &prefs, configPath)
+	categoryService := service.NewCategoryService(queries)
+	expenseService := service.NewExpenseService(queries, &prefs, configPath)
 	reportService := service.NewReportService(queries, &prefs)
-	recurringService := service.NewRecurringService(db, prefs.Timezone)
-	syncService := service.NewSyncService(queries, db, prefs.Timezone)
+	recurringService := service.NewRecurringService(queries, prefs.Timezone)
+	syncService := service.NewSyncService(store, prefs.Timezone)
 
 	app := &App{
 		DB:               db,

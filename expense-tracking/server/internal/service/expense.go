@@ -14,13 +14,12 @@ import (
 
 type ExpenseService struct {
 	queries    *dbsqlc.Queries
-	db         *sql.DB
 	prefs      *config.Preferences
 	configPath string
 }
 
-func NewExpenseService(q *dbsqlc.Queries, db *sql.DB, prefs *config.Preferences, configPath string) *ExpenseService {
-	return &ExpenseService{queries: q, db: db, prefs: prefs, configPath: configPath}
+func NewExpenseService(q *dbsqlc.Queries, prefs *config.Preferences, configPath string) *ExpenseService {
+	return &ExpenseService{queries: q, prefs: prefs, configPath: configPath}
 }
 
 func (s *ExpenseService) UpdatePreferences(p *config.Preferences) {

@@ -29,11 +29,10 @@ var defaultCategories = []DefaultCategory{
 
 type CategoryService struct {
 	queries *dbsqlc.Queries
-	db      *sql.DB
 }
 
-func NewCategoryService(q *dbsqlc.Queries, db *sql.DB) *CategoryService {
-	return &CategoryService{queries: q, db: db}
+func NewCategoryService(q *dbsqlc.Queries) *CategoryService {
+	return &CategoryService{queries: q}
 }
 
 type CategoryInput struct {
