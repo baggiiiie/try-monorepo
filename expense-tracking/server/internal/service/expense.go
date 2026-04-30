@@ -52,6 +52,13 @@ type Expense struct {
 }
 
 func (s *ExpenseService) Create(ctx context.Context, input ExpenseInput) (*Expense, error) {
+	return s.CreateInTx(ctx, s.queries, input)
+}
+
+// CreateInTx is identical to Create but operates on the provided queries
+// handle, allowing callers to compose the create with a surrounding
+// transaction (e.g. dry-run rollback).
+func (s *ExpenseService) CreateInTx(ctx context.Context, q *dbsqlc.Queries, input ExpenseInput) (*Expense, error) {
 	if input.Amount <= 0 {
 		return nil, fmt.Errorf("amount must be positive")
 	}
@@ -59,7 +66,7 @@ func (s *ExpenseService) Create(ctx context.Context, input ExpenseInput) (*Expen
 	// Resolve category
 	categoryID := input.CategoryID
 	if categoryID == "" && input.Category != "" {
-		cat, err := s.queries.GetCategoryByName(ctx, input.Category)
+		cat, err := q.GetCategoryByName(ctx, input.Category)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return nil, fmt.Errorf("category %q not found. Run 'expense category list' to see available categories", input.Category)
@@ -84,7 +91,7 @@ func (s *ExpenseService) Create(ctx context.Context, input ExpenseInput) (*Expen
 
 	now := time.Now().Unix()
 	id := uuid.New().String()
-	row, err := s.queries.CreateExpense(ctx, dbsqlc.CreateExpenseParams{
+	row, err := q.CreateExpense(ctx, dbsqlc.CreateExpenseParams{
 		ID:          id,
 		Amount:      input.Amount,
 		Currency:    currency,
@@ -101,7 +108,7 @@ func (s *ExpenseService) Create(ctx context.Context, input ExpenseInput) (*Expen
 	}
 
 	// Get category name for response
-	cat, _ := s.queries.GetCategoryIncludingDeleted(ctx, categoryID)
+	cat, _ := q.GetCategoryIncludingDeleted(ctx, categoryID)
 	exp := expenseFromRow(row, cat.Name)
 	return &exp, nil
 }

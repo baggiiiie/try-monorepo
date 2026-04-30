@@ -17,6 +17,7 @@ import (
 
 type App struct {
 	DB               *sql.DB
+	Store            *repository.Store
 	Queries          *dbsqlc.Queries
 	Preferences      config.Preferences
 	PreferencesPath  string
@@ -56,6 +57,7 @@ func Open(dbPath, configPath string) (*App, error) {
 
 	app := &App{
 		DB:               db,
+		Store:            store,
 		Queries:          queries,
 		Preferences:      prefs,
 		PreferencesPath:  configPath,

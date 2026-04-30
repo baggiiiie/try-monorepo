@@ -71,6 +71,13 @@ type RecurringExpenseInput struct {
 }
 
 func (s *RecurringService) Create(ctx context.Context, input RecurringExpenseInput) (*RecurringExpense, error) {
+	return s.CreateInTx(ctx, s.queries, input)
+}
+
+// CreateInTx is identical to Create but operates on the provided queries
+// handle, allowing callers to compose the create with a surrounding
+// transaction (e.g. dry-run rollback).
+func (s *RecurringService) CreateInTx(ctx context.Context, q *dbsqlc.Queries, input RecurringExpenseInput) (*RecurringExpense, error) {
 	if input.Amount <= 0 {
 		return nil, fmt.Errorf("amount must be positive")
 	}
@@ -91,7 +98,7 @@ func (s *RecurringService) Create(ctx context.Context, input RecurringExpenseInp
 
 	categoryID := input.CategoryID
 	if categoryID == "" && input.Category != "" {
-		cat, err := s.queries.GetCategoryByName(ctx, input.Category)
+		cat, err := q.GetCategoryByName(ctx, input.Category)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return nil, fmt.Errorf("category %q not found. Run 'expense category list' to see available categories", input.Category)
@@ -106,7 +113,7 @@ func (s *RecurringService) Create(ctx context.Context, input RecurringExpenseInp
 
 	now := time.Now().Unix()
 	id := uuid.New().String()
-	if err := s.queries.CreateRecurringExpense(ctx, dbsqlc.CreateRecurringExpenseParams{
+	if err := q.CreateRecurringExpense(ctx, dbsqlc.CreateRecurringExpenseParams{
 		ID:          id,
 		Amount:      input.Amount,
 		Currency:    input.Currency,
@@ -126,7 +133,7 @@ func (s *RecurringService) Create(ctx context.Context, input RecurringExpenseInp
 		return nil, fmt.Errorf("creating recurring expense: %w", err)
 	}
 
-	row, err := s.queries.GetRecurringExpense(ctx, id)
+	row, err := q.GetRecurringExpense(ctx, id)
 	if err != nil {
 		return nil, err
 	}
