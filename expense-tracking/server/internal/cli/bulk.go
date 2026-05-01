@@ -296,5 +296,3 @@ func parseJSONInputs[T any](raw []byte) ([]T, error) {
 	}
 	return []T{single}, nil
 }
-
-func int64Ptr(v int64) *int64 { return &v }

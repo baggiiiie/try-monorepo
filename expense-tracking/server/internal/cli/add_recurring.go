@@ -7,6 +7,7 @@ import (
 	"math"
 	"time"
 
+	"expense-tracker/internal/ptr"
 	dbsqlc "expense-tracker/internal/repository/sqlc"
 	"expense-tracker/internal/service"
 
@@ -66,7 +67,7 @@ Discovery:
 	FormatHumanRow: formatAddRecurringRow,
 	Example: func() any {
 		return []AddRecurringInput{
-			{Amount: 1500.00, Category: "rent", Merchant: "Landlord", Frequency: "monthly", StartDate: "2026-05-01", DayOfMonth: int64Ptr(1)},
+			{Amount: 1500.00, Category: "rent", Merchant: "Landlord", Frequency: "monthly", StartDate: "2026-05-01", DayOfMonth: ptr.To[int64](1)},
 		}
 	},
 }.Build()
@@ -129,7 +130,7 @@ func processAddRecurringInput(ctx context.Context, q *dbsqlc.Queries, in AddRecu
 		currency = application.Preferences.Currency
 	}
 
-	return application.RecurringService.CreateInTx(ctx, q, service.RecurringExpenseInput{
+	return application.RecurringService.Create(ctx, q, service.RecurringExpenseInput{
 		Amount:      int64(math.Round(in.Amount * 100)),
 		Currency:    currency,
 		Category:    in.Category,

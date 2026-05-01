@@ -2,13 +2,14 @@ package cli
 
 import (
 	"context"
+	"expense-tracker/internal/service"
+	"expense-tracker/internal/timeutil"
 	"fmt"
 	"io"
 	"math"
 	"time"
 
 	dbsqlc "expense-tracker/internal/repository/sqlc"
-	"expense-tracker/internal/service"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -99,7 +100,7 @@ func processAddInput(ctx context.Context, q *dbsqlc.Queries, in AddInput) (*serv
 		date = t.Unix()
 	}
 
-	return application.ExpenseService.CreateInTx(ctx, q, service.ExpenseInput{
+	return application.ExpenseService.Create(ctx, q, service.ExpenseInput{
 		Amount:      int64(math.Round(in.Amount * 100)),
 		Currency:    in.Currency,
 		Category:    in.Category,
@@ -119,9 +120,5 @@ func init() {
 }
 
 func loadTimezone(tz string) *time.Location {
-	loc, err := time.LoadLocation(tz)
-	if err != nil {
-		return time.FixedZone("UTC+8", 8*60*60)
-	}
-	return loc
+	return timeutil.LoadLocation(tz, timeutil.Singapore)
 }

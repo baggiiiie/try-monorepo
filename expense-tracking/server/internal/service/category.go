@@ -162,20 +162,6 @@ func (s *CategoryService) Delete(ctx context.Context, id string) error {
 	})
 }
 
-func nullInt64(v *int64) sql.NullInt64 {
-	if v == nil {
-		return sql.NullInt64{}
-	}
-	return sql.NullInt64{Int64: *v, Valid: true}
-}
-
-func toInt64Ptr(v sql.NullInt64) *int64 {
-	if !v.Valid {
-		return nil
-	}
-	return &v.Int64
-}
-
 func categoryFromRow(r dbsqlc.Category) Category {
 	cat := Category{
 		ID:        r.ID,

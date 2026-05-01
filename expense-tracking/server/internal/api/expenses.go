@@ -35,7 +35,7 @@ func createExpense(a *app.App) http.HandlerFunc {
 			return
 		}
 
-		exp, err := a.ExpenseService.Create(r.Context(), service.ExpenseInput{
+		exp, err := a.ExpenseService.Create(r.Context(), a.Queries, service.ExpenseInput{
 			Amount:      req.Amount,
 			Currency:    req.Currency,
 			CategoryID:  req.CategoryID,

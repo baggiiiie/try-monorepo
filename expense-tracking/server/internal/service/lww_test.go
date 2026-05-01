@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	dbmigrations "expense-tracker/db"
+	"expense-tracker/internal/ptr"
 	"expense-tracker/internal/repository"
 	dbsqlc "expense-tracker/internal/repository/sqlc"
 
@@ -39,8 +40,6 @@ func newTestSyncService(t *testing.T) *SyncService {
 	store := repository.NewStore(db)
 	return NewSyncService(store, "UTC")
 }
-
-func ptrInt64(v int64) *int64 { return &v }
 
 func mustGetCategory(t *testing.T, q *dbsqlc.Queries, id string) dbsqlc.Category {
 	t.Helper()
@@ -94,30 +93,30 @@ func TestPushCategory_LWW(t *testing.T) {
 		{
 			name: "create new",
 			input: PushCategory{
-				ID: "c1", Name: "Food", Icon: "🍕", Budget: ptrInt64(500),
+				ID: "c1", Name: "Food", Icon: "🍕", Budget: ptr.To[int64](500),
 				UpdatedAt: 100,
 			},
-			wantName: "Food", wantIcon: "🍕", wantBudget: ptrInt64(500),
+			wantName: "Food", wantIcon: "🍕", wantBudget: ptr.To[int64](500),
 			wantDeleted: false, wantUpdatedAt: now,
 		},
 		{
 			name: "create soft-deleted",
 			input: PushCategory{
 				ID: "c1", Name: "Food", Icon: "🍕",
-				UpdatedAt: 100, DeletedAt: ptrInt64(150),
+				UpdatedAt: 100, DeletedAt: ptr.To[int64](150),
 			},
 			wantName: "Food", wantIcon: "🍕", wantDeleted: true, wantUpdatedAt: now,
 		},
 		{
 			name: "update when incoming newer",
 			seed: func(t *testing.T, q *dbsqlc.Queries) {
-				seedCategory(t, q, "c1", "Food", "🍕", ptrInt64(500), 100, nil)
+				seedCategory(t, q, "c1", "Food", "🍕", ptr.To[int64](500), 100, nil)
 			},
 			input: PushCategory{
-				ID: "c1", Name: "Groceries", Icon: "🛒", Budget: ptrInt64(800),
+				ID: "c1", Name: "Groceries", Icon: "🛒", Budget: ptr.To[int64](800),
 				UpdatedAt: 200,
 			},
-			wantName: "Groceries", wantIcon: "🛒", wantBudget: ptrInt64(800),
+			wantName: "Groceries", wantIcon: "🛒", wantBudget: ptr.To[int64](800),
 			wantDeleted: false, wantUpdatedAt: now,
 		},
 		{
@@ -127,55 +126,55 @@ func TestPushCategory_LWW(t *testing.T) {
 			},
 			input: PushCategory{
 				ID: "c1", Name: "Food", Icon: "🍕",
-				UpdatedAt: 200, DeletedAt: ptrInt64(150),
+				UpdatedAt: 200, DeletedAt: ptr.To[int64](150),
 			},
 			wantName: "Food", wantDeleted: true, wantUpdatedAt: now,
 		},
 		{
 			name: "no-op when already soft-deleted",
 			seed: func(t *testing.T, q *dbsqlc.Queries) {
-				seedCategory(t, q, "c1", "Food", "🍕", nil, 100, ptrInt64(120))
+				seedCategory(t, q, "c1", "Food", "🍕", nil, 100, ptr.To[int64](120))
 			},
 			input: PushCategory{
 				ID: "c1", Name: "Food", Icon: "🍕",
-				UpdatedAt: 200, DeletedAt: ptrInt64(150),
+				UpdatedAt: 200, DeletedAt: ptr.To[int64](150),
 			},
 			wantName: "Food", wantDeleted: true, wantUpdatedAt: 100, // existing untouched
 		},
 		{
 			name: "no-op when incoming older",
 			seed: func(t *testing.T, q *dbsqlc.Queries) {
-				seedCategory(t, q, "c1", "Groceries", "🛒", ptrInt64(800), 200, nil)
+				seedCategory(t, q, "c1", "Groceries", "🛒", ptr.To[int64](800), 200, nil)
 			},
 			input: PushCategory{
-				ID: "c1", Name: "Food", Icon: "🍕", Budget: ptrInt64(500),
+				ID: "c1", Name: "Food", Icon: "🍕", Budget: ptr.To[int64](500),
 				UpdatedAt: 100,
 			},
-			wantName: "Groceries", wantIcon: "🛒", wantBudget: ptrInt64(800),
+			wantName: "Groceries", wantIcon: "🛒", wantBudget: ptr.To[int64](800),
 			wantUpdatedAt: 200, // existing untouched
 		},
 		{
 			name: "no-op on equal timestamp + same state",
 			seed: func(t *testing.T, q *dbsqlc.Queries) {
-				seedCategory(t, q, "c1", "Food", "🍕", ptrInt64(500), 200, nil)
+				seedCategory(t, q, "c1", "Food", "🍕", ptr.To[int64](500), 200, nil)
 			},
 			input: PushCategory{
-				ID: "c1", Name: "Food", Icon: "🍕", Budget: ptrInt64(500),
+				ID: "c1", Name: "Food", Icon: "🍕", Budget: ptr.To[int64](500),
 				UpdatedAt: 200,
 			},
-			wantName: "Food", wantIcon: "🍕", wantBudget: ptrInt64(500),
+			wantName: "Food", wantIcon: "🍕", wantBudget: ptr.To[int64](500),
 			wantUpdatedAt: 200, // unchanged
 		},
 		{
 			name: "apply on equal timestamp + different state",
 			seed: func(t *testing.T, q *dbsqlc.Queries) {
-				seedCategory(t, q, "c1", "Food", "🍕", ptrInt64(500), 200, nil)
+				seedCategory(t, q, "c1", "Food", "🍕", ptr.To[int64](500), 200, nil)
 			},
 			input: PushCategory{
-				ID: "c1", Name: "Food", Icon: "🍕", Budget: ptrInt64(800),
+				ID: "c1", Name: "Food", Icon: "🍕", Budget: ptr.To[int64](800),
 				UpdatedAt: 200,
 			},
-			wantName: "Food", wantIcon: "🍕", wantBudget: ptrInt64(800),
+			wantName: "Food", wantIcon: "🍕", wantBudget: ptr.To[int64](800),
 			wantUpdatedAt: now, // tie-break applied
 		},
 	}
@@ -221,11 +220,11 @@ func TestPushCategory_ByNameReconciliation(t *testing.T) {
 	ctx := context.Background()
 
 	// Existing server row under id=server1
-	seedCategory(t, s.queries, "server1", "Food", "🍕", ptrInt64(500), 100, nil)
+	seedCategory(t, s.queries, "server1", "Food", "🍕", ptr.To[int64](500), 100, nil)
 
 	// Client pushes with a brand-new UUID but the same name.
 	cat, err := s.pushCategory(ctx, s.queries, PushCategory{
-		ID: "client1", Name: "Food", Icon: "🍔", Budget: ptrInt64(700),
+		ID: "client1", Name: "Food", Icon: "🍔", Budget: ptr.To[int64](700),
 		UpdatedAt: 200,
 	}, now)
 	if err != nil {
@@ -316,7 +315,7 @@ func TestPushExpense_LWW(t *testing.T) {
 
 		exp, err := s.pushExpense(context.Background(), s.queries, PushExpense{
 			ID: "e1", Amount: 1000, Currency: "USD", CategoryID: "cat1",
-			Date: 200, UpdatedAt: 100, DeletedAt: ptrInt64(150),
+			Date: 200, UpdatedAt: 100, DeletedAt: ptr.To[int64](150),
 		}, now)
 		if err != nil {
 			t.Fatalf("pushExpense: %v", err)
@@ -352,7 +351,7 @@ func TestPushRecurringExpense_LWW(t *testing.T) {
 		_, err := s.pushRecurringExpense(context.Background(), s.queries, PushRecurringExpense{
 			ID: "r1", Amount: 5000, Currency: "USD", CategoryID: "cat1",
 			Frequency: "monthly", StartDate: 100, NextRunDate: 100,
-			UpdatedAt: 200, DeletedAt: ptrInt64(999), // different timestamp
+			UpdatedAt: 200, DeletedAt: ptr.To[int64](999), // different timestamp
 		}, now)
 		if err != nil {
 			t.Fatalf("pushRecurringExpense: %v", err)

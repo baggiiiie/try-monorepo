@@ -51,14 +51,10 @@ type Expense struct {
 	DeletedAt   *int64 `json:"deleted_at,omitempty"`
 }
 
-func (s *ExpenseService) Create(ctx context.Context, input ExpenseInput) (*Expense, error) {
-	return s.CreateInTx(ctx, s.queries, input)
-}
-
-// CreateInTx is identical to Create but operates on the provided queries
-// handle, allowing callers to compose the create with a surrounding
-// transaction (e.g. dry-run rollback).
-func (s *ExpenseService) CreateInTx(ctx context.Context, q *dbsqlc.Queries, input ExpenseInput) (*Expense, error) {
+// Create inserts a new expense using the provided queries handle, allowing
+// callers to compose the create with a surrounding transaction (e.g. dry-run
+// rollback). Callers without a transaction can pass app.Queries.
+func (s *ExpenseService) Create(ctx context.Context, q *dbsqlc.Queries, input ExpenseInput) (*Expense, error) {
 	if input.Amount <= 0 {
 		return nil, fmt.Errorf("amount must be positive")
 	}

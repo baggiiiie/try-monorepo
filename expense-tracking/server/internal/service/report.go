@@ -6,6 +6,7 @@ import (
 
 	"expense-tracker/internal/config"
 	dbsqlc "expense-tracker/internal/repository/sqlc"
+	"expense-tracker/internal/timeutil"
 )
 
 type ReportService struct {
@@ -48,7 +49,7 @@ type BudgetResult struct {
 }
 
 func (s *ReportService) Summary(ctx context.Context, month string) (*SummaryResult, error) {
-	loc := loadTimezone(s.prefs.Timezone)
+	loc := timeutil.LoadLocation(s.prefs.Timezone, timeutil.Singapore)
 	start, end, monthStr := monthRange(month, loc)
 
 	rows, err := s.queries.SumExpensesByCategory(ctx, dbsqlc.SumExpensesByCategoryParams{
@@ -79,7 +80,7 @@ func (s *ReportService) Summary(ctx context.Context, month string) (*SummaryResu
 }
 
 func (s *ReportService) Budget(ctx context.Context, month string) (*BudgetResult, error) {
-	loc := loadTimezone(s.prefs.Timezone)
+	loc := timeutil.LoadLocation(s.prefs.Timezone, timeutil.Singapore)
 	start, end, monthStr := monthRange(month, loc)
 
 	categories, err := s.queries.ListCategories(ctx)
@@ -126,14 +127,6 @@ func (s *ReportService) Budget(ctx context.Context, month string) (*BudgetResult
 	}
 
 	return result, nil
-}
-
-func loadTimezone(tz string) *time.Location {
-	loc, err := time.LoadLocation(tz)
-	if err != nil {
-		return time.FixedZone("UTC+8", 8*60*60)
-	}
-	return loc
 }
 
 func monthRange(month string, loc *time.Location) (time.Time, time.Time, string) {

@@ -2,9 +2,7 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -22,9 +20,7 @@ var summaryCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			enc := json.NewEncoder(os.Stdout)
-			enc.SetIndent("", "  ")
-			return enc.Encode(result)
+			return writeJson(result)
 		}
 
 		fmt.Printf("Summary for %s\n\n", result.Month)

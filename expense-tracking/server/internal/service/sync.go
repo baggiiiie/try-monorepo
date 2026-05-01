@@ -8,6 +8,7 @@ import (
 
 	"expense-tracker/internal/repository"
 	dbsqlc "expense-tracker/internal/repository/sqlc"
+	"expense-tracker/internal/timeutil"
 )
 
 type SyncService struct {
@@ -17,10 +18,12 @@ type SyncService struct {
 }
 
 func NewSyncService(store *repository.Store, timezone string) *SyncService {
-	return &SyncService{store: store, queries: store.Queries(), location: loadLocation(timezone)}
+	return &SyncService{store: store, queries: store.Queries(), location: timeutil.LoadLocation(timezone, time.UTC)}
 }
 
-func (s *SyncService) UpdateTimezone(timezone string) { s.location = loadLocation(timezone) }
+func (s *SyncService) UpdateTimezone(timezone string) {
+	s.location = timeutil.LoadLocation(timezone, time.UTC)
+}
 
 type PushRequest struct {
 	Expenses          []PushExpense          `json:"expenses"`
@@ -285,7 +288,7 @@ func categoryLWWHooks() LWWHooks[dbsqlc.Category, PushCategory] {
 				Budget:    nullInt64(in.Budget),
 				CreatedAt: now,
 				UpdatedAt: now,
-				DeletedAt: deletedAtNullInt64(in.DeletedAt, now),
+				DeletedAt: deletedAtNullInt64(in.DeletedAt != nil, now),
 			})
 		},
 		Update: func(ctx context.Context, q *dbsqlc.Queries, existing dbsqlc.Category, in PushCategory, now int64) (dbsqlc.Category, error) {
@@ -410,7 +413,7 @@ func expenseLWWHooks() LWWHooks[dbsqlc.Expense, PushExpense] {
 				Source:      in.Source,
 				CreatedAt:   now,
 				UpdatedAt:   now,
-				DeletedAt:   deletedAtNullInt64(in.DeletedAt, now),
+				DeletedAt:   deletedAtNullInt64(in.DeletedAt != nil, now),
 			})
 		},
 		Update: func(ctx context.Context, q *dbsqlc.Queries, existing dbsqlc.Expense, in PushExpense, now int64) (dbsqlc.Expense, error) {
@@ -434,38 +437,6 @@ func expenseLWWHooks() LWWHooks[dbsqlc.Expense, PushExpense] {
 			})
 		},
 	}
-}
-
-func int64PtrEqual(a, b *int64) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	return *a == *b
-}
-
-func nullInt64Equal(existing sql.NullInt64, incoming *int64) bool {
-	if incoming == nil {
-		return !existing.Valid
-	}
-	return existing.Valid && existing.Int64 == *incoming
-}
-
-// deletedStateEqual reports "is-deleted-or-not" parity between an
-// existing row and an incoming push. Timestamps are not compared —
-// LWW only cares whether the rows agree on deletion.
-func deletedStateEqual(existing sql.NullInt64, incoming *int64) bool {
-	return existing.Valid == (incoming != nil)
-}
-
-// deletedAtNullInt64 turns an incoming *int64 deletion timestamp
-// into the sql.NullInt64 to write at insert/update time. When the
-// incoming row arrives deleted, the server stamps `now` rather than
-// echoing the client's timestamp (consistent with SoftDelete).
-func deletedAtNullInt64(incoming *int64, now int64) sql.NullInt64 {
-	if incoming == nil {
-		return sql.NullInt64{}
-	}
-	return sql.NullInt64{Int64: now, Valid: true}
 }
 
 func (s *SyncService) listRecurringExpensesUpdatedSince(ctx context.Context, since int64) ([]RecurringExpense, error) {
@@ -535,7 +506,7 @@ func recurringExpenseLWWHooks() LWWHooks[dbsqlc.RecurringExpense, PushRecurringE
 				LastRunDate: nullInt64(in.LastRunDate),
 				CreatedAt:   now,
 				UpdatedAt:   now,
-				DeletedAt:   deletedAtNullInt64(in.DeletedAt, now),
+				DeletedAt:   deletedAtNullInt64(in.DeletedAt != nil, now),
 			}); err != nil {
 				return dbsqlc.RecurringExpense{}, err
 			}

@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"expense-tracker/internal/config"
 
@@ -23,9 +21,7 @@ var configGetCmd = &cobra.Command{
 		jsonOutput, _ := cmd.Flags().GetBool("json")
 
 		if jsonOutput || len(args) == 0 {
-			enc := json.NewEncoder(os.Stdout)
-			enc.SetIndent("", "  ")
-			return enc.Encode(application.Preferences)
+			return writeJson(application.Preferences)
 		}
 
 		key := args[0]

@@ -2,9 +2,7 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -22,9 +20,7 @@ var showCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			enc := json.NewEncoder(os.Stdout)
-			enc.SetIndent("", "  ")
-			return enc.Encode(exp)
+			return writeJson(exp)
 		}
 
 		loc := loadTimezone(application.Preferences.Timezone)

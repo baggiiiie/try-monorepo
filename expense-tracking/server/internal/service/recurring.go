@@ -7,6 +7,7 @@ import (
 	"time"
 
 	dbsqlc "expense-tracker/internal/repository/sqlc"
+	"expense-tracker/internal/timeutil"
 
 	"github.com/google/uuid"
 )
@@ -52,10 +53,12 @@ type RecurringService struct {
 }
 
 func NewRecurringService(q *dbsqlc.Queries, timezone string) *RecurringService {
-	return &RecurringService{queries: q, location: loadLocation(timezone)}
+	return &RecurringService{queries: q, location: timeutil.LoadLocation(timezone, time.UTC)}
 }
 
-func (s *RecurringService) UpdateTimezone(timezone string) { s.location = loadLocation(timezone) }
+func (s *RecurringService) UpdateTimezone(timezone string) {
+	s.location = timeutil.LoadLocation(timezone, time.UTC)
+}
 
 type RecurringExpenseInput struct {
 	Amount      int64
@@ -70,14 +73,10 @@ type RecurringExpenseInput struct {
 	EndDate     *int64 // unix seconds, optional
 }
 
-func (s *RecurringService) Create(ctx context.Context, input RecurringExpenseInput) (*RecurringExpense, error) {
-	return s.CreateInTx(ctx, s.queries, input)
-}
-
-// CreateInTx is identical to Create but operates on the provided queries
-// handle, allowing callers to compose the create with a surrounding
-// transaction (e.g. dry-run rollback).
-func (s *RecurringService) CreateInTx(ctx context.Context, q *dbsqlc.Queries, input RecurringExpenseInput) (*RecurringExpense, error) {
+// Create inserts a new recurring expense using the provided queries handle,
+// allowing callers to compose the create with a surrounding transaction
+// (e.g. dry-run rollback). Callers without a transaction can pass app.Queries.
+func (s *RecurringService) Create(ctx context.Context, q *dbsqlc.Queries, input RecurringExpenseInput) (*RecurringExpense, error) {
 	if input.Amount <= 0 {
 		return nil, fmt.Errorf("amount must be positive")
 	}
@@ -253,14 +252,6 @@ func clampDay(year int, month time.Month, day int, location *time.Location) time
 func startOfDay(t time.Time, location *time.Location) time.Time {
 	u := t.In(location)
 	return time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, location)
-}
-
-func loadLocation(timezone string) *time.Location {
-	location, err := time.LoadLocation(timezone)
-	if err != nil {
-		return time.UTC
-	}
-	return location
 }
 
 func recurringExpenseFromRow(r dbsqlc.RecurringExpense) RecurringExpense {
