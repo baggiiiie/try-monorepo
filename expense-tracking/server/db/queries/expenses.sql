@@ -1,6 +1,6 @@
 -- name: CreateExpense :one
-INSERT INTO expenses (id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO expenses (id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetExpenseByID :one
@@ -19,8 +19,17 @@ ORDER BY e.date DESC, e.created_at DESC;
 -- name: UpdateExpense :exec
 UPDATE expenses SET amount = ?, currency = ?, category_id = ?, description = ?, merchant = ?, date = ?, updated_at = ? WHERE id = ?;
 
+-- name: UpdateExpenseReturning :one
+UPDATE expenses SET amount = ?, currency = ?, category_id = ?, description = ?, merchant = ?, date = ?, source = ?, updated_at = ?
+WHERE id = ?
+RETURNING *;
+
 -- name: SoftDeleteExpense :exec
 UPDATE expenses SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL;
+
+-- name: SoftDeleteExpenseReturning :one
+UPDATE expenses SET deleted_at = ?, updated_at = ? WHERE id = ?
+RETURNING *;
 
 -- name: ListExpensesUpdatedSince :many
 SELECT * FROM expenses WHERE updated_at > ?;

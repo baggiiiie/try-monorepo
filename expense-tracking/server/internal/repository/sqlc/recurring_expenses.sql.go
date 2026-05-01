@@ -231,6 +231,44 @@ func (q *Queries) ListRecurringExpensesUpdatedSince(ctx context.Context, updated
 	return items, nil
 }
 
+const softDeleteRecurringExpenseReturning = `-- name: SoftDeleteRecurringExpenseReturning :one
+UPDATE recurring_expenses
+SET deleted_at = ?, updated_at = ?
+WHERE id = ?
+RETURNING id, amount, currency, category_id, description, merchant, frequency,
+          day_of_month, start_date, end_date, next_run_date, last_run_date,
+          created_at, updated_at, deleted_at
+`
+
+type SoftDeleteRecurringExpenseReturningParams struct {
+	DeletedAt sql.NullInt64 `json:"deleted_at"`
+	UpdatedAt int64         `json:"updated_at"`
+	ID        string        `json:"id"`
+}
+
+func (q *Queries) SoftDeleteRecurringExpenseReturning(ctx context.Context, arg SoftDeleteRecurringExpenseReturningParams) (RecurringExpense, error) {
+	row := q.db.QueryRowContext(ctx, softDeleteRecurringExpenseReturning, arg.DeletedAt, arg.UpdatedAt, arg.ID)
+	var i RecurringExpense
+	err := row.Scan(
+		&i.ID,
+		&i.Amount,
+		&i.Currency,
+		&i.CategoryID,
+		&i.Description,
+		&i.Merchant,
+		&i.Frequency,
+		&i.DayOfMonth,
+		&i.StartDate,
+		&i.EndDate,
+		&i.NextRunDate,
+		&i.LastRunDate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const updateRecurringExpense = `-- name: UpdateRecurringExpense :exec
 UPDATE recurring_expenses
 SET amount = ?, currency = ?, category_id = ?, description = ?, merchant = ?, frequency = ?, day_of_month = ?, start_date = ?, end_date = ?, next_run_date = ?, last_run_date = ?, updated_at = ?, deleted_at = ?
@@ -272,6 +310,70 @@ func (q *Queries) UpdateRecurringExpense(ctx context.Context, arg UpdateRecurrin
 		arg.ID,
 	)
 	return err
+}
+
+const updateRecurringExpenseReturning = `-- name: UpdateRecurringExpenseReturning :one
+UPDATE recurring_expenses
+SET amount = ?, currency = ?, category_id = ?, description = ?, merchant = ?,
+    frequency = ?, day_of_month = ?, start_date = ?, end_date = ?,
+    next_run_date = ?, last_run_date = ?, updated_at = ?
+WHERE id = ?
+RETURNING id, amount, currency, category_id, description, merchant, frequency,
+          day_of_month, start_date, end_date, next_run_date, last_run_date,
+          created_at, updated_at, deleted_at
+`
+
+type UpdateRecurringExpenseReturningParams struct {
+	Amount      int64         `json:"amount"`
+	Currency    string        `json:"currency"`
+	CategoryID  string        `json:"category_id"`
+	Description string        `json:"description"`
+	Merchant    string        `json:"merchant"`
+	Frequency   string        `json:"frequency"`
+	DayOfMonth  sql.NullInt64 `json:"day_of_month"`
+	StartDate   int64         `json:"start_date"`
+	EndDate     sql.NullInt64 `json:"end_date"`
+	NextRunDate int64         `json:"next_run_date"`
+	LastRunDate sql.NullInt64 `json:"last_run_date"`
+	UpdatedAt   int64         `json:"updated_at"`
+	ID          string        `json:"id"`
+}
+
+func (q *Queries) UpdateRecurringExpenseReturning(ctx context.Context, arg UpdateRecurringExpenseReturningParams) (RecurringExpense, error) {
+	row := q.db.QueryRowContext(ctx, updateRecurringExpenseReturning,
+		arg.Amount,
+		arg.Currency,
+		arg.CategoryID,
+		arg.Description,
+		arg.Merchant,
+		arg.Frequency,
+		arg.DayOfMonth,
+		arg.StartDate,
+		arg.EndDate,
+		arg.NextRunDate,
+		arg.LastRunDate,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	var i RecurringExpense
+	err := row.Scan(
+		&i.ID,
+		&i.Amount,
+		&i.Currency,
+		&i.CategoryID,
+		&i.Description,
+		&i.Merchant,
+		&i.Frequency,
+		&i.DayOfMonth,
+		&i.StartDate,
+		&i.EndDate,
+		&i.NextRunDate,
+		&i.LastRunDate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
 }
 
 const updateRecurringExpenseRunDates = `-- name: UpdateRecurringExpenseRunDates :exec

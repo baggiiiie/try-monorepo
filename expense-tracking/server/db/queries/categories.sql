@@ -1,6 +1,6 @@
 -- name: CreateCategory :one
-INSERT INTO categories (id, name, icon, budget, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO categories (id, name, icon, budget, created_at, updated_at, deleted_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetCategoryByID :one
@@ -18,8 +18,16 @@ SELECT * FROM categories WHERE deleted_at IS NULL ORDER BY name;
 -- name: UpdateCategory :exec
 UPDATE categories SET name = ?, icon = ?, budget = ?, updated_at = ? WHERE id = ?;
 
+-- name: UpdateCategoryReturning :one
+UPDATE categories SET name = ?, icon = ?, budget = ?, updated_at = ? WHERE id = ?
+RETURNING *;
+
 -- name: SoftDeleteCategory :exec
 UPDATE categories SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL;
+
+-- name: SoftDeleteCategoryReturning :one
+UPDATE categories SET deleted_at = ?, updated_at = ? WHERE id = ?
+RETURNING *;
 
 -- name: CountActiveCategories :one
 SELECT COUNT(*) FROM categories WHERE deleted_at IS NULL;

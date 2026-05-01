@@ -22,8 +22,8 @@ func (q *Queries) CountActiveCategories(ctx context.Context) (int64, error) {
 }
 
 const createCategory = `-- name: CreateCategory :one
-INSERT INTO categories (id, name, icon, budget, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO categories (id, name, icon, budget, created_at, updated_at, deleted_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 RETURNING id, name, icon, budget, created_at, updated_at, deleted_at
 `
 
@@ -34,6 +34,7 @@ type CreateCategoryParams struct {
 	Budget    sql.NullInt64 `json:"budget"`
 	CreatedAt int64         `json:"created_at"`
 	UpdatedAt int64         `json:"updated_at"`
+	DeletedAt sql.NullInt64 `json:"deleted_at"`
 }
 
 func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error) {
@@ -44,6 +45,7 @@ func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) 
 		arg.Budget,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.DeletedAt,
 	)
 	var i Category
 	err := row.Scan(
@@ -229,6 +231,32 @@ func (q *Queries) SoftDeleteCategory(ctx context.Context, arg SoftDeleteCategory
 	return err
 }
 
+const softDeleteCategoryReturning = `-- name: SoftDeleteCategoryReturning :one
+UPDATE categories SET deleted_at = ?, updated_at = ? WHERE id = ?
+RETURNING id, name, icon, budget, created_at, updated_at, deleted_at
+`
+
+type SoftDeleteCategoryReturningParams struct {
+	DeletedAt sql.NullInt64 `json:"deleted_at"`
+	UpdatedAt int64         `json:"updated_at"`
+	ID        string        `json:"id"`
+}
+
+func (q *Queries) SoftDeleteCategoryReturning(ctx context.Context, arg SoftDeleteCategoryReturningParams) (Category, error) {
+	row := q.db.QueryRowContext(ctx, softDeleteCategoryReturning, arg.DeletedAt, arg.UpdatedAt, arg.ID)
+	var i Category
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Icon,
+		&i.Budget,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const updateCategory = `-- name: UpdateCategory :exec
 UPDATE categories SET name = ?, icon = ?, budget = ?, updated_at = ? WHERE id = ?
 `
@@ -250,4 +278,38 @@ func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) 
 		arg.ID,
 	)
 	return err
+}
+
+const updateCategoryReturning = `-- name: UpdateCategoryReturning :one
+UPDATE categories SET name = ?, icon = ?, budget = ?, updated_at = ? WHERE id = ?
+RETURNING id, name, icon, budget, created_at, updated_at, deleted_at
+`
+
+type UpdateCategoryReturningParams struct {
+	Name      string        `json:"name"`
+	Icon      string        `json:"icon"`
+	Budget    sql.NullInt64 `json:"budget"`
+	UpdatedAt int64         `json:"updated_at"`
+	ID        string        `json:"id"`
+}
+
+func (q *Queries) UpdateCategoryReturning(ctx context.Context, arg UpdateCategoryReturningParams) (Category, error) {
+	row := q.db.QueryRowContext(ctx, updateCategoryReturning,
+		arg.Name,
+		arg.Icon,
+		arg.Budget,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	var i Category
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Icon,
+		&i.Budget,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
 }

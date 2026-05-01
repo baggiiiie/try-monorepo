@@ -36,3 +36,21 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 UPDATE recurring_expenses
 SET amount = ?, currency = ?, category_id = ?, description = ?, merchant = ?, frequency = ?, day_of_month = ?, start_date = ?, end_date = ?, next_run_date = ?, last_run_date = ?, updated_at = ?, deleted_at = ?
 WHERE id = ?;
+
+-- name: UpdateRecurringExpenseReturning :one
+UPDATE recurring_expenses
+SET amount = ?, currency = ?, category_id = ?, description = ?, merchant = ?,
+    frequency = ?, day_of_month = ?, start_date = ?, end_date = ?,
+    next_run_date = ?, last_run_date = ?, updated_at = ?
+WHERE id = ?
+RETURNING id, amount, currency, category_id, description, merchant, frequency,
+          day_of_month, start_date, end_date, next_run_date, last_run_date,
+          created_at, updated_at, deleted_at;
+
+-- name: SoftDeleteRecurringExpenseReturning :one
+UPDATE recurring_expenses
+SET deleted_at = ?, updated_at = ?
+WHERE id = ?
+RETURNING id, amount, currency, category_id, description, merchant, frequency,
+          day_of_month, start_date, end_date, next_run_date, last_run_date,
+          created_at, updated_at, deleted_at;

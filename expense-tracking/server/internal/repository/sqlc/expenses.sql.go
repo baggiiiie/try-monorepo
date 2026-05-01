@@ -11,22 +11,23 @@ import (
 )
 
 const createExpense = `-- name: CreateExpense :one
-INSERT INTO expenses (id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO expenses (id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at
 `
 
 type CreateExpenseParams struct {
-	ID          string `json:"id"`
-	Amount      int64  `json:"amount"`
-	Currency    string `json:"currency"`
-	CategoryID  string `json:"category_id"`
-	Description string `json:"description"`
-	Merchant    string `json:"merchant"`
-	Date        int64  `json:"date"`
-	Source      string `json:"source"`
-	CreatedAt   int64  `json:"created_at"`
-	UpdatedAt   int64  `json:"updated_at"`
+	ID          string        `json:"id"`
+	Amount      int64         `json:"amount"`
+	Currency    string        `json:"currency"`
+	CategoryID  string        `json:"category_id"`
+	Description string        `json:"description"`
+	Merchant    string        `json:"merchant"`
+	Date        int64         `json:"date"`
+	Source      string        `json:"source"`
+	CreatedAt   int64         `json:"created_at"`
+	UpdatedAt   int64         `json:"updated_at"`
+	DeletedAt   sql.NullInt64 `json:"deleted_at"`
 }
 
 func (q *Queries) CreateExpense(ctx context.Context, arg CreateExpenseParams) (Expense, error) {
@@ -41,6 +42,7 @@ func (q *Queries) CreateExpense(ctx context.Context, arg CreateExpenseParams) (E
 		arg.Source,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.DeletedAt,
 	)
 	var i Expense
 	err := row.Scan(
@@ -232,6 +234,36 @@ func (q *Queries) SoftDeleteExpense(ctx context.Context, arg SoftDeleteExpensePa
 	return err
 }
 
+const softDeleteExpenseReturning = `-- name: SoftDeleteExpenseReturning :one
+UPDATE expenses SET deleted_at = ?, updated_at = ? WHERE id = ?
+RETURNING id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at
+`
+
+type SoftDeleteExpenseReturningParams struct {
+	DeletedAt sql.NullInt64 `json:"deleted_at"`
+	UpdatedAt int64         `json:"updated_at"`
+	ID        string        `json:"id"`
+}
+
+func (q *Queries) SoftDeleteExpenseReturning(ctx context.Context, arg SoftDeleteExpenseReturningParams) (Expense, error) {
+	row := q.db.QueryRowContext(ctx, softDeleteExpenseReturning, arg.DeletedAt, arg.UpdatedAt, arg.ID)
+	var i Expense
+	err := row.Scan(
+		&i.ID,
+		&i.Amount,
+		&i.Currency,
+		&i.CategoryID,
+		&i.Description,
+		&i.Merchant,
+		&i.Date,
+		&i.Source,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const sumExpensesByCategory = `-- name: SumExpensesByCategory :many
 SELECT e.category_id, c.name AS category_name, SUM(e.amount) AS total
 FROM expenses e
@@ -301,4 +333,51 @@ func (q *Queries) UpdateExpense(ctx context.Context, arg UpdateExpenseParams) er
 		arg.ID,
 	)
 	return err
+}
+
+const updateExpenseReturning = `-- name: UpdateExpenseReturning :one
+UPDATE expenses SET amount = ?, currency = ?, category_id = ?, description = ?, merchant = ?, date = ?, source = ?, updated_at = ?
+WHERE id = ?
+RETURNING id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at
+`
+
+type UpdateExpenseReturningParams struct {
+	Amount      int64  `json:"amount"`
+	Currency    string `json:"currency"`
+	CategoryID  string `json:"category_id"`
+	Description string `json:"description"`
+	Merchant    string `json:"merchant"`
+	Date        int64  `json:"date"`
+	Source      string `json:"source"`
+	UpdatedAt   int64  `json:"updated_at"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) UpdateExpenseReturning(ctx context.Context, arg UpdateExpenseReturningParams) (Expense, error) {
+	row := q.db.QueryRowContext(ctx, updateExpenseReturning,
+		arg.Amount,
+		arg.Currency,
+		arg.CategoryID,
+		arg.Description,
+		arg.Merchant,
+		arg.Date,
+		arg.Source,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	var i Expense
+	err := row.Scan(
+		&i.ID,
+		&i.Amount,
+		&i.Currency,
+		&i.CategoryID,
+		&i.Description,
+		&i.Merchant,
+		&i.Date,
+		&i.Source,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
 }
