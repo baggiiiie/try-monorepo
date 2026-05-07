@@ -13,7 +13,7 @@ import (
 const createExpense = `-- name: CreateExpense :one
 INSERT INTO expenses (id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at
+RETURNING id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at, server_version
 `
 
 type CreateExpenseParams struct {
@@ -57,12 +57,13 @@ func (q *Queries) CreateExpense(ctx context.Context, arg CreateExpenseParams) (E
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.ServerVersion,
 	)
 	return i, err
 }
 
 const getExpenseByID = `-- name: GetExpenseByID :one
-SELECT id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at FROM expenses WHERE id = ? AND deleted_at IS NULL
+SELECT id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at, server_version FROM expenses WHERE id = ? AND deleted_at IS NULL
 `
 
 func (q *Queries) GetExpenseByID(ctx context.Context, id string) (Expense, error) {
@@ -80,12 +81,13 @@ func (q *Queries) GetExpenseByID(ctx context.Context, id string) (Expense, error
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.ServerVersion,
 	)
 	return i, err
 }
 
 const getExpenseIncludingDeleted = `-- name: GetExpenseIncludingDeleted :one
-SELECT id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at FROM expenses WHERE id = ?
+SELECT id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at, server_version FROM expenses WHERE id = ?
 `
 
 func (q *Queries) GetExpenseIncludingDeleted(ctx context.Context, id string) (Expense, error) {
@@ -103,12 +105,13 @@ func (q *Queries) GetExpenseIncludingDeleted(ctx context.Context, id string) (Ex
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.ServerVersion,
 	)
 	return i, err
 }
 
 const listExpenses = `-- name: ListExpenses :many
-SELECT e.id, e.amount, e.currency, e.category_id, e.description, e.merchant, e.date, e.source, e.created_at, e.updated_at, e.deleted_at, c.name AS category_name
+SELECT e.id, e.amount, e.currency, e.category_id, e.description, e.merchant, e.date, e.source, e.created_at, e.updated_at, e.deleted_at, e.server_version, c.name AS category_name
 FROM expenses e
 LEFT JOIN categories c ON e.category_id = c.id
 WHERE e.deleted_at IS NULL
@@ -116,18 +119,19 @@ ORDER BY e.date DESC, e.created_at DESC
 `
 
 type ListExpensesRow struct {
-	ID           string         `json:"id"`
-	Amount       int64          `json:"amount"`
-	Currency     string         `json:"currency"`
-	CategoryID   string         `json:"category_id"`
-	Description  string         `json:"description"`
-	Merchant     string         `json:"merchant"`
-	Date         int64          `json:"date"`
-	Source       string         `json:"source"`
-	CreatedAt    int64          `json:"created_at"`
-	UpdatedAt    int64          `json:"updated_at"`
-	DeletedAt    sql.NullInt64  `json:"deleted_at"`
-	CategoryName sql.NullString `json:"category_name"`
+	ID            string         `json:"id"`
+	Amount        int64          `json:"amount"`
+	Currency      string         `json:"currency"`
+	CategoryID    string         `json:"category_id"`
+	Description   string         `json:"description"`
+	Merchant      string         `json:"merchant"`
+	Date          int64          `json:"date"`
+	Source        string         `json:"source"`
+	CreatedAt     int64          `json:"created_at"`
+	UpdatedAt     int64          `json:"updated_at"`
+	DeletedAt     sql.NullInt64  `json:"deleted_at"`
+	ServerVersion int64          `json:"server_version"`
+	CategoryName  sql.NullString `json:"category_name"`
 }
 
 func (q *Queries) ListExpenses(ctx context.Context) ([]ListExpensesRow, error) {
@@ -151,6 +155,7 @@ func (q *Queries) ListExpenses(ctx context.Context) ([]ListExpensesRow, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.ServerVersion,
 			&i.CategoryName,
 		); err != nil {
 			return nil, err
@@ -167,11 +172,11 @@ func (q *Queries) ListExpenses(ctx context.Context) ([]ListExpensesRow, error) {
 }
 
 const listExpensesUpdatedSince = `-- name: ListExpensesUpdatedSince :many
-SELECT id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at FROM expenses WHERE updated_at > ?
+SELECT id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at, server_version FROM expenses WHERE server_version > ?
 `
 
-func (q *Queries) ListExpensesUpdatedSince(ctx context.Context, updatedAt int64) ([]Expense, error) {
-	rows, err := q.db.QueryContext(ctx, listExpensesUpdatedSince, updatedAt)
+func (q *Queries) ListExpensesUpdatedSince(ctx context.Context, serverVersion int64) ([]Expense, error) {
+	rows, err := q.db.QueryContext(ctx, listExpensesUpdatedSince, serverVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -191,6 +196,7 @@ func (q *Queries) ListExpensesUpdatedSince(ctx context.Context, updatedAt int64)
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.ServerVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -235,18 +241,24 @@ func (q *Queries) SoftDeleteExpense(ctx context.Context, arg SoftDeleteExpensePa
 }
 
 const softDeleteExpenseReturning = `-- name: SoftDeleteExpenseReturning :one
-UPDATE expenses SET deleted_at = ?, updated_at = ? WHERE id = ?
-RETURNING id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at
+UPDATE expenses SET deleted_at = ?, updated_at = ?, server_version = ? WHERE id = ?
+RETURNING id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at, server_version
 `
 
 type SoftDeleteExpenseReturningParams struct {
-	DeletedAt sql.NullInt64 `json:"deleted_at"`
-	UpdatedAt int64         `json:"updated_at"`
-	ID        string        `json:"id"`
+	DeletedAt     sql.NullInt64 `json:"deleted_at"`
+	UpdatedAt     int64         `json:"updated_at"`
+	ServerVersion int64         `json:"server_version"`
+	ID            string        `json:"id"`
 }
 
 func (q *Queries) SoftDeleteExpenseReturning(ctx context.Context, arg SoftDeleteExpenseReturningParams) (Expense, error) {
-	row := q.db.QueryRowContext(ctx, softDeleteExpenseReturning, arg.DeletedAt, arg.UpdatedAt, arg.ID)
+	row := q.db.QueryRowContext(ctx, softDeleteExpenseReturning,
+		arg.DeletedAt,
+		arg.UpdatedAt,
+		arg.ServerVersion,
+		arg.ID,
+	)
 	var i Expense
 	err := row.Scan(
 		&i.ID,
@@ -260,6 +272,7 @@ func (q *Queries) SoftDeleteExpenseReturning(ctx context.Context, arg SoftDelete
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.ServerVersion,
 	)
 	return i, err
 }
@@ -336,21 +349,22 @@ func (q *Queries) UpdateExpense(ctx context.Context, arg UpdateExpenseParams) er
 }
 
 const updateExpenseReturning = `-- name: UpdateExpenseReturning :one
-UPDATE expenses SET amount = ?, currency = ?, category_id = ?, description = ?, merchant = ?, date = ?, source = ?, updated_at = ?
+UPDATE expenses SET amount = ?, currency = ?, category_id = ?, description = ?, merchant = ?, date = ?, source = ?, updated_at = ?, server_version = ?
 WHERE id = ?
-RETURNING id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at
+RETURNING id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, deleted_at, server_version
 `
 
 type UpdateExpenseReturningParams struct {
-	Amount      int64  `json:"amount"`
-	Currency    string `json:"currency"`
-	CategoryID  string `json:"category_id"`
-	Description string `json:"description"`
-	Merchant    string `json:"merchant"`
-	Date        int64  `json:"date"`
-	Source      string `json:"source"`
-	UpdatedAt   int64  `json:"updated_at"`
-	ID          string `json:"id"`
+	Amount        int64  `json:"amount"`
+	Currency      string `json:"currency"`
+	CategoryID    string `json:"category_id"`
+	Description   string `json:"description"`
+	Merchant      string `json:"merchant"`
+	Date          int64  `json:"date"`
+	Source        string `json:"source"`
+	UpdatedAt     int64  `json:"updated_at"`
+	ServerVersion int64  `json:"server_version"`
+	ID            string `json:"id"`
 }
 
 func (q *Queries) UpdateExpenseReturning(ctx context.Context, arg UpdateExpenseReturningParams) (Expense, error) {
@@ -363,6 +377,7 @@ func (q *Queries) UpdateExpenseReturning(ctx context.Context, arg UpdateExpenseR
 		arg.Date,
 		arg.Source,
 		arg.UpdatedAt,
+		arg.ServerVersion,
 		arg.ID,
 	)
 	var i Expense
@@ -378,6 +393,7 @@ func (q *Queries) UpdateExpenseReturning(ctx context.Context, arg UpdateExpenseR
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.ServerVersion,
 	)
 	return i, err
 }

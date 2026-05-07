@@ -66,14 +66,16 @@ type PullResponse struct {
 	Expenses          []Expense          `json:"expenses"`
 	Categories        []Category         `json:"categories"`
 	RecurringExpenses []RecurringExpense `json:"recurring_expenses"`
-	ServerTime        int64              `json:"server_time"`
+	ServerVersion     int64              `json:"server_version"`
+	ServerTime        int64              `json:"server_time,omitempty"`
 }
 
 type PushResponse struct {
 	Expenses          []Expense          `json:"expenses"`
 	Categories        []Category         `json:"categories"`
 	RecurringExpenses []RecurringExpense `json:"recurring_expenses"`
-	ServerTime        int64              `json:"server_time"`
+	ServerVersion     int64              `json:"server_version"`
+	ServerTime        int64              `json:"server_time,omitempty"`
 }
 
 func (s *SyncService) Pull(ctx context.Context, since int64) (*PullResponse, error) {
@@ -95,10 +97,16 @@ func (s *SyncService) Pull(ctx context.Context, since int64) (*PullResponse, err
 		return nil, err
 	}
 
+	serverVersion, err := s.queries.GetCurrentServerVersion(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	resp := &PullResponse{
 		Expenses:          make([]Expense, 0, len(expenses)),
 		Categories:        make([]Category, 0, len(categories)),
 		RecurringExpenses: recurringExpenses,
+		ServerVersion:     serverVersion,
 		ServerTime:        time.Now().Unix(),
 	}
 
@@ -222,6 +230,12 @@ func (s *SyncService) Push(ctx context.Context, req PushRequest) (*PushResponse,
 		return nil, err
 	}
 
+	serverVersion, err := s.queries.GetCurrentServerVersion(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp.ServerVersion = serverVersion
+
 	return resp, nil
 }
 
@@ -239,6 +253,14 @@ func (s *SyncService) resolveCategoryID(ctx context.Context, q *dbsqlc.Queries, 
 	return categoryID, nil
 }
 
+func nextServerVersion(ctx context.Context, q *dbsqlc.Queries) (int64, error) {
+	// Allocate from a global monotonic cursor. Versions are allowed to have
+	// gaps: a push can reserve a version before LWW determines the row is a
+	// no-op, and SQLite triggers also reserve versions for non-sync writes.
+	// Cursor correctness requires only monotonicity, not contiguity.
+	return q.NextServerVersion(ctx)
+}
+
 func (s *SyncService) pushCategory(ctx context.Context, q *dbsqlc.Queries, input PushCategory, now int64) (*Category, error) {
 	// Pre-step: by-name reconciliation. A fresh app install with new
 	// local UUIDs may push a category that matches an existing server
@@ -251,7 +273,11 @@ func (s *SyncService) pushCategory(ctx context.Context, q *dbsqlc.Queries, input
 		return &cat, nil
 	}
 
-	row, err := ApplyLWW(ctx, q, categoryLWWHooks(), input, now)
+	serverVersion, err := nextServerVersion(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	row, err := ApplyLWW(ctx, q, categoryLWWHooks(serverVersion), input, now)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +286,7 @@ func (s *SyncService) pushCategory(ctx context.Context, q *dbsqlc.Queries, input
 }
 
 // categoryLWWHooks adapts categories onto LWWMerge.
-func categoryLWWHooks() LWWHooks[dbsqlc.Category, PushCategory] {
+func categoryLWWHooks(serverVersion int64) LWWHooks[dbsqlc.Category, PushCategory] {
 	return LWWHooks[dbsqlc.Category, PushCategory]{
 		Load: func(ctx context.Context, q *dbsqlc.Queries, in PushCategory) (dbsqlc.Category, bool, error) {
 			row, err := q.GetCategoryIncludingDeleted(ctx, in.ID)
@@ -293,18 +319,20 @@ func categoryLWWHooks() LWWHooks[dbsqlc.Category, PushCategory] {
 		},
 		Update: func(ctx context.Context, q *dbsqlc.Queries, existing dbsqlc.Category, in PushCategory, now int64) (dbsqlc.Category, error) {
 			return q.UpdateCategoryReturning(ctx, dbsqlc.UpdateCategoryReturningParams{
-				Name:      in.Name,
-				Icon:      in.Icon,
-				Budget:    nullInt64(in.Budget),
-				UpdatedAt: now,
-				ID:        existing.ID,
+				Name:          in.Name,
+				Icon:          in.Icon,
+				Budget:        nullInt64(in.Budget),
+				UpdatedAt:     now,
+				ServerVersion: serverVersion,
+				ID:            existing.ID,
 			})
 		},
 		SoftDelete: func(ctx context.Context, q *dbsqlc.Queries, existing dbsqlc.Category, now int64) (dbsqlc.Category, error) {
 			return q.SoftDeleteCategoryReturning(ctx, dbsqlc.SoftDeleteCategoryReturningParams{
-				DeletedAt: sql.NullInt64{Int64: now, Valid: true},
-				UpdatedAt: now,
-				ID:        existing.ID,
+				DeletedAt:     sql.NullInt64{Int64: now, Valid: true},
+				UpdatedAt:     now,
+				ServerVersion: serverVersion,
+				ID:            existing.ID,
 			})
 		},
 	}
@@ -341,14 +369,19 @@ func (s *SyncService) tryReconcileCategoryByName(ctx context.Context, q *dbsqlc.
 		}
 	}
 
+	serverVersion, err := nextServerVersion(ctx, q)
+	if err != nil {
+		return nil, err
+	}
 	if err := q.ReconcileCategoryByName(ctx, dbsqlc.ReconcileCategoryByNameParams{
-		ID:        targetID,
-		Name:      input.Name,
-		Icon:      input.Icon,
-		Budget:    nullInt64(input.Budget),
-		DeletedAt: nullInt64(input.DeletedAt),
-		UpdatedAt: now,
-		ID_2:      byName.ID,
+		ID:            targetID,
+		Name:          input.Name,
+		Icon:          input.Icon,
+		Budget:        nullInt64(input.Budget),
+		DeletedAt:     nullInt64(input.DeletedAt),
+		UpdatedAt:     now,
+		ServerVersion: serverVersion,
+		ID_2:          byName.ID,
 	}); err != nil {
 		return nil, err
 	}
@@ -361,7 +394,11 @@ func (s *SyncService) tryReconcileCategoryByName(ctx context.Context, q *dbsqlc.
 }
 
 func (s *SyncService) pushExpense(ctx context.Context, q *dbsqlc.Queries, input PushExpense, now int64) (*Expense, error) {
-	row, err := ApplyLWW(ctx, q, expenseLWWHooks(), input, now)
+	serverVersion, err := nextServerVersion(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	row, err := ApplyLWW(ctx, q, expenseLWWHooks(serverVersion), input, now)
 	if err != nil {
 		return nil, err
 	}
@@ -371,7 +408,7 @@ func (s *SyncService) pushExpense(ctx context.Context, q *dbsqlc.Queries, input 
 }
 
 // expenseLWWHooks adapts expenses onto LWWMerge.
-func expenseLWWHooks() LWWHooks[dbsqlc.Expense, PushExpense] {
+func expenseLWWHooks(serverVersion int64) LWWHooks[dbsqlc.Expense, PushExpense] {
 	return LWWHooks[dbsqlc.Expense, PushExpense]{
 		Load: func(ctx context.Context, q *dbsqlc.Queries, in PushExpense) (dbsqlc.Expense, bool, error) {
 			row, err := q.GetExpenseIncludingDeleted(ctx, in.ID)
@@ -418,22 +455,24 @@ func expenseLWWHooks() LWWHooks[dbsqlc.Expense, PushExpense] {
 		},
 		Update: func(ctx context.Context, q *dbsqlc.Queries, existing dbsqlc.Expense, in PushExpense, now int64) (dbsqlc.Expense, error) {
 			return q.UpdateExpenseReturning(ctx, dbsqlc.UpdateExpenseReturningParams{
-				Amount:      in.Amount,
-				Currency:    in.Currency,
-				CategoryID:  in.CategoryID,
-				Description: in.Description,
-				Merchant:    in.Merchant,
-				Date:        in.Date,
-				Source:      in.Source,
-				UpdatedAt:   now,
-				ID:          existing.ID,
+				Amount:        in.Amount,
+				Currency:      in.Currency,
+				CategoryID:    in.CategoryID,
+				Description:   in.Description,
+				Merchant:      in.Merchant,
+				Date:          in.Date,
+				Source:        in.Source,
+				UpdatedAt:     now,
+				ServerVersion: serverVersion,
+				ID:            existing.ID,
 			})
 		},
 		SoftDelete: func(ctx context.Context, q *dbsqlc.Queries, existing dbsqlc.Expense, now int64) (dbsqlc.Expense, error) {
 			return q.SoftDeleteExpenseReturning(ctx, dbsqlc.SoftDeleteExpenseReturningParams{
-				DeletedAt: sql.NullInt64{Int64: now, Valid: true},
-				UpdatedAt: now,
-				ID:        existing.ID,
+				DeletedAt:     sql.NullInt64{Int64: now, Valid: true},
+				UpdatedAt:     now,
+				ServerVersion: serverVersion,
+				ID:            existing.ID,
 			})
 		},
 	}
@@ -453,7 +492,11 @@ func (s *SyncService) listRecurringExpensesUpdatedSince(ctx context.Context, sin
 }
 
 func (s *SyncService) pushRecurringExpense(ctx context.Context, q *dbsqlc.Queries, input PushRecurringExpense, now int64) (*RecurringExpense, error) {
-	row, err := ApplyLWW(ctx, q, recurringExpenseLWWHooks(), input, now)
+	serverVersion, err := nextServerVersion(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	row, err := ApplyLWW(ctx, q, recurringExpenseLWWHooks(serverVersion), input, now)
 	if err != nil {
 		return nil, err
 	}
@@ -462,7 +505,7 @@ func (s *SyncService) pushRecurringExpense(ctx context.Context, q *dbsqlc.Querie
 }
 
 // recurringExpenseLWWHooks adapts recurring expenses onto LWWMerge.
-func recurringExpenseLWWHooks() LWWHooks[dbsqlc.RecurringExpense, PushRecurringExpense] {
+func recurringExpenseLWWHooks(serverVersion int64) LWWHooks[dbsqlc.RecurringExpense, PushRecurringExpense] {
 	return LWWHooks[dbsqlc.RecurringExpense, PushRecurringExpense]{
 		Load: func(ctx context.Context, q *dbsqlc.Queries, in PushRecurringExpense) (dbsqlc.RecurringExpense, bool, error) {
 			row, err := q.GetRecurringExpense(ctx, in.ID)
@@ -517,26 +560,28 @@ func recurringExpenseLWWHooks() LWWHooks[dbsqlc.RecurringExpense, PushRecurringE
 		},
 		Update: func(ctx context.Context, q *dbsqlc.Queries, existing dbsqlc.RecurringExpense, in PushRecurringExpense, now int64) (dbsqlc.RecurringExpense, error) {
 			return q.UpdateRecurringExpenseReturning(ctx, dbsqlc.UpdateRecurringExpenseReturningParams{
-				Amount:      in.Amount,
-				Currency:    in.Currency,
-				CategoryID:  in.CategoryID,
-				Description: in.Description,
-				Merchant:    in.Merchant,
-				Frequency:   in.Frequency,
-				DayOfMonth:  nullInt64(in.DayOfMonth),
-				StartDate:   in.StartDate,
-				EndDate:     nullInt64(in.EndDate),
-				NextRunDate: in.NextRunDate,
-				LastRunDate: nullInt64(in.LastRunDate),
-				UpdatedAt:   now,
-				ID:          existing.ID,
+				Amount:        in.Amount,
+				Currency:      in.Currency,
+				CategoryID:    in.CategoryID,
+				Description:   in.Description,
+				Merchant:      in.Merchant,
+				Frequency:     in.Frequency,
+				DayOfMonth:    nullInt64(in.DayOfMonth),
+				StartDate:     in.StartDate,
+				EndDate:       nullInt64(in.EndDate),
+				NextRunDate:   in.NextRunDate,
+				LastRunDate:   nullInt64(in.LastRunDate),
+				UpdatedAt:     now,
+				ServerVersion: serverVersion,
+				ID:            existing.ID,
 			})
 		},
 		SoftDelete: func(ctx context.Context, q *dbsqlc.Queries, existing dbsqlc.RecurringExpense, now int64) (dbsqlc.RecurringExpense, error) {
 			return q.SoftDeleteRecurringExpenseReturning(ctx, dbsqlc.SoftDeleteRecurringExpenseReturningParams{
-				DeletedAt: sql.NullInt64{Int64: now, Valid: true},
-				UpdatedAt: now,
-				ID:        existing.ID,
+				DeletedAt:     sql.NullInt64{Int64: now, Valid: true},
+				UpdatedAt:     now,
+				ServerVersion: serverVersion,
+				ID:            existing.ID,
 			})
 		},
 	}

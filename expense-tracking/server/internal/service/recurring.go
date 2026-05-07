@@ -199,11 +199,16 @@ func materializeRecurringExpense(ctx context.Context, q *dbsqlc.Queries, r Recur
 	if last == nil {
 		return nil
 	}
+	recurringVersion, err := nextServerVersion(ctx, q)
+	if err != nil {
+		return err
+	}
 	return q.UpdateRecurringExpenseRunDates(ctx, dbsqlc.UpdateRecurringExpenseRunDatesParams{
-		LastRunDate: nullInt64(last),
-		NextRunDate: next,
-		UpdatedAt:   now,
-		ID:          r.ID,
+		LastRunDate:   nullInt64(last),
+		NextRunDate:   next,
+		UpdatedAt:     now,
+		ServerVersion: recurringVersion,
+		ID:            r.ID,
 	})
 }
 

@@ -20,7 +20,7 @@ ORDER BY e.date DESC, e.created_at DESC;
 UPDATE expenses SET amount = ?, currency = ?, category_id = ?, description = ?, merchant = ?, date = ?, updated_at = ? WHERE id = ?;
 
 -- name: UpdateExpenseReturning :one
-UPDATE expenses SET amount = ?, currency = ?, category_id = ?, description = ?, merchant = ?, date = ?, source = ?, updated_at = ?
+UPDATE expenses SET amount = ?, currency = ?, category_id = ?, description = ?, merchant = ?, date = ?, source = ?, updated_at = ?, server_version = ?
 WHERE id = ?
 RETURNING *;
 
@@ -28,11 +28,11 @@ RETURNING *;
 UPDATE expenses SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL;
 
 -- name: SoftDeleteExpenseReturning :one
-UPDATE expenses SET deleted_at = ?, updated_at = ? WHERE id = ?
+UPDATE expenses SET deleted_at = ?, updated_at = ?, server_version = ? WHERE id = ?
 RETURNING *;
 
 -- name: ListExpensesUpdatedSince :many
-SELECT * FROM expenses WHERE updated_at > ?;
+SELECT * FROM expenses WHERE server_version > ?;
 
 -- name: ReassignExpensesCategory :exec
 UPDATE expenses SET category_id = ? WHERE category_id = ?;

@@ -84,9 +84,9 @@ struct SyncAPIClient {
         return try await perform(urlRequest, requestID: requestID, responseType: PushResponse.self)
     }
 
-    func pull(since: Int64) async throws -> PullResponse {
+    func pull(since version: Int64) async throws -> PullResponse {
         var components = URLComponents(url: try endpoint(path: "/api/sync/pull"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "since", value: String(since))]
+        components?.queryItems = [URLQueryItem(name: "since", value: String(version))]
 
         guard let url = components?.url else {
             throw SyncError.invalidServerURL
@@ -285,13 +285,15 @@ struct PushResponse: Codable {
     let expenses: [PullExpense]
     let categories: [PullCategory]
     let recurringExpenses: [PullRecurringExpense]
+    let serverVersion: Int64
 }
 
 struct PullResponse: Codable {
     let expenses: [PullExpense]
     let categories: [PullCategory]
     let recurringExpenses: [PullRecurringExpense]
-    let serverTime: Int64
+    let serverVersion: Int64
+    let serverTime: Int64?
 }
 
 struct PullExpense: Codable {

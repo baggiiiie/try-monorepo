@@ -104,9 +104,9 @@ final class SyncService: ObservableObject {
 
     private func pullLatestChanges() async throws {
         try preflight()
-        let response = try await apiClient.pull(since: preferences.lastPullAt)
+        let response = try await apiClient.pull(since: preferences.lastPulledVersion)
         try repository.applyPullResponse(response)
-        preferences.lastPullAt = response.serverTime
+        preferences.lastPulledVersion = response.serverVersion
     }
 
     /// Validate configuration before issuing any network call so the user
@@ -136,9 +136,9 @@ final class SyncPreferences {
 
     var hasServerURL: Bool { !serverURL.isEmpty }
 
-    var lastPullAt: Int64 {
-        get { Int64(UserDefaults.standard.integer(forKey: AppPreferenceKey.lastPullAt)) }
-        set { UserDefaults.standard.set(newValue, forKey: AppPreferenceKey.lastPullAt) }
+    var lastPulledVersion: Int64 {
+        get { Int64(UserDefaults.standard.integer(forKey: AppPreferenceKey.lastPulledVersion)) }
+        set { UserDefaults.standard.set(newValue, forKey: AppPreferenceKey.lastPulledVersion) }
     }
 
     var syncSecret: String? { SyncSecretStore.current }
