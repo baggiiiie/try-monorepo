@@ -50,7 +50,7 @@ Sync-only design — the iOS app talks to the server exclusively through push/pu
 
 ```
 POST /api/sync/push          Push local changes to server
-GET  /api/sync/pull?since=   Pull remote changes since timestamp
+GET  /api/sync/pull?since=   Pull remote changes since server_version cursor
 ```
 
 Plus basic CRUD for the CLI's HTTP mode (if needed later):
@@ -76,7 +76,7 @@ All endpoints accept and return JSON. All timestamps are **Unix timestamps** (in
 ## Key Design Decisions
 
 - **SQLite everywhere** — Server and iOS both use SQLite. Same schema, simpler sync.
-- **Server is source of truth** — Timestamp-based sync: server wins on pull, client wins on push (last edit wins).
+- **Server is source of truth** — Version-cursor sync: clients push, then pull by `server_version`; server wins on pull, client wins on push (last edit wins).
 - **CLI-first development** — Every operation the iOS app can do is doable via CLI.
 - **Single-user, no auth** — Personal tool. Server runs on a trusted network.
 - **Amounts in cents** — All monetary values stored as integers (e.g., $12.50 → 1250). Avoids floating-point issues.
@@ -150,7 +150,7 @@ See [docs/design/06-apple-pay-automation.md](docs/design/06-apple-pay-automation
 |-----|-------------|
 | [01-architecture.md](docs/design/01-architecture.md) | System components, layering, and key decisions |
 | [02-data-model.md](docs/design/02-data-model.md) | Core entities: Expense, Category, WalletSuggestion |
-| [03-sync-strategy.md](docs/design/03-sync-strategy.md) | Timestamp-based push/pull sync, conflict resolution |
+| [03-sync-strategy.md](docs/design/03-sync-strategy.md) | Version-cursor push-then-pull sync, conflict resolution |
 | [04-cli-design.md](docs/design/04-cli-design.md) | CLI command structure, output modes, agent interaction |
 | [05-ios-app.md](docs/design/05-ios-app.md) | iOS app screens, transaction detection, sync behavior |
 | [06-apple-pay-automation.md](docs/design/06-apple-pay-automation.md) | Shortcuts + App Intents approach for Apple Pay capture |

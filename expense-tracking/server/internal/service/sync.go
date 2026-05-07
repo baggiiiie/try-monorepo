@@ -78,26 +78,16 @@ type PushResponse struct {
 }
 
 func (s *SyncService) Pull(ctx context.Context, since int64) (*PullResponse, error) {
-	now := time.Now()
-	today := startOfDay(now, s.location).Unix()
-
-	dueRecurring, err := s.queries.ListDueRecurringExpenses(ctx, today)
-	if err != nil {
-		return nil, err
-	}
-	if len(dueRecurring) == 0 {
-		return pullResponse(ctx, s.queries, since, now.Unix())
-	}
-
 	var resp *PullResponse
-	err = s.tx.WithTx(ctx, func(qtx *dbsqlc.Queries) error {
-		if err := materializeDueRecurringExpenses(ctx, qtx, now, s.location); err != nil {
+	err := s.tx.WithReadTx(ctx, func(qtx *dbsqlc.Queries) error {
+		serverVersion, err := qtx.GetCurrentServerVersion(ctx)
+		if err != nil {
 			return err
 		}
 
-		var err error
-		resp, err = pullResponse(ctx, qtx, since, now.Unix())
-		return err
+		var pullErr error
+		resp, pullErr = pullResponse(ctx, qtx, since, serverVersion, time.Now().Unix())
+		return pullErr
 	})
 	if err != nil {
 		return nil, err
@@ -106,7 +96,7 @@ func (s *SyncService) Pull(ctx context.Context, since int64) (*PullResponse, err
 	return resp, nil
 }
 
-func pullResponse(ctx context.Context, q *dbsqlc.Queries, since, serverTime int64) (*PullResponse, error) {
+func pullResponse(ctx context.Context, q *dbsqlc.Queries, since, serverVersion, serverTime int64) (*PullResponse, error) {
 	expenses, err := q.ListExpensesUpdatedSince(ctx, since)
 	if err != nil {
 		return nil, err
@@ -116,10 +106,6 @@ func pullResponse(ctx context.Context, q *dbsqlc.Queries, since, serverTime int6
 		return nil, err
 	}
 	recurringExpenses, err := listRecurringExpensesUpdatedSince(ctx, q, since)
-	if err != nil {
-		return nil, err
-	}
-	serverVersion, err := q.GetCurrentServerVersion(ctx)
 	if err != nil {
 		return nil, err
 	}

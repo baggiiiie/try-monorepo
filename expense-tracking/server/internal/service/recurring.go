@@ -49,6 +49,7 @@ type PushRecurringExpense struct {
 
 type TxManager interface {
 	WithTx(ctx context.Context, fn func(*dbsqlc.Queries) error) error
+	WithReadTx(ctx context.Context, fn func(*dbsqlc.Queries) error) error
 }
 
 type RecurringService struct {

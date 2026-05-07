@@ -228,7 +228,7 @@ protocol SyncableRecord {
 **File**: [`server/internal/service/recurring.go`](../server/internal/service/recurring.go) — `materializeDueRecurringExpenses`, `materializeRecurringExpense`, `nextRunDate`, `clampDay`, `startOfDay`
 
 **Problem**
-Materialization is called from `SyncService.Pull/Push` and from
+Materialization is called from `SyncService.Push` and from
 `RecurringService.MaterializeDue` as a free function taking
 `*dbsqlc.Queries`. The schedule logic — next-run computation,
 day-of-month clamping, 120-iteration guard — is real domain (the

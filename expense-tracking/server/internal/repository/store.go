@@ -12,8 +12,8 @@ import (
 
 // Store centralizes data-layer access. It owns the *sql.DB, exposes
 // the sqlc-generated Queries for plain reads/writes, and provides
-// WithTx for callers that need to perform multiple queries inside a
-// single transaction.
+// transaction helpers for callers that need to perform multiple queries
+// inside a single SQLite snapshot.
 type Store struct {
 	db      *sql.DB
 	queries *dbsqlc.Queries
@@ -25,7 +25,7 @@ func NewStore(db *sql.DB) *Store {
 
 func (s *Store) Queries() *dbsqlc.Queries { return s.queries }
 
-// WithTx runs fn inside a single SQLite transaction and commits on
+// WithTx runs fn inside a single SQLite write transaction and commits on
 // success. The transaction is rolled back if fn returns an error.
 //
 // `PRAGMA defer_foreign_keys = ON` is set so callers can perform
@@ -34,32 +34,62 @@ func (s *Store) Queries() *dbsqlc.Queries { return s.queries }
 // still enforced at commit time.
 func (s *Store) WithTx(ctx context.Context, fn func(*dbsqlc.Queries) error) error {
 	return execWithBusyRetry(ctx, func() error {
-		return s.withTxOnce(ctx, fn)
+		return s.withTxOnce(ctx, "BEGIN IMMEDIATE", txOptions{
+			deferForeignKeys: true,
+		}, fn)
 	})
 }
 
-func (s *Store) withTxOnce(ctx context.Context, fn func(*dbsqlc.Queries) error) error {
+// WithReadTx runs fn inside a single SQLite read-only transaction.
+// `BEGIN DEFERRED` pins one consistent snapshot for the whole callback,
+// and `PRAGMA query_only = ON` ensures the callback cannot write.
+func (s *Store) WithReadTx(ctx context.Context, fn func(*dbsqlc.Queries) error) error {
+	return execWithBusyRetry(ctx, func() error {
+		return s.withTxOnce(ctx, "BEGIN DEFERRED", txOptions{
+			queryOnly: true,
+		}, fn)
+	})
+}
+
+type txOptions struct {
+	deferForeignKeys bool
+	queryOnly        bool
+}
+
+func (s *Store) withTxOnce(ctx context.Context, begin string, options txOptions, fn func(*dbsqlc.Queries) error) error {
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
-	if err := execWithBusyRetry(ctx, func() error {
-		_, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE")
-		return err
-	}); err != nil {
-		return err
+	if options.queryOnly {
+		if _, err := conn.ExecContext(ctx, "PRAGMA query_only = ON"); err != nil {
+			return fmt.Errorf("enabling query_only: %w", err)
+		}
 	}
+
 	committed := false
 	defer func() {
 		if !committed {
 			_, _ = conn.ExecContext(context.Background(), "ROLLBACK")
 		}
+		if options.queryOnly {
+			_, _ = conn.ExecContext(context.Background(), "PRAGMA query_only = OFF")
+		}
 	}()
 
-	if _, err := conn.ExecContext(ctx, "PRAGMA defer_foreign_keys = ON"); err != nil {
-		return fmt.Errorf("enabling deferred foreign keys: %w", err)
+	if err := execWithBusyRetry(ctx, func() error {
+		_, err := conn.ExecContext(ctx, begin)
+		return err
+	}); err != nil {
+		return err
+	}
+
+	if options.deferForeignKeys {
+		if _, err := conn.ExecContext(ctx, "PRAGMA defer_foreign_keys = ON"); err != nil {
+			return fmt.Errorf("enabling deferred foreign keys: %w", err)
+		}
 	}
 
 	if err := fn(dbsqlc.New(retryDBTX{ctx: ctx, conn: conn})); err != nil {

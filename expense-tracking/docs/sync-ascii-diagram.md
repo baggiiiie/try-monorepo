@@ -1,15 +1,17 @@
 # Server ↔ iOS Sync Flow
 
-This document explains how the Go server and the iOS client synchronize expenses, categories, and recurring expense rules.
+This document describes the current sync contract between the Go server and the iOS client.
 
-The design is intentionally simple because this is a **single-user** expense tracker:
+## Core rules
 
-- The iOS app is **offline-first**.
+- iOS is **offline-first** and writes locally first.
 - The server is the **source of truth**.
-- The server is the **only scheduler** for recurring expenses.
-- Sync is **client-initiated** over HTTP.
-- Conflict resolution is **timestamp-based last-write-wins**.
-- Deletes are **soft deletes** so they can propagate across devices.
+- Every sync cycle is **Push, then Pull**.
+- **Empty Push is valid** and required: it asks the server to materialize due recurring expenses before Pull.
+- `Pull` is a **read-only**, snapshot-consistent operation.
+- The pull cursor is **`server_version`**, not a timestamp.
+- Conflict resolution for pushed rows is still **last-write-wins on `updated_at`**.
+- Deletes are **soft deletes**.
 
 ---
 
@@ -21,22 +23,16 @@ The design is intentionally simple because this is a **single-user** expense tra
 |  SwiftUI + GRDB + local SQLite |          |  HTTP API + services + SQLite |
 +--------------------------------+          +-------------------------------+
 |                                |          |                               |
-|  Views / ViewModels            |          |  HTTP API                     |
-|      |                         |          |      |                        |
-|      v                         |          |      v                        |
-|  Repositories                  |          |  Services                     |
-|      |                         |          |      |                        |
-|      v                         |          |      v                        |
 |  Local SQLite                  |          |  Server SQLite                |
-|                                |          |                               |
-|  SyncService                   |          |  SyncService                  |
+|      ^                         |          |      ^                        |
 |      |                         |          |      |                        |
-|      +-------------- push / pull ----------------+                        |
+|  SyncRepository                |          |  SyncService                  |
+|      ^                         |          |      ^                        |
+|      |                         |          |      |                        |
+|  SyncService                   |          |  /api/sync/push + pull        |
 |                                |          |                               |
 +--------------------------------+          +-------------------------------+
 ```
-
-The iOS app never needs the server for normal user interactions. It writes to local SQLite first, then syncs later when possible.
 
 ---
 
@@ -46,32 +42,25 @@ The iOS app never needs the server for normal user interactions. It writes to lo
 
 | File | Purpose |
 | --- | --- |
-| `ios/ExpenseTracker/Services/SyncService.swift` | Orchestrates sync: push first, then pull. Owns UI-visible sync state. |
+| `ios/ExpenseTracker/Services/SyncService.swift` | Orchestrates sync and enforces push-then-pull. |
 | `ios/ExpenseTracker/Services/SyncAPIClient.swift` | Performs HTTP requests to `/api/sync/push` and `/api/sync/pull`. |
 | `ios/ExpenseTracker/Services/SyncRepository.swift` | Reads pending local changes and applies server responses to GRDB. |
-| `ios/ExpenseTracker/Models/Expense.swift` | Expense model, including `updatedAt`, `deletedAt`, and `syncStatus`. |
-| `ios/ExpenseTracker/Models/Category.swift` | Category model, including `updatedAt`, `deletedAt`, and `syncStatus`. |
-| `ios/ExpenseTracker/Models/RecurringExpense.swift` | Recurring rule model, including `nextRunDate`, `lastRunDate`, and `syncStatus`. |
-| `ios/ExpenseTracker/ExpenseTrackerApp.swift` | Starts sync on app launch and when the app becomes active. |
+| `ios/ExpenseTracker/Models/Preferences.swift` | Stores `lastPulledVersion` in `UserDefaults`. |
 
 ### Server
 
 | File | Purpose |
 | --- | --- |
-| `server/internal/api/sync.go` | HTTP handlers for sync endpoints. |
-| `server/internal/service/sync.go` | Main server-side sync logic. |
-| `server/internal/service/recurring.go` | Server-owned recurring expense materialization. |
-| `server/internal/api/router.go` | Registers `/api/sync/push` and `/api/sync/pull`, with auth middleware. |
-| `server/db/queries/expenses.sql` | SQL queries for expenses, including `ListExpensesUpdatedSince`. |
-| `server/db/queries/categories.sql` | SQL queries for categories, including `ListCategoriesUpdatedSince`. |
-| `server/db/migrations/00005_recurring_expenses.sql` | Server recurring rule and run tables. |
-| `server/internal/auth/secret.go` | Shared bearer-token auth used by the iOS client. |
+| `server/internal/service/sync.go` | Main push/pull implementation. |
+| `server/internal/service/recurring.go` | Due recurring-expense materialization. |
+| `server/internal/repository/store.go` | SQLite transaction helpers, including read-only pull snapshots. |
+| `server/db/queries/*.sql` | sqlc queries for syncable rows and `sync_state.current_version`. |
 
 ---
 
 ## Local writes on iOS
 
-When the user creates, edits, or deletes an expense, category, or recurring rule, the iOS app writes to its local database first.
+When the user changes an expense, category, or recurring rule, iOS writes to local SQLite first.
 
 ```text
 +-------------------+      create/edit/delete      +-----------------------------+
@@ -84,31 +73,25 @@ When the user creates, edits, or deletes an expense, category, or recurring rule
                                                    +-----------------------------+
 ```
 
-For changed rows, iOS marks: `sync_status = 'pending_push'`
-
-This is how the sync system knows what needs to be sent to the server.
-
-A successful sync later changes the local row to:
+Rows waiting to be uploaded are marked:
 
 ```text
-sync_status = 'synced'
+sync_status = 'pending_push'
 ```
 
 ---
 
 ## Sync trigger points
 
-Sync is not continuous. It runs when the iOS app asks it to run.
+Sync runs when the app asks for it:
 
-Current trigger points:
+- app startup
+- app returns to foreground
+- pull-to-refresh
+- user taps **Sync Now**
+- sync configuration changes
 
-- App startup.
-- App returns to foreground / active scene phase.
-- Pull-to-refresh in the expense feed.
-- User taps **Sync Now** in Settings.
-- User enters or updates sync credentials.
-
-`SyncService.sync()` coalesces concurrent calls. If a sync is already running, a second caller waits for the same sync task instead of starting another push/pull pair.
+`SyncService.sync()` coalesces concurrent callers so only one sync cycle runs at a time.
 
 ---
 
@@ -117,74 +100,44 @@ Current trigger points:
 ```mermaid
 sequenceDiagram
     participant IOS as iOS SyncService
-    participant Repo as SyncRepository
-    participant API as Server /api/sync
+    participant Repo as iOS SyncRepository
+    participant API as Server API
     participant Server as Server SyncService
     participant Store as Server SQLite
 
     IOS->>Repo: 1. Read pending local changes
-    Repo-->>IOS: pending expenses, categories, and recurring_expenses
+    Repo-->>IOS: pending rows
 
-    IOS->>API: 2. POST /api/sync/push with bearer token and pending rows
+    IOS->>API: 2. POST /api/sync/push (may be empty)
     API->>Server: Push request
-
-    Server->>Store: Begin transaction
-    Server->>Store: Process categories first
+    Server->>Store: BEGIN IMMEDIATE
+    Server->>Store: Process categories
     Server->>Store: Process recurring rules
-    Server->>Store: Materialize due recurring rules
+    Server->>Store: Materialize due recurring expenses
     Server->>Store: Process expenses
-    Server->>Store: Insert missing IDs, update newer rows, soft-delete deleted rows
-    Server->>Store: Commit transaction
+    Server->>Store: COMMIT
+    Server-->>API: pushed rows + server_version
+    API-->>IOS: push response
+    IOS->>Repo: apply push response; mark rows synced
 
-    Server-->>API: Canonical pushed rows and server_time
-    API-->>IOS: 3. 200 OK with expenses, categories, recurring_expenses, server_time
-    IOS->>Repo: Apply push response
-    Repo->>Repo: Update canonical fields and mark rows synced
-
-    IOS->>API: 4. GET /api/sync/pull?since=lastPullAt with bearer token
+    IOS->>API: 3. GET /api/sync/pull?since=lastPulledVersion
     API->>Server: Pull request
-    Server->>Store: Materialize due recurring rules
-    Server->>Store: Select rows where updated_at is greater than since
-    Server->>Store: Include soft-deleted rows and referenced categories
-
-    Server-->>API: Changed server rows and server_time
-    API-->>IOS: 5. 200 OK with expenses, categories, recurring_expenses, server_time
-    IOS->>Repo: Apply pull response
-    Repo->>Repo: Upsert categories, recurring rules, and expenses; mark rows synced
-    IOS->>IOS: lastPullAt = server_time
+    Server->>Store: BEGIN DEFERRED + query_only=ON
+    Server->>Store: Read current server_version inside snapshot
+    Server->>Store: Read rows where server_version > since
+    Server->>Store: Load dependency categories in same snapshot
+    Server->>Store: COMMIT
+    Server-->>API: changed rows + server_version
+    API-->>IOS: pull response
+    IOS->>Repo: apply pull response
+    IOS->>IOS: lastPulledVersion = response.serverVersion
 ```
-
-The order is important: **push happens before pull**.
-
-This lets local pending changes reach the server before the client pulls remote state back down.
-
----
-
-## Recurring expenses
-
-Recurring rules are synced, but scheduling is server-owned. iOS can create, edit, delete, and display recurring rules, but it does not generate ledger entries from them.
-
-Server-only recurring state:
-
-```text
-recurring_expense_runs(recurring_expense_id, occurrence_date)
-```
-
-This table prevents duplicate materialization. iOS does not sync run records because generated `expenses` are enough for normal client behavior.
 
 ---
 
 ## Push: iOS → server
 
-### iOS side
-
-Before pushing, iOS reads rows with:
-
-```text
-sync_status = 'pending_push'
-```
-
-It sends them to:
+iOS always sends a push request, even if there are no pending local rows.
 
 ```http
 POST /api/sync/push
@@ -192,62 +145,23 @@ Authorization: Bearer <sync secret>
 Content-Type: application/json
 ```
 
-The request shape is:
+Why empty push matters:
 
-```json
-{
-  "expenses": [
-    {
-      "id": "expense-id",
-      "amount": 1250,
-      "currency": "SGD",
-      "category_id": "category-id",
-      "description": "Lunch",
-      "merchant": "Cafe",
-      "date": 1714200000,
-      "source": "manual",
-      "updated_at": 1714200100,
-      "deleted_at": null
-    }
-  ],
-  "categories": [
-    {
-      "id": "category-id",
-      "name": "Food & Dining",
-      "icon": "fork.knife",
-      "budget": 50000,
-      "updated_at": 1714200100,
-      "deleted_at": null
-    }
-  ],
-  "recurring_expenses": [
-    {
-      "id": "recurring-id",
-      "amount": 250000,
-      "currency": "SGD",
-      "category_id": "category-id",
-      "description": "Rent",
-      "merchant": "Landlord",
-      "frequency": "monthly",
-      "day_of_month": 1,
-      "start_date": 1711929600,
-      "end_date": null,
-      "next_run_date": 1714521600,
-      "last_run_date": null,
-      "updated_at": 1714200100,
-      "deleted_at": null
-    }
-  ]
-}
+```text
+empty push
+    |
+    v
+server materializes due recurring expenses inside Push
+    |
+    v
+following Pull can stay read-only
 ```
 
-### Server side
-
-The server processes the push inside a transaction.
+Push order on the server:
 
 ```text
 +--------------------------+
-| Begin transaction        |
+| Begin write transaction  |
 +------------+-------------+
              |
              v
@@ -276,22 +190,10 @@ The server processes the push inside a transaction.
 +--------------------------+
 ```
 
-Categories are processed first because expenses and recurring rules have a foreign key to categories.
-
-For each pushed category/expense/recurring rule:
+Conflict rule during Push:
 
 ```text
-Does ID exist on server?
-
-        +------ no ------+
-        |                v
-        |        Insert new row
-        |
-        v
-       yes
-        |
-        v
-Compare incoming updated_at with server updated_at
+compare incoming updated_at with server updated_at
         |
         +-- incoming newer --> apply incoming state
         |
@@ -300,83 +202,49 @@ Compare incoming updated_at with server updated_at
         +-- equal but different --> apply incoming state
 ```
 
-The response includes the canonical server version of affected rows.
+The push response returns canonical server rows plus the latest `server_version`.
 
 ---
 
 ## Pull: server → iOS
 
-After push, iOS pulls changed rows using its last successful pull cursor.
+After Push, iOS pulls by `server_version`:
 
 ```http
-GET /api/sync/pull?since=<lastPullAt>
+GET /api/sync/pull?since=<lastPulledVersion>
 Authorization: Bearer <sync secret>
 ```
 
-Before querying changed rows, the server materializes due recurring rules. Any generated ledger rows are normal expenses with `source = 'recurring'`.
+`Pull` is a true read:
 
-The server then queries:
+- it runs inside a SQLite **read-only transaction**
+- the transaction uses one consistent snapshot
+- `server_version` is sampled **inside** that snapshot before row queries
+- `Pull` performs **no writes**
+
+Server-side query model:
 
 ```sql
-SELECT * FROM expenses WHERE updated_at > ?;
-SELECT * FROM categories WHERE updated_at > ?;
-SELECT * FROM recurring_expenses WHERE updated_at > ?;
+SELECT * FROM expenses WHERE server_version > ?;
+SELECT * FROM categories WHERE server_version > ?;
+SELECT * FROM recurring_expenses WHERE server_version > ?;
+SELECT current_version FROM sync_state WHERE id = 1;
 ```
 
-The response shape is:
+The server also includes dependency categories for any pulled expenses or recurring rules whose category did not itself change after `since`.
+
+Response shape:
 
 ```json
 {
-  "expenses": [
-    {
-      "id": "expense-id",
-      "amount": 1250,
-      "currency": "SGD",
-      "category_id": "category-id",
-      "description": "Lunch",
-      "merchant": "Cafe",
-      "date": 1714200000,
-      "source": "manual",
-      "created_at": 1714200000,
-      "updated_at": 1714200100,
-      "deleted_at": null
-    }
-  ],
-  "categories": [
-    {
-      "id": "category-id",
-      "name": "Food & Dining",
-      "icon": "fork.knife",
-      "budget": 50000,
-      "created_at": 1714200000,
-      "updated_at": 1714200100,
-      "deleted_at": null
-    }
-  ],
-  "recurring_expenses": [
-    {
-      "id": "recurring-id",
-      "amount": 250000,
-      "currency": "SGD",
-      "category_id": "category-id",
-      "description": "Rent",
-      "merchant": "Landlord",
-      "frequency": "monthly",
-      "day_of_month": 1,
-      "start_date": 1711929600,
-      "end_date": null,
-      "next_run_date": 1717200000,
-      "last_run_date": 1714521600,
-      "created_at": 1714200000,
-      "updated_at": 1714521600,
-      "deleted_at": null
-    }
-  ],
-  "server_time": 1714200200
+  "expenses": [],
+  "categories": [],
+  "recurring_expenses": [],
+  "server_version": 123
 }
 ```
 
-On iOS, the pull response is applied by upserting categories first, then recurring rules, then expenses:
+On iOS, apply order is:
 
 ```text
 +---------------------+
@@ -401,184 +269,82 @@ On iOS, the pull response is applied by upserting categories first, then recurri
            |
            v
 +---------------------+
-| lastPullAt =        |
-| response.serverTime |
+| lastPulledVersion = |
+| response.serverVersion |
 +---------------------+
 ```
-
-The server includes dependency categories for pulled expenses and recurring rules. This prevents the client from receiving a row whose `category_id` points to a category not present locally.
 
 ---
 
 ## Cursor model
 
-The pull cursor is stored on iOS in `UserDefaults` as `lastPullAt`.
+The pull cursor stored on iOS is `lastPulledVersion`.
 
 ```text
 +-----------------------------+
-| lastPullAt                  |
+| lastPulledVersion           |
 +-----------------------------+
 | Initially 0                 |
 | After successful pull:      |
-|   response.server_time      |
+|   response.server_version   |
 +-----------------------------+
 ```
 
-Only the pull cursor is persisted. Push uses local `sync_status` instead of a timestamp cursor.
-
 This means:
 
-- Rows changed locally are pushed because they are marked `pending_push`.
-- Rows changed remotely are pulled because their server `updated_at` is greater than `lastPullAt`.
-- Recurring materialization advances the server-side recurring rule's `updated_at`, so clients learn the new `next_run_date` and generated expense on the next pull.
+- local changes are pushed because they are `pending_push`
+- remote changes are pulled because their `server_version` is greater than the last successful pull cursor
+- recurring materialization becomes visible after the push that triggers it, followed by pull
 
 ---
 
-## Conflict model
+## Recurring expenses
 
-```text
-                 Same row edited in two places
-                           |
-                           v
-              +---------------------------+
-              | Compare updated_at values |
-              +---------------------------+
-                    |                 |
-          newer client          newer server / pulled row
-                    |                 |
-                    v                 v
-          client wins on push    server wins on pull
-                    \                 /
-                     \               /
-                      v             v
-                       Last edit wins
-```
+Recurring rules sync like normal entities, but only the server materializes them into ledger expenses.
 
-More specifically:
+iOS can:
+- create recurring rules
+- edit recurring rules
+- delete recurring rules
+- display recurring rules
 
-- During push, the server accepts incoming state if the incoming `updated_at` is newer.
-- If timestamps are equal but the row state differs, the server applies the incoming state.
-- During pull, iOS upserts server rows directly, so server state overwrites local state.
+The server alone can:
+- decide what is due
+- create `source = 'recurring'` expenses
+- advance `last_run_date` and `next_run_date`
 
-Because this is a single-user app, this simple model is considered sufficient.
+A client that only Pulls and never Pushes will not see newly materialized recurring expenses. The current contract intentionally relies on push-then-pull instead.
 
 ---
 
 ## Delete model
 
-Deletes are soft deletes. Rows are not removed from the database during normal delete operations.
+Deletes are soft deletes:
 
 ```text
-Delete does not remove rows immediately.
-
-+-------------+       delete       +-----------------------------+
-| iOS/Server  | ----------------> | row.deleted_at = now        |
-+-------------+                   | row.updated_at = now        |
-                                  +-----------------------------+
-                                                |
-                                                v
-                                  +-----------------------------+
-                                  | Sync treats this as a       |
-                                  | normal changed row.         |
-                                  +-----------------------------+
+row.deleted_at = now
+row.updated_at = now
 ```
 
-Why soft deletes are needed:
-
-```text
-If rows were hard-deleted:
-
-Device A deletes row
-        |
-        v
-Row disappears completely
-        |
-        v
-Device B asks, "what changed since last sync?"
-        |
-        v
-Server has no row to return
-        |
-        v
-Device B never learns about the delete
-```
-
-With soft deletes, the deleted row still has an `updated_at` and can be sent during sync.
-
-Normal app queries hide soft-deleted rows by filtering:
-
-```sql
-deleted_at IS NULL
-```
-
-Sync queries include them.
-
----
-
-## Authentication
-
-All protected API routes require a shared bearer token:
-
-```http
-Authorization: Bearer <sync secret>
-```
-
-The server loads or creates this secret using `server/internal/auth/secret.go`.
-
-The iOS app stores the secret in the keychain via `SyncSecretStore`.
-
-```text
-+-----------------------+                         +-----------------------+
-| iOS Keychain          |                         | Server secret file    |
-| sync secret           |                         | or env var            |
-+-----------+-----------+                         +-----------+-----------+
-            |                                                 |
-            v                                                 v
-+---------------------------------------------------------------+
-| Authorization: Bearer <secret>                                |
-+---------------------------------------------------------------+
-```
-
-If the secret is missing or wrong, the server returns `401 Unauthorized`.
+The row stays syncable, so other devices can learn about the delete.
 
 ---
 
 ## Failure behavior
 
 ```text
-+----------------------+-------------------------------+
-| Failure point        | Result                        |
-+----------------------+-------------------------------+
-| Missing server URL   | iOS reports not configured    |
-| Missing secret       | iOS reports not configured    |
-| Offline/network fail | iOS reports offline/failed    |
-| Push fails           | local rows remain pending     |
-| Pull fails           | lastPullAt is not advanced    |
-| Recurring materialization fails | sync fails and retries later |
-| Response decode fail | sync fails, retry later       |
-+----------------------+-------------------------------+
++----------------------+-------------------------------------------+
+| Failure point        | Result                                    |
++----------------------+-------------------------------------------+
+| Missing server URL   | iOS reports not configured                |
+| Missing secret       | iOS reports not configured                |
+| Offline/network fail | local rows remain unchanged               |
+| Push fails           | local rows stay pending_push              |
+| Pull fails           | lastPulledVersion is not advanced         |
+| Materialization fail | push fails; retry on next sync            |
+| Decode fail          | sync fails; retry later                   |
++----------------------+-------------------------------------------+
 ```
-
-Important details:
-
-- If push fails, iOS does not mark local rows as synced.
-- If pull fails, iOS does not update `lastPullAt`.
-- Retrying sync is safe because server operations are keyed by stable IDs.
-- `SyncService` hides intentional cancellation from the user.
-
----
-
-## Observability headers
-
-The iOS client sends request metadata with each sync request:
-
-```http
-X-Request-ID: <uuid>
-X-Client-Build: <app build version>
-User-Agent: ExpenseTracker/<app build version>
-```
-
-These help correlate client errors with server logs.
 
 ---
 
@@ -597,34 +363,27 @@ These help correlate client errors with server logs.
                 |
                 v
 +------------------------------+
-| Sync pushes pending rows     |
-| to server                    |
-+---------------+--------------+
-                |
-                v
-+------------------------------+
-| Server stores canonical      |
-| state and timestamps         |
+| iOS always pushes first      |
+| even if the body is empty    |
 +---------------+--------------+
                 |
                 v
 +------------------------------+
 | Server materializes due      |
-| recurring rules into         |
-| source=recurring expenses    |
+| recurring expenses in Push   |
 +---------------+--------------+
                 |
                 v
 +------------------------------+
-| iOS pulls server changes     |
-| since lastPullAt             |
+| iOS pulls by server_version  |
+| from a read-only snapshot    |
 +---------------+--------------+
                 |
                 v
 +------------------------------+
 | iOS upserts rows locally     |
-| and advances lastPullAt      |
+| and advances lastPulledVersion |
 +------------------------------+
 ```
 
-In one sentence: **the iOS app works offline, marks local changes as pending, pushes them to the server, the server materializes recurring expenses, and iOS pulls the canonical result back down.**
+In one sentence: **the iOS app works offline, pushes pending changes (or an empty ping), the server materializes due recurring expenses during Push, and iOS then pulls a read-only `server_version` delta back down.**

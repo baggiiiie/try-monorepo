@@ -21,6 +21,10 @@ enum SyncStatus: Equatable {
 
 /// Coordinates push/pull synchronization with the backend.
 ///
+/// Sync always does Push before Pull, even with an empty push body, so the
+/// server can materialize due recurring expenses before Pull takes its
+/// read-only snapshot.
+///
 /// ## Concurrency model
 ///
 /// `sync()` coalesces concurrent callers: if a sync is already in flight, the
@@ -96,7 +100,9 @@ final class SyncService: ObservableObject {
 
     private func pushPendingChanges() async throws {
         let pending = try repository.fetchPendingPushChanges()
-        guard pending.hasChanges else { return }
+        // Sync is always push-then-pull, even when the push body is empty.
+        // An empty push is the server-side "materialize anything due" ping
+        // that makes the following pull a pure read.
         try preflight()
         let response = try await apiClient.push(request: pending.request)
         try repository.applyPushResponse(response)
