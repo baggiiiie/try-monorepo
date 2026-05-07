@@ -13,13 +13,12 @@ import (
 )
 
 type ExpenseService struct {
-	queries    *dbsqlc.Queries
-	prefs      *config.Preferences
-	configPath string
+	queries *dbsqlc.Queries
+	prefs   *config.Preferences
 }
 
-func NewExpenseService(q *dbsqlc.Queries, prefs *config.Preferences, configPath string) *ExpenseService {
-	return &ExpenseService{queries: q, prefs: prefs, configPath: configPath}
+func NewExpenseService(q *dbsqlc.Queries, prefs *config.Preferences) *ExpenseService {
+	return &ExpenseService{queries: q, prefs: prefs}
 }
 
 func (s *ExpenseService) UpdatePreferences(p *config.Preferences) {
@@ -51,10 +50,14 @@ type Expense struct {
 	DeletedAt   *int64 `json:"deleted_at,omitempty"`
 }
 
-// Create inserts a new expense using the provided queries handle, allowing
+func (s *ExpenseService) Create(ctx context.Context, input ExpenseInput) (*Expense, error) {
+	return s.CreateWithQueries(ctx, s.queries, input)
+}
+
+// CreateWithQueries inserts a new expense using the provided queries handle, allowing
 // callers to compose the create with a surrounding transaction (e.g. dry-run
-// rollback). Callers without a transaction can pass app.Queries.
-func (s *ExpenseService) Create(ctx context.Context, q *dbsqlc.Queries, input ExpenseInput) (*Expense, error) {
+// rollback).
+func (s *ExpenseService) CreateWithQueries(ctx context.Context, q *dbsqlc.Queries, input ExpenseInput) (*Expense, error) {
 	if input.Amount <= 0 {
 		return nil, fmt.Errorf("amount must be positive")
 	}

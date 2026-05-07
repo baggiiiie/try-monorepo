@@ -1,15 +1,10 @@
 package api
 
-import (
-	"net/http"
+import "net/http"
 
-	"expense-tracker/internal/app"
-	"expense-tracker/internal/config"
-)
-
-func getPreferences(a *app.App) http.HandlerFunc {
+func getPreferences(preferences PreferencesService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, a.Preferences)
+		writeJSON(w, http.StatusOK, preferences.GetPreferences())
 	}
 }
 
@@ -19,7 +14,7 @@ type updatePreferencesRequest struct {
 	DateFormat *string `json:"date_format"`
 }
 
-func updatePreferences(a *app.App) http.HandlerFunc {
+func updatePreferences(preferences PreferencesService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req updatePreferencesRequest
 		if err := readJSON(r, &req); err != nil {
@@ -27,7 +22,7 @@ func updatePreferences(a *app.App) http.HandlerFunc {
 			return
 		}
 
-		prefs := a.Preferences
+		prefs := preferences.GetPreferences()
 		if req.Currency != nil {
 			prefs.Currency = *req.Currency
 		}
@@ -38,16 +33,11 @@ func updatePreferences(a *app.App) http.HandlerFunc {
 			prefs.DateFormat = *req.DateFormat
 		}
 
-		if err := config.SavePreferences(a.PreferencesPath, prefs); err != nil {
+		if err := preferences.SavePreferences(prefs); err != nil {
 			writeError(w, r, http.StatusInternalServerError, err.Error())
 			return
 		}
 
-		if err := a.ReloadPreferences(); err != nil {
-			writeError(w, r, http.StatusInternalServerError, err.Error())
-			return
-		}
-
-		writeJSON(w, http.StatusOK, a.Preferences)
+		writeJSON(w, http.StatusOK, preferences.GetPreferences())
 	}
 }

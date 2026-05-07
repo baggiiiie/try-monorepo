@@ -6,19 +6,18 @@ import (
 	"fmt"
 	"time"
 
-	"expense-tracker/internal/repository"
 	dbsqlc "expense-tracker/internal/repository/sqlc"
 	"expense-tracker/internal/timeutil"
 )
 
 type SyncService struct {
-	store    *repository.Store
 	queries  *dbsqlc.Queries
+	tx       TxManager
 	location *time.Location
 }
 
-func NewSyncService(store *repository.Store, timezone string) *SyncService {
-	return &SyncService{store: store, queries: store.Queries(), location: timeutil.LoadLocation(timezone, time.UTC)}
+func NewSyncService(q *dbsqlc.Queries, tx TxManager, timezone string) *SyncService {
+	return &SyncService{queries: q, tx: tx, location: timeutil.LoadLocation(timezone, time.UTC)}
 }
 
 func (s *SyncService) UpdateTimezone(timezone string) {
@@ -79,25 +78,48 @@ type PushResponse struct {
 }
 
 func (s *SyncService) Pull(ctx context.Context, since int64) (*PullResponse, error) {
-	if err := materializeDueRecurringExpenses(ctx, s.queries, time.Now(), s.location); err != nil {
-		return nil, err
-	}
+	now := time.Now()
+	today := startOfDay(now, s.location).Unix()
 
-	expenses, err := s.queries.ListExpensesUpdatedSince(ctx, since)
+	dueRecurring, err := s.queries.ListDueRecurringExpenses(ctx, today)
 	if err != nil {
 		return nil, err
 	}
-	categories, err := s.queries.ListCategoriesUpdatedSince(ctx, since)
+	if len(dueRecurring) == 0 {
+		return pullResponse(ctx, s.queries, since, now.Unix())
+	}
+
+	var resp *PullResponse
+	err = s.tx.WithTx(ctx, func(qtx *dbsqlc.Queries) error {
+		if err := materializeDueRecurringExpenses(ctx, qtx, now, s.location); err != nil {
+			return err
+		}
+
+		var err error
+		resp, err = pullResponse(ctx, qtx, since, now.Unix())
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	recurringExpenses, err := s.listRecurringExpensesUpdatedSince(ctx, since)
+	return resp, nil
+}
+
+func pullResponse(ctx context.Context, q *dbsqlc.Queries, since, serverTime int64) (*PullResponse, error) {
+	expenses, err := q.ListExpensesUpdatedSince(ctx, since)
 	if err != nil {
 		return nil, err
 	}
-
-	serverVersion, err := s.queries.GetCurrentServerVersion(ctx)
+	categories, err := q.ListCategoriesUpdatedSince(ctx, since)
+	if err != nil {
+		return nil, err
+	}
+	recurringExpenses, err := listRecurringExpensesUpdatedSince(ctx, q, since)
+	if err != nil {
+		return nil, err
+	}
+	serverVersion, err := q.GetCurrentServerVersion(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +129,7 @@ func (s *SyncService) Pull(ctx context.Context, since int64) (*PullResponse, err
 		Categories:        make([]Category, 0, len(categories)),
 		RecurringExpenses: recurringExpenses,
 		ServerVersion:     serverVersion,
-		ServerTime:        time.Now().Unix(),
+		ServerTime:        serverTime,
 	}
 
 	includedCategoryIDs := make(map[string]struct{}, len(categories)+len(expenses)+len(recurringExpenses))
@@ -123,7 +145,7 @@ func (s *SyncService) Pull(ctx context.Context, since int64) (*PullResponse, err
 		if _, ok := includedCategoryIDs[r.CategoryID]; ok {
 			continue
 		}
-		category, err := s.queries.GetCategoryIncludingDeleted(ctx, r.CategoryID)
+		category, err := q.GetCategoryIncludingDeleted(ctx, r.CategoryID)
 		if err != nil {
 			return nil, fmt.Errorf("loading category %q for recurring expense %q: %w", r.CategoryID, r.ID, err)
 		}
@@ -149,7 +171,7 @@ func (s *SyncService) Pull(ctx context.Context, since int64) (*PullResponse, err
 		if _, ok := includedCategoryIDs[e.CategoryID]; ok {
 			continue
 		}
-		category, err := s.queries.GetCategoryIncludingDeleted(ctx, e.CategoryID)
+		category, err := q.GetCategoryIncludingDeleted(ctx, e.CategoryID)
 		if err != nil {
 			return nil, fmt.Errorf("loading category %q for expense %q: %w", e.CategoryID, e.ID, err)
 		}
@@ -169,7 +191,7 @@ func (s *SyncService) Push(ctx context.Context, req PushRequest) (*PushResponse,
 		ServerTime:        now,
 	}
 
-	err := s.store.WithTx(ctx, func(qtx *dbsqlc.Queries) error {
+	err := s.tx.WithTx(ctx, func(qtx *dbsqlc.Queries) error {
 		categoryAliases := make(map[string]string, len(req.Categories)*2)
 
 		for _, c := range req.Categories {
@@ -478,8 +500,8 @@ func expenseLWWHooks(serverVersion int64) LWWHooks[dbsqlc.Expense, PushExpense] 
 	}
 }
 
-func (s *SyncService) listRecurringExpensesUpdatedSince(ctx context.Context, since int64) ([]RecurringExpense, error) {
-	rows, err := s.queries.ListRecurringExpensesUpdatedSince(ctx, since)
+func listRecurringExpensesUpdatedSince(ctx context.Context, q *dbsqlc.Queries, since int64) ([]RecurringExpense, error) {
+	rows, err := q.ListRecurringExpensesUpdatedSince(ctx, since)
 	if err != nil {
 		return nil, err
 	}

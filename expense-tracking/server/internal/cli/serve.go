@@ -13,43 +13,50 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var serveCmd = &cobra.Command{
-	Use:   "serve",
-	Short: "Start the HTTP API server",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		port, _ := cmd.Flags().GetInt("port")
-		slog.SetDefault(slog.New(newServerLogHandler(os.Stdout)))
+func newServeCmd(paths pathProvider) *cobra.Command {
+	serveCmd := &cobra.Command{
+		Use:   "serve",
+		Short: "Start the HTTP API server",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			port, _ := cmd.Flags().GetInt("port")
+			slog.SetDefault(slog.New(newServerLogHandler(os.Stdout)))
 
-		a, err := app.Open(dbPath, configPath)
-		if err != nil {
-			return fmt.Errorf("initializing app: %w", err)
-		}
-		defer a.Close()
+			dbPath, configPath, secretPath := paths()
+			a, err := app.Open(dbPath, configPath)
+			if err != nil {
+				return fmt.Errorf("initializing app: %w", err)
+			}
+			defer a.Close()
 
-		secret, generated, err := auth.LoadOrCreate(secretPath)
-		if err != nil {
-			return fmt.Errorf("loading sync secret: %w", err)
-		}
-		if generated {
-			fmt.Fprintln(cmd.OutOrStdout(), "==============================================================")
-			fmt.Fprintln(cmd.OutOrStdout(), "Generated a new sync secret. Paste it into the iOS app Settings:")
-			fmt.Fprintln(cmd.OutOrStdout(), "")
-			fmt.Fprintln(cmd.OutOrStdout(), "  "+secret)
-			fmt.Fprintln(cmd.OutOrStdout(), "")
-			fmt.Fprintln(cmd.OutOrStdout(), "Stored at "+secretPath+" (mode 0600).")
-			fmt.Fprintln(cmd.OutOrStdout(), "Re-run `expense secret show` to print it again.")
-			fmt.Fprintln(cmd.OutOrStdout(), "==============================================================")
-		}
+			secret, generated, err := auth.LoadOrCreate(secretPath)
+			if err != nil {
+				return fmt.Errorf("loading sync secret: %w", err)
+			}
+			if generated {
+				fmt.Fprintln(cmd.OutOrStdout(), "==============================================================")
+				fmt.Fprintln(cmd.OutOrStdout(), "Generated a new sync secret. Paste it into the iOS app Settings:")
+				fmt.Fprintln(cmd.OutOrStdout(), "")
+				fmt.Fprintln(cmd.OutOrStdout(), "  "+secret)
+				fmt.Fprintln(cmd.OutOrStdout(), "")
+				fmt.Fprintln(cmd.OutOrStdout(), "Stored at "+secretPath+" (mode 0600).")
+				fmt.Fprintln(cmd.OutOrStdout(), "Re-run `expense secret show` to print it again.")
+				fmt.Fprintln(cmd.OutOrStdout(), "==============================================================")
+			}
 
-		router := api.NewRouter(a, secret)
+			services := a.Services()
+			router := api.NewRouter(api.RouterServices{
+				Expenses:    services.Expenses,
+				Categories:  services.Categories,
+				Sync:        services.Sync,
+				Preferences: a,
+			}, secret)
 
-		addr := fmt.Sprintf(":%d", port)
-		slog.Info("server.start", slog.String("addr", addr))
-		return http.ListenAndServe(addr, router)
-	},
-}
+			addr := fmt.Sprintf(":%d", port)
+			slog.Info("server.start", slog.String("addr", addr))
+			return http.ListenAndServe(addr, router)
+		},
+	}
 
-func init() {
 	serveCmd.Flags().Int("port", 8080, "port to listen on")
-	rootCmd.AddCommand(serveCmd)
+	return serveCmd
 }

@@ -3,7 +3,6 @@ package api
 import (
 	"net/http"
 
-	"expense-tracker/internal/app"
 	"expense-tracker/internal/service"
 
 	"github.com/go-chi/chi/v5"
@@ -21,7 +20,7 @@ type updateCategoryRequest struct {
 	Budget *int64  `json:"budget,omitempty"`
 }
 
-func createCategory(a *app.App) http.HandlerFunc {
+func createCategory(categories CategoryService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req createCategoryRequest
 		if err := readJSON(r, &req); err != nil {
@@ -29,7 +28,7 @@ func createCategory(a *app.App) http.HandlerFunc {
 			return
 		}
 
-		cat, err := a.CategoryService.Create(r.Context(), service.CategoryInput{
+		cat, err := categories.Create(r.Context(), service.CategoryInput{
 			Name:   req.Name,
 			Icon:   req.Icon,
 			Budget: req.Budget,
@@ -43,9 +42,9 @@ func createCategory(a *app.App) http.HandlerFunc {
 	}
 }
 
-func listCategories(a *app.App) http.HandlerFunc {
+func listCategories(categories CategoryService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		categories, err := a.CategoryService.List(r.Context())
+		categories, err := categories.List(r.Context())
 		if err != nil {
 			writeError(w, r, http.StatusInternalServerError, err.Error())
 			return
@@ -58,7 +57,7 @@ func listCategories(a *app.App) http.HandlerFunc {
 	}
 }
 
-func updateCategory(a *app.App) http.HandlerFunc {
+func updateCategory(categories CategoryService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 
@@ -79,7 +78,7 @@ func updateCategory(a *app.App) http.HandlerFunc {
 			input.Budget = req.Budget
 		}
 
-		cat, err := a.CategoryService.Update(r.Context(), id, input)
+		cat, err := categories.Update(r.Context(), id, input)
 		if err != nil {
 			if err.Error() == "category not found" {
 				writeError(w, r, http.StatusNotFound, err.Error())
@@ -93,11 +92,11 @@ func updateCategory(a *app.App) http.HandlerFunc {
 	}
 }
 
-func deleteCategory(a *app.App) http.HandlerFunc {
+func deleteCategory(categories CategoryService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 
-		if err := a.CategoryService.Delete(r.Context(), id); err != nil {
+		if err := categories.Delete(r.Context(), id); err != nil {
 			writeError(w, r, http.StatusInternalServerError, err.Error())
 			return
 		}

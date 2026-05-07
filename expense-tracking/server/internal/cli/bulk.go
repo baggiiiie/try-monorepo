@@ -39,6 +39,9 @@ type BulkCommand[I any, O any] struct {
 	// is not used.
 	InputFromFlags func(*cobra.Command) (I, error)
 
+	// Tx provides the transaction runner used to wrap each row.
+	Tx txRunnerProvider
+
 	// Process executes one row against the provided transactional queries.
 	// The runner handles the surrounding transaction, dry-run rollback,
 	// and result aggregation.
@@ -187,8 +190,16 @@ func (b BulkCommand[I, O]) collectInputs(cmd *cobra.Command, jsonArg string) ([]
 }
 
 func (b BulkCommand[I, O]) processOne(ctx context.Context, index int, in I, dryRun bool) BulkResult[O] {
+	if b.Tx == nil {
+		return BulkResult[O]{Index: index, Error: "bulk command transaction runner is not configured"}
+	}
+	runner := b.Tx()
+	if runner == nil {
+		return BulkResult[O]{Index: index, Error: "cli runtime is not initialized"}
+	}
+
 	var out O
-	err := application.Store.WithTx(ctx, func(q *dbsqlc.Queries) error {
+	err := runner.WithTx(ctx, func(q *dbsqlc.Queries) error {
 		result, err := b.Process(ctx, q, in)
 		if err != nil {
 			return err

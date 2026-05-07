@@ -10,117 +10,141 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var categoryCmd = &cobra.Command{
-	Use:   "category",
-	Short: "Manage categories",
-}
+func newCategoryCmd(categories categoryServiceProvider, prefs preferencesServiceProvider) *cobra.Command {
+	categoryCmd := &cobra.Command{
+		Use:   "category",
+		Short: "Manage categories",
+	}
 
-var categoryAddCmd = &cobra.Command{
-	Use:   "add",
-	Short: "Add a new category",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		name, _ := cmd.Flags().GetString("name")
-		icon, _ := cmd.Flags().GetString("icon")
-
-		input := service.CategoryInput{
-			Name: name,
-			Icon: icon,
-		}
-
-		if cmd.Flags().Changed("budget") {
-			budgetFloat, _ := cmd.Flags().GetFloat64("budget")
-			budgetCents := int64(math.Round(budgetFloat * 100))
-			input.Budget = &budgetCents
-		}
-
-		cat, err := application.CategoryService.Create(context.Background(), input)
-		if err != nil {
-			return err
-		}
-
-		fmt.Printf("Added category %s: %s %s\n", cat.ID, cat.Icon, cat.Name)
-		return nil
-	},
-}
-
-var categoryListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List categories",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		jsonOutput, _ := cmd.Flags().GetBool("json")
-
-		categories, err := application.CategoryService.List(context.Background())
-		if err != nil {
-			return err
-		}
-
-		if jsonOutput {
-			result := map[string]any{
-				"categories": categories,
+	categoryAddCmd := &cobra.Command{
+		Use:   "add",
+		Short: "Add a new category",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			categoryService := categories()
+			if categoryService == nil {
+				return fmt.Errorf("category service is not initialized")
 			}
-			return writeJson(result)
-		}
 
-		if len(categories) == 0 {
-			fmt.Println("No categories found.")
+			name, _ := cmd.Flags().GetString("name")
+			icon, _ := cmd.Flags().GetString("icon")
+
+			input := service.CategoryInput{
+				Name: name,
+				Icon: icon,
+			}
+
+			if cmd.Flags().Changed("budget") {
+				budgetFloat, _ := cmd.Flags().GetFloat64("budget")
+				budgetCents := int64(math.Round(budgetFloat * 100))
+				input.Budget = &budgetCents
+			}
+
+			cat, err := categoryService.Create(context.Background(), input)
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf("Added category %s: %s %s\n", cat.ID, cat.Icon, cat.Name)
 			return nil
-		}
+		},
+	}
 
-		for _, c := range categories {
-			budgetStr := ""
-			if c.Budget != nil {
-				budgetStr = fmt.Sprintf(" (budget: %s)", formatAmount(*c.Budget, application.Preferences.Currency))
+	categoryListCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List categories",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			jsonOutput, _ := cmd.Flags().GetBool("json")
+
+			categoryService := categories()
+			if categoryService == nil {
+				return fmt.Errorf("category service is not initialized")
 			}
-			fmt.Printf("%s  %s %s%s\n", c.ID, c.Icon, c.Name, budgetStr)
-		}
-		return nil
-	},
-}
+			prefService := prefs()
+			if prefService == nil {
+				return fmt.Errorf("cli runtime is not initialized")
+			}
+			preferences := prefService.GetPreferences()
 
-var categoryEditCmd = &cobra.Command{
-	Use:   "edit [id]",
-	Short: "Edit a category",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		id := args[0]
-		input := service.CategoryInput{}
+			categories, err := categoryService.List(context.Background())
+			if err != nil {
+				return err
+			}
 
-		if cmd.Flags().Changed("name") {
-			input.Name, _ = cmd.Flags().GetString("name")
-		}
-		if cmd.Flags().Changed("icon") {
-			input.Icon, _ = cmd.Flags().GetString("icon")
-		}
-		if cmd.Flags().Changed("budget") {
-			budgetFloat, _ := cmd.Flags().GetFloat64("budget")
-			budgetCents := int64(math.Round(budgetFloat * 100))
-			input.Budget = &budgetCents
-		}
+			if jsonOutput {
+				result := map[string]any{
+					"categories": categories,
+				}
+				return writeJson(result)
+			}
 
-		cat, err := application.CategoryService.Update(context.Background(), id, input)
-		if err != nil {
-			return err
-		}
+			if len(categories) == 0 {
+				fmt.Println("No categories found.")
+				return nil
+			}
 
-		fmt.Printf("Updated category %s: %s %s\n", cat.ID, cat.Icon, cat.Name)
-		return nil
-	},
-}
+			for _, c := range categories {
+				budgetStr := ""
+				if c.Budget != nil {
+					budgetStr = fmt.Sprintf(" (budget: %s)", formatAmount(*c.Budget, preferences.Currency))
+				}
+				fmt.Printf("%s  %s %s%s\n", c.ID, c.Icon, c.Name, budgetStr)
+			}
+			return nil
+		},
+	}
 
-var categoryDeleteCmd = &cobra.Command{
-	Use:   "delete [id]",
-	Short: "Delete a category (soft delete)",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := application.CategoryService.Delete(context.Background(), args[0]); err != nil {
-			return err
-		}
-		fmt.Printf("Deleted category %s\n", args[0])
-		return nil
-	},
-}
+	categoryEditCmd := &cobra.Command{
+		Use:   "edit [id]",
+		Short: "Edit a category",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			categoryService := categories()
+			if categoryService == nil {
+				return fmt.Errorf("category service is not initialized")
+			}
 
-func init() {
+			id := args[0]
+			input := service.CategoryInput{}
+
+			if cmd.Flags().Changed("name") {
+				input.Name, _ = cmd.Flags().GetString("name")
+			}
+			if cmd.Flags().Changed("icon") {
+				input.Icon, _ = cmd.Flags().GetString("icon")
+			}
+			if cmd.Flags().Changed("budget") {
+				budgetFloat, _ := cmd.Flags().GetFloat64("budget")
+				budgetCents := int64(math.Round(budgetFloat * 100))
+				input.Budget = &budgetCents
+			}
+
+			cat, err := categoryService.Update(context.Background(), id, input)
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf("Updated category %s: %s %s\n", cat.ID, cat.Icon, cat.Name)
+			return nil
+		},
+	}
+
+	categoryDeleteCmd := &cobra.Command{
+		Use:   "delete [id]",
+		Short: "Delete a category (soft delete)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			categoryService := categories()
+			if categoryService == nil {
+				return fmt.Errorf("category service is not initialized")
+			}
+			if err := categoryService.Delete(context.Background(), args[0]); err != nil {
+				return err
+			}
+			fmt.Printf("Deleted category %s\n", args[0])
+			return nil
+		},
+	}
+
 	categoryAddCmd.Flags().String("name", "", "category name")
 	categoryAddCmd.Flags().String("icon", "", "category icon (emoji)")
 	categoryAddCmd.Flags().Float64("budget", 0, "monthly budget amount")
@@ -137,5 +161,5 @@ func init() {
 	categoryCmd.AddCommand(categoryEditCmd)
 	categoryCmd.AddCommand(categoryDeleteCmd)
 
-	rootCmd.AddCommand(categoryCmd)
+	return categoryCmd
 }

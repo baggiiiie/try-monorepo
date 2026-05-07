@@ -7,42 +7,50 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var budgetCmd = &cobra.Command{
-	Use:   "budget",
-	Short: "Show budget status",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		jsonOutput, _ := cmd.Flags().GetBool("json")
-		month, _ := cmd.Flags().GetString("month")
+func newBudgetCmd(reports reportServiceProvider, prefs preferencesServiceProvider) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "budget",
+		Short: "Show budget status",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			jsonOutput, _ := cmd.Flags().GetBool("json")
+			month, _ := cmd.Flags().GetString("month")
 
-		result, err := application.ReportService.Budget(context.Background(), month)
-		if err != nil {
-			return err
-		}
-
-		if jsonOutput {
-			return writeJson(result)
-		}
-
-		fmt.Printf("Budget for %s\n\n", result.Month)
-		for _, c := range result.Categories {
-			status := "✓"
-			if c.OverBudget {
-				status = "⚠ OVER"
+			reportService := reports()
+			if reportService == nil {
+				return fmt.Errorf("report service is not initialized")
 			}
-			fmt.Printf("  %-20s  %s / %s  %s\n",
-				c.Name,
-				formatAmount(c.Spent, application.Preferences.Currency),
-				formatAmount(c.Budget, application.Preferences.Currency),
-				status,
-			)
-		}
-		return nil
-	},
-}
+			prefService := prefs()
+			if prefService == nil {
+				return fmt.Errorf("cli runtime is not initialized")
+			}
+			preferences := prefService.GetPreferences()
 
-func init() {
-	budgetCmd.Flags().Bool("json", false, "output as JSON")
-	budgetCmd.Flags().String("month", "", "month (YYYY-MM, defaults to current)")
+			result, err := reportService.Budget(context.Background(), month)
+			if err != nil {
+				return err
+			}
 
-	rootCmd.AddCommand(budgetCmd)
+			if jsonOutput {
+				return writeJson(result)
+			}
+
+			fmt.Printf("Budget for %s\n\n", result.Month)
+			for _, c := range result.Categories {
+				status := "✓"
+				if c.OverBudget {
+					status = "⚠ OVER"
+				}
+				fmt.Printf("  %-20s  %s / %s  %s\n",
+					c.Name,
+					formatAmount(c.Spent, preferences.Currency),
+					formatAmount(c.Budget, preferences.Currency),
+					status,
+				)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().Bool("json", false, "output as JSON")
+	cmd.Flags().String("month", "", "month (YYYY-MM, defaults to current)")
+	return cmd
 }

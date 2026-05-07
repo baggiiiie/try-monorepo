@@ -38,7 +38,7 @@ func newTestSyncService(t *testing.T) *SyncService {
 	}
 
 	store := repository.NewStore(db)
-	return NewSyncService(store, "UTC")
+	return NewSyncService(store.Queries(), store, "UTC")
 }
 
 func mustGetCategory(t *testing.T, q *dbsqlc.Queries, id string) dbsqlc.Category {

@@ -28,10 +28,11 @@ type AddRecurringInput struct {
 	EndDate     string  `json:"end_date,omitempty" jsonschema:"pattern=^\\d{4}-\\d{2}-\\d{2}$,description=Optional."`
 }
 
-var addRecurringCmd = BulkCommand[AddRecurringInput, *service.RecurringExpense]{
-	Use:   "add-recurring",
-	Short: "Add a recurring expense, via flags or JSON",
-	Long: `Add a recurring expense (weekly, monthly, or yearly).
+func newAddRecurringCmd(tx txRunnerProvider, recurring recurringServiceProvider, prefs preferencesServiceProvider) *cobra.Command {
+	return BulkCommand[AddRecurringInput, *service.RecurringExpense]{
+		Use:   "add-recurring",
+		Short: "Add a recurring expense, via flags or JSON",
+		Long: `Add a recurring expense (weekly, monthly, or yearly).
 
 Two input modes (mutually exclusive):
 
@@ -50,27 +51,89 @@ Discovery:
     expense add-recurring --schema
     expense add-recurring --example
     expense add-recurring --dry-run`,
-	SchemaTitle:       "AddRecurringExpenseInput",
-	SchemaDescription: "Input for `expense add-recurring --json`. Provide a single object or an array of objects.",
-	AddFlags: func(fs *pflag.FlagSet) {
-		fs.Float64("amount", 0, "expense amount (e.g., 12.50)")
-		fs.String("category", "", "category name")
-		fs.String("merchant", "", "merchant name")
-		fs.String("description", "", "description")
-		fs.String("frequency", "", "recurring frequency: weekly, monthly, or yearly")
-		fs.String("start-date", "", "start date (YYYY-MM-DD, defaults to today)")
-		fs.String("end-date", "", "end date (YYYY-MM-DD, optional)")
-		fs.Int64("day-of-month", 0, "day of month for monthly/yearly recurrence (optional)")
-	},
-	InputFromFlags: addRecurringInputFromFlags,
-	Process:        processAddRecurringInput,
-	FormatHumanRow: formatAddRecurringRow,
-	Example: func() any {
-		return []AddRecurringInput{
-			{Amount: 1500.00, Category: "rent", Merchant: "Landlord", Frequency: "monthly", StartDate: "2026-05-01", DayOfMonth: ptr.To[int64](1)},
-		}
-	},
-}.Build()
+		SchemaTitle:       "AddRecurringExpenseInput",
+		SchemaDescription: "Input for `expense add-recurring --json`. Provide a single object or an array of objects.",
+		AddFlags: func(fs *pflag.FlagSet) {
+			fs.Float64("amount", 0, "expense amount (e.g., 12.50)")
+			fs.String("category", "", "category name")
+			fs.String("merchant", "", "merchant name")
+			fs.String("description", "", "description")
+			fs.String("frequency", "", "recurring frequency: weekly, monthly, or yearly")
+			fs.String("start-date", "", "start date (YYYY-MM-DD, defaults to today)")
+			fs.String("end-date", "", "end date (YYYY-MM-DD, optional)")
+			fs.Int64("day-of-month", 0, "day of month for monthly/yearly recurrence (optional)")
+		},
+		InputFromFlags: addRecurringInputFromFlags,
+		Tx:             tx,
+		Process: func(ctx context.Context, q *dbsqlc.Queries, in AddRecurringInput) (*service.RecurringExpense, error) {
+			prefService := prefs()
+			if prefService == nil {
+				return nil, fmt.Errorf("cli runtime is not initialized")
+			}
+			recurringService := recurring()
+			if recurringService == nil {
+				return nil, fmt.Errorf("recurring service is not initialized")
+			}
+
+			preferences := prefService.GetPreferences()
+			loc := loadTimezone(preferences.Timezone)
+
+			var startDate int64
+			if in.StartDate != "" {
+				t, err := time.ParseInLocation("2006-01-02", in.StartDate, loc)
+				if err != nil {
+					return nil, fmt.Errorf("invalid start_date %q (expected YYYY-MM-DD): %w", in.StartDate, err)
+				}
+				startDate = t.Unix()
+			} else {
+				startDate = time.Now().In(loc).Unix()
+			}
+
+			var endDate *int64
+			if in.EndDate != "" {
+				t, err := time.ParseInLocation("2006-01-02", in.EndDate, loc)
+				if err != nil {
+					return nil, fmt.Errorf("invalid end_date %q (expected YYYY-MM-DD): %w", in.EndDate, err)
+				}
+				v := t.Unix()
+				endDate = &v
+			}
+
+			currency := in.Currency
+			if currency == "" {
+				currency = preferences.Currency
+			}
+
+			return recurringService.CreateWithQueries(ctx, q, service.RecurringExpenseInput{
+				Amount:      int64(math.Round(in.Amount * 100)),
+				Currency:    currency,
+				Category:    in.Category,
+				Description: in.Description,
+				Merchant:    in.Merchant,
+				Frequency:   in.Frequency,
+				DayOfMonth:  in.DayOfMonth,
+				StartDate:   startDate,
+				EndDate:     endDate,
+			})
+		},
+		FormatHumanRow: func(w io.Writer, _ int, rec *service.RecurringExpense) {
+			prefService := prefs()
+			if prefService == nil {
+				fmt.Fprintf(w, "Added recurring expense %s\n", rec.ID)
+				return
+			}
+			loc := loadTimezone(prefService.GetPreferences().Timezone)
+			fmt.Fprintf(w, "Added recurring expense %s (%s): %s %.2f at %s, next run %s\n",
+				rec.ID, rec.Frequency, rec.Currency, float64(rec.Amount)/100, rec.Merchant,
+				time.Unix(rec.NextRunDate, 0).In(loc).Format("2006-01-02"))
+		},
+		Example: func() any {
+			return []AddRecurringInput{
+				{Amount: 1500.00, Category: "rent", Merchant: "Landlord", Frequency: "monthly", StartDate: "2026-05-01", DayOfMonth: ptr.To[int64](1)},
+			}
+		},
+	}.Build()
+}
 
 func addRecurringInputFromFlags(cmd *cobra.Command) (AddRecurringInput, error) {
 	for _, req := range []string{"amount", "category", "frequency"} {
@@ -99,57 +162,4 @@ func addRecurringInputFromFlags(cmd *cobra.Command) (AddRecurringInput, error) {
 		in.DayOfMonth = &v
 	}
 	return in, nil
-}
-
-func processAddRecurringInput(ctx context.Context, q *dbsqlc.Queries, in AddRecurringInput) (*service.RecurringExpense, error) {
-	loc := loadTimezone(application.Preferences.Timezone)
-
-	var startDate int64
-	if in.StartDate != "" {
-		t, err := time.ParseInLocation("2006-01-02", in.StartDate, loc)
-		if err != nil {
-			return nil, fmt.Errorf("invalid start_date %q (expected YYYY-MM-DD): %w", in.StartDate, err)
-		}
-		startDate = t.Unix()
-	} else {
-		startDate = time.Now().In(loc).Unix()
-	}
-
-	var endDate *int64
-	if in.EndDate != "" {
-		t, err := time.ParseInLocation("2006-01-02", in.EndDate, loc)
-		if err != nil {
-			return nil, fmt.Errorf("invalid end_date %q (expected YYYY-MM-DD): %w", in.EndDate, err)
-		}
-		v := t.Unix()
-		endDate = &v
-	}
-
-	currency := in.Currency
-	if currency == "" {
-		currency = application.Preferences.Currency
-	}
-
-	return application.RecurringService.Create(ctx, q, service.RecurringExpenseInput{
-		Amount:      int64(math.Round(in.Amount * 100)),
-		Currency:    currency,
-		Category:    in.Category,
-		Description: in.Description,
-		Merchant:    in.Merchant,
-		Frequency:   in.Frequency,
-		DayOfMonth:  in.DayOfMonth,
-		StartDate:   startDate,
-		EndDate:     endDate,
-	})
-}
-
-func formatAddRecurringRow(w io.Writer, _ int, rec *service.RecurringExpense) {
-	loc := loadTimezone(application.Preferences.Timezone)
-	fmt.Fprintf(w, "Added recurring expense %s (%s): %s %.2f at %s, next run %s\n",
-		rec.ID, rec.Frequency, rec.Currency, float64(rec.Amount)/100, rec.Merchant,
-		time.Unix(rec.NextRunDate, 0).In(loc).Format("2006-01-02"))
-}
-
-func init() {
-	rootCmd.AddCommand(addRecurringCmd)
 }

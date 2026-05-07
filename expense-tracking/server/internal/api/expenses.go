@@ -3,7 +3,6 @@ package api
 import (
 	"net/http"
 
-	"expense-tracker/internal/app"
 	"expense-tracker/internal/service"
 
 	"github.com/go-chi/chi/v5"
@@ -27,7 +26,7 @@ type updateExpenseRequest struct {
 	Date        *int64  `json:"date"`
 }
 
-func createExpense(a *app.App) http.HandlerFunc {
+func createExpense(expenses ExpenseService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req createExpenseRequest
 		if err := readJSON(r, &req); err != nil {
@@ -35,7 +34,7 @@ func createExpense(a *app.App) http.HandlerFunc {
 			return
 		}
 
-		exp, err := a.ExpenseService.Create(r.Context(), a.Queries, service.ExpenseInput{
+		exp, err := expenses.Create(r.Context(), service.ExpenseInput{
 			Amount:      req.Amount,
 			Currency:    req.Currency,
 			CategoryID:  req.CategoryID,
@@ -52,9 +51,9 @@ func createExpense(a *app.App) http.HandlerFunc {
 	}
 }
 
-func listExpenses(a *app.App) http.HandlerFunc {
+func listExpenses(expenses ExpenseService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		expenses, err := a.ExpenseService.List(r.Context())
+		expenses, err := expenses.List(r.Context())
 		if err != nil {
 			writeError(w, r, http.StatusInternalServerError, err.Error())
 			return
@@ -67,11 +66,11 @@ func listExpenses(a *app.App) http.HandlerFunc {
 	}
 }
 
-func getExpense(a *app.App) http.HandlerFunc {
+func getExpense(expenses ExpenseService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 
-		exp, err := a.ExpenseService.Get(r.Context(), id)
+		exp, err := expenses.Get(r.Context(), id)
 		if err != nil {
 			if err.Error() == "expense not found" {
 				writeError(w, r, http.StatusNotFound, err.Error())
@@ -85,7 +84,7 @@ func getExpense(a *app.App) http.HandlerFunc {
 	}
 }
 
-func updateExpense(a *app.App) http.HandlerFunc {
+func updateExpense(expenses ExpenseService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 
@@ -115,7 +114,7 @@ func updateExpense(a *app.App) http.HandlerFunc {
 			input.Date = *req.Date
 		}
 
-		exp, err := a.ExpenseService.Update(r.Context(), id, input)
+		exp, err := expenses.Update(r.Context(), id, input)
 		if err != nil {
 			if err.Error() == "expense not found" {
 				writeError(w, r, http.StatusNotFound, err.Error())
@@ -129,11 +128,11 @@ func updateExpense(a *app.App) http.HandlerFunc {
 	}
 }
 
-func deleteExpense(a *app.App) http.HandlerFunc {
+func deleteExpense(expenses ExpenseService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 
-		if err := a.ExpenseService.Delete(r.Context(), id); err != nil {
+		if err := expenses.Delete(r.Context(), id); err != nil {
 			writeError(w, r, http.StatusInternalServerError, err.Error())
 			return
 		}

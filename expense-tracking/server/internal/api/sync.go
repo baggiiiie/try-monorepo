@@ -5,12 +5,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"expense-tracker/internal/app"
 	"expense-tracker/internal/service"
 	"expense-tracker/internal/wideevent"
 )
 
-func syncPull(a *app.App) http.HandlerFunc {
+func syncPull(sync SyncService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sinceStr := r.URL.Query().Get("since")
 		var since int64
@@ -23,7 +22,7 @@ func syncPull(a *app.App) http.HandlerFunc {
 			}
 		}
 
-		resp, err := a.SyncService.Pull(r.Context(), since)
+		resp, err := sync.Pull(r.Context(), since)
 		if err != nil {
 			wideevent.Error(r.Context(), "sync.pull.failed",
 				slog.Int64("since", since),
@@ -37,7 +36,7 @@ func syncPull(a *app.App) http.HandlerFunc {
 	}
 }
 
-func syncPush(a *app.App) http.HandlerFunc {
+func syncPush(sync SyncService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req service.PushRequest
 		if err := readJSON(r, &req); err != nil {
@@ -45,7 +44,7 @@ func syncPush(a *app.App) http.HandlerFunc {
 			return
 		}
 
-		resp, err := a.SyncService.Push(r.Context(), req)
+		resp, err := sync.Push(r.Context(), req)
 		if err != nil {
 			wideevent.Error(r.Context(), "sync.push.failed",
 				slog.Int("categories", len(req.Categories)),

@@ -47,13 +47,18 @@ type PushRecurringExpense struct {
 	DeletedAt   *int64 `json:"deleted_at,omitempty"`
 }
 
+type TxManager interface {
+	WithTx(ctx context.Context, fn func(*dbsqlc.Queries) error) error
+}
+
 type RecurringService struct {
 	queries  *dbsqlc.Queries
+	tx       TxManager
 	location *time.Location
 }
 
-func NewRecurringService(q *dbsqlc.Queries, timezone string) *RecurringService {
-	return &RecurringService{queries: q, location: timeutil.LoadLocation(timezone, time.UTC)}
+func NewRecurringService(q *dbsqlc.Queries, tx TxManager, timezone string) *RecurringService {
+	return &RecurringService{queries: q, tx: tx, location: timeutil.LoadLocation(timezone, time.UTC)}
 }
 
 func (s *RecurringService) UpdateTimezone(timezone string) {
@@ -73,10 +78,14 @@ type RecurringExpenseInput struct {
 	EndDate     *int64 // unix seconds, optional
 }
 
-// Create inserts a new recurring expense using the provided queries handle,
+func (s *RecurringService) Create(ctx context.Context, input RecurringExpenseInput) (*RecurringExpense, error) {
+	return s.CreateWithQueries(ctx, s.queries, input)
+}
+
+// CreateWithQueries inserts a new recurring expense using the provided queries handle,
 // allowing callers to compose the create with a surrounding transaction
-// (e.g. dry-run rollback). Callers without a transaction can pass app.Queries.
-func (s *RecurringService) Create(ctx context.Context, q *dbsqlc.Queries, input RecurringExpenseInput) (*RecurringExpense, error) {
+// (e.g. dry-run rollback).
+func (s *RecurringService) CreateWithQueries(ctx context.Context, q *dbsqlc.Queries, input RecurringExpenseInput) (*RecurringExpense, error) {
 	if input.Amount <= 0 {
 		return nil, fmt.Errorf("amount must be positive")
 	}
@@ -141,7 +150,9 @@ func (s *RecurringService) Create(ctx context.Context, q *dbsqlc.Queries, input 
 }
 
 func (s *RecurringService) MaterializeDue(ctx context.Context, now time.Time) error {
-	return materializeDueRecurringExpenses(ctx, s.queries, now, s.location)
+	return s.tx.WithTx(ctx, func(q *dbsqlc.Queries) error {
+		return materializeDueRecurringExpenses(ctx, q, now, s.location)
+	})
 }
 
 func materializeDueRecurringExpenses(ctx context.Context, q *dbsqlc.Queries, now time.Time, location *time.Location) error {
