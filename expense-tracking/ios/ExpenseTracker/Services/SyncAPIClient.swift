@@ -293,7 +293,6 @@ struct PullResponse: Codable {
     let categories: [PullCategory]
     let recurringExpenses: [PullRecurringExpense]
     let serverVersion: Int64
-    let serverTime: Int64?
 }
 
 struct PullExpense: Codable {

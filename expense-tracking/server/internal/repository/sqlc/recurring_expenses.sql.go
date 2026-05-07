@@ -188,14 +188,14 @@ func (q *Queries) ListDueRecurringExpenses(ctx context.Context, nextRunDate int6
 	return items, nil
 }
 
-const listRecurringExpensesUpdatedSince = `-- name: ListRecurringExpensesUpdatedSince :many
+const listRecurringExpensesSinceServerVersion = `-- name: ListRecurringExpensesSinceServerVersion :many
 SELECT id, amount, currency, category_id, description, merchant, frequency, day_of_month, start_date, end_date, next_run_date, last_run_date, created_at, updated_at, deleted_at, server_version
 FROM recurring_expenses
 WHERE server_version > ?
 `
 
-func (q *Queries) ListRecurringExpensesUpdatedSince(ctx context.Context, serverVersion int64) ([]RecurringExpense, error) {
-	rows, err := q.db.QueryContext(ctx, listRecurringExpensesUpdatedSince, serverVersion)
+func (q *Queries) ListRecurringExpensesSinceServerVersion(ctx context.Context, serverVersion int64) ([]RecurringExpense, error) {
+	rows, err := q.db.QueryContext(ctx, listRecurringExpensesSinceServerVersion, serverVersion)
 	if err != nil {
 		return nil, err
 	}

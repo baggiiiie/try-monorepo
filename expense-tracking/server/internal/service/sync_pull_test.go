@@ -70,7 +70,7 @@ func TestPullWithDueRecurringDoesNotMaterialize(t *testing.T) {
 		t.Fatalf("expected no write transactions, got %d", spy.writeCalls)
 	}
 
-	expenses, err := s.queries.ListExpensesUpdatedSince(context.Background(), 0)
+	expenses, err := s.queries.ListExpensesSinceServerVersion(context.Background(), 0)
 	if err != nil {
 		t.Fatalf("list expenses: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestEmptyPushMaterializesDueRecurring(t *testing.T) {
 		t.Fatalf("empty push: %v", err)
 	}
 
-	expenses, err := s.queries.ListExpensesUpdatedSince(context.Background(), 0)
+	expenses, err := s.queries.ListExpensesSinceServerVersion(context.Background(), 0)
 	if err != nil {
 		t.Fatalf("list expenses: %v", err)
 	}

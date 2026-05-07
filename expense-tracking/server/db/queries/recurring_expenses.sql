@@ -18,7 +18,7 @@ UPDATE recurring_expenses
 SET last_run_date = ?, next_run_date = ?, updated_at = ?, server_version = ?
 WHERE id = ?;
 
--- name: ListRecurringExpensesUpdatedSince :many
+-- name: ListRecurringExpensesSinceServerVersion :many
 SELECT id, amount, currency, category_id, description, merchant, frequency, day_of_month, start_date, end_date, next_run_date, last_run_date, created_at, updated_at, deleted_at, server_version
 FROM recurring_expenses
 WHERE server_version > ?;

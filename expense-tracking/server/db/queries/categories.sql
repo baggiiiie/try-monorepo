@@ -32,7 +32,7 @@ RETURNING *;
 -- name: CountActiveCategories :one
 SELECT COUNT(*) FROM categories WHERE deleted_at IS NULL;
 
--- name: ListCategoriesUpdatedSince :many
+-- name: ListCategoriesSinceServerVersion :many
 SELECT * FROM categories WHERE server_version > ?;
 
 -- name: ReconcileCategoryByName :exec

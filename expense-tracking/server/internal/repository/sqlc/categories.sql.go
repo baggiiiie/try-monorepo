@@ -157,12 +157,12 @@ func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 	return items, nil
 }
 
-const listCategoriesUpdatedSince = `-- name: ListCategoriesUpdatedSince :many
+const listCategoriesSinceServerVersion = `-- name: ListCategoriesSinceServerVersion :many
 SELECT id, name, icon, budget, created_at, updated_at, deleted_at, server_version FROM categories WHERE server_version > ?
 `
 
-func (q *Queries) ListCategoriesUpdatedSince(ctx context.Context, serverVersion int64) ([]Category, error) {
-	rows, err := q.db.QueryContext(ctx, listCategoriesUpdatedSince, serverVersion)
+func (q *Queries) ListCategoriesSinceServerVersion(ctx context.Context, serverVersion int64) ([]Category, error) {
+	rows, err := q.db.QueryContext(ctx, listCategoriesSinceServerVersion, serverVersion)
 	if err != nil {
 		return nil, err
 	}

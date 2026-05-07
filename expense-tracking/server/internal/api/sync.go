@@ -12,20 +12,20 @@ import (
 func syncPull(sync SyncService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sinceStr := r.URL.Query().Get("since")
-		var since int64
+		var sinceVersion int64
 		if sinceStr != "" {
 			var err error
-			since, err = strconv.ParseInt(sinceStr, 10, 64)
+			sinceVersion, err = strconv.ParseInt(sinceStr, 10, 64)
 			if err != nil {
 				writeError(w, r, http.StatusBadRequest, "invalid since parameter")
 				return
 			}
 		}
 
-		resp, err := sync.Pull(r.Context(), since)
+		resp, err := sync.Pull(r.Context(), sinceVersion)
 		if err != nil {
 			wideevent.Error(r.Context(), "sync.pull.failed",
-				slog.Int64("since", since),
+				slog.Int64("since_version", sinceVersion),
 				slog.Any("error", err),
 			)
 			writeError(w, r, http.StatusInternalServerError, err.Error())

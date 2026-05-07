@@ -66,7 +66,6 @@ type PullResponse struct {
 	Categories        []Category         `json:"categories"`
 	RecurringExpenses []RecurringExpense `json:"recurring_expenses"`
 	ServerVersion     int64              `json:"server_version"`
-	ServerTime        int64              `json:"server_time,omitempty"`
 }
 
 type PushResponse struct {
@@ -74,10 +73,9 @@ type PushResponse struct {
 	Categories        []Category         `json:"categories"`
 	RecurringExpenses []RecurringExpense `json:"recurring_expenses"`
 	ServerVersion     int64              `json:"server_version"`
-	ServerTime        int64              `json:"server_time,omitempty"`
 }
 
-func (s *SyncService) Pull(ctx context.Context, since int64) (*PullResponse, error) {
+func (s *SyncService) Pull(ctx context.Context, sinceVersion int64) (*PullResponse, error) {
 	var resp *PullResponse
 	err := s.tx.WithReadTx(ctx, func(qtx *dbsqlc.Queries) error {
 		serverVersion, err := qtx.GetCurrentServerVersion(ctx)
@@ -86,7 +84,7 @@ func (s *SyncService) Pull(ctx context.Context, since int64) (*PullResponse, err
 		}
 
 		var pullErr error
-		resp, pullErr = pullResponse(ctx, qtx, since, serverVersion, time.Now().Unix())
+		resp, pullErr = pullResponse(ctx, qtx, sinceVersion, serverVersion)
 		return pullErr
 	})
 	if err != nil {
@@ -96,16 +94,16 @@ func (s *SyncService) Pull(ctx context.Context, since int64) (*PullResponse, err
 	return resp, nil
 }
 
-func pullResponse(ctx context.Context, q *dbsqlc.Queries, since, serverVersion, serverTime int64) (*PullResponse, error) {
-	expenses, err := q.ListExpensesUpdatedSince(ctx, since)
+func pullResponse(ctx context.Context, q *dbsqlc.Queries, sinceVersion, serverVersion int64) (*PullResponse, error) {
+	expenses, err := q.ListExpensesSinceServerVersion(ctx, sinceVersion)
 	if err != nil {
 		return nil, err
 	}
-	categories, err := q.ListCategoriesUpdatedSince(ctx, since)
+	categories, err := q.ListCategoriesSinceServerVersion(ctx, sinceVersion)
 	if err != nil {
 		return nil, err
 	}
-	recurringExpenses, err := listRecurringExpensesUpdatedSince(ctx, q, since)
+	recurringExpenses, err := listRecurringExpensesSinceServerVersion(ctx, q, sinceVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +113,6 @@ func pullResponse(ctx context.Context, q *dbsqlc.Queries, since, serverVersion, 
 		Categories:        make([]Category, 0, len(categories)),
 		RecurringExpenses: recurringExpenses,
 		ServerVersion:     serverVersion,
-		ServerTime:        serverTime,
 	}
 
 	includedCategoryIDs := make(map[string]struct{}, len(categories)+len(expenses)+len(recurringExpenses))
@@ -125,7 +122,7 @@ func pullResponse(ctx context.Context, q *dbsqlc.Queries, since, serverVersion, 
 	}
 
 	// A delta pull can include an expense whose category was created/updated
-	// before the client's `since` cursor. Include those referenced categories
+	// before the client's `sinceVersion` cursor. Include those referenced categories
 	// as dependency rows so SQLite foreign keys are satisfied on the client.
 	for _, r := range recurringExpenses {
 		if _, ok := includedCategoryIDs[r.CategoryID]; ok {
@@ -174,7 +171,6 @@ func (s *SyncService) Push(ctx context.Context, req PushRequest) (*PushResponse,
 		Expenses:          make([]Expense, 0, len(req.Expenses)),
 		Categories:        make([]Category, 0, len(req.Categories)),
 		RecurringExpenses: make([]RecurringExpense, 0, len(req.RecurringExpenses)),
-		ServerTime:        now,
 	}
 
 	err := s.tx.WithTx(ctx, func(qtx *dbsqlc.Queries) error {
@@ -486,8 +482,8 @@ func expenseLWWHooks(serverVersion int64) LWWHooks[dbsqlc.Expense, PushExpense] 
 	}
 }
 
-func listRecurringExpensesUpdatedSince(ctx context.Context, q *dbsqlc.Queries, since int64) ([]RecurringExpense, error) {
-	rows, err := q.ListRecurringExpensesUpdatedSince(ctx, since)
+func listRecurringExpensesSinceServerVersion(ctx context.Context, q *dbsqlc.Queries, sinceVersion int64) ([]RecurringExpense, error) {
+	rows, err := q.ListRecurringExpensesSinceServerVersion(ctx, sinceVersion)
 	if err != nil {
 		return nil, err
 	}

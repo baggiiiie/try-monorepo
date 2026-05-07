@@ -31,7 +31,7 @@ UPDATE expenses SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at I
 UPDATE expenses SET deleted_at = ?, updated_at = ?, server_version = ? WHERE id = ?
 RETURNING *;
 
--- name: ListExpensesUpdatedSince :many
+-- name: ListExpensesSinceServerVersion :many
 SELECT * FROM expenses WHERE server_version > ?;
 
 -- name: ReassignExpensesCategory :exec
