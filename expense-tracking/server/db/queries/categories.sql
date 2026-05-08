@@ -34,8 +34,3 @@ SELECT COUNT(*) FROM categories WHERE deleted_at IS NULL;
 
 -- name: ListCategoriesSinceServerVersion :many
 SELECT * FROM categories WHERE server_version > ?;
-
--- name: ReconcileCategoryByName :exec
-UPDATE categories
-SET id = ?, name = ?, icon = ?, budget = ?, deleted_at = ?, updated_at = ?, server_version = ?
-WHERE id = ?;

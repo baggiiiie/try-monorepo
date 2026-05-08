@@ -1,6 +1,8 @@
 #!/bin/bash
-# E2E: syncing default categories from a fresh client should reconcile by name
-# without duplicating server defaults or breaking expense references.
+# E2E: ADR 004 — categories are identified by their UUID. A client that pushes
+# a fresh random UUID with a name that happens to match a server default no
+# longer splices onto the existing row; both rows coexist and the expense FK
+# points at the client UUID it actually referenced.
 set -euo pipefail
 source "$(dirname "$0")/../helpers.sh"
 
@@ -56,18 +58,23 @@ returned_expense_category_id=$(echo "$push_response" | jq -r '.expenses[0].categ
 assert_equals "$returned_expense_category_id" "$returned_category_id"
 assert_equals "$returned_category_id" "$local_category_id"
 
+# ADR 004: no splice. The seeded server row keeps its UUID, and the client's
+# new UUID joins as a second active row with the same name.
 food_count=$(sqlite3 "$EXPENSE_DB" "SELECT COUNT(*) FROM categories WHERE name = 'Food & Dining' AND deleted_at IS NULL;")
-assert_equals "$food_count" "1"
+assert_equals "$food_count" "2"
 
-db_food_id=$(sqlite3 "$EXPENSE_DB" "SELECT id FROM categories WHERE name = 'Food & Dining' AND deleted_at IS NULL;")
-assert_equals "$db_food_id" "$local_category_id"
+server_food_id_after=$(sqlite3 "$EXPENSE_DB" "SELECT id FROM categories WHERE id = '$server_food_id_before';")
+assert_equals "$server_food_id_after" "$server_food_id_before"
+
+client_food_id_after=$(sqlite3 "$EXPENSE_DB" "SELECT id FROM categories WHERE id = '$local_category_id';")
+assert_equals "$client_food_id_after" "$local_category_id"
 
 db_expense_category_id=$(sqlite3 "$EXPENSE_DB" "SELECT category_id FROM expenses WHERE id = '$expense_id';")
 assert_equals "$db_expense_category_id" "$local_category_id"
 
 final_pull=$(api_curl "$EXPENSE_API/api/sync/pull?since=0")
 final_food_count=$(echo "$final_pull" | jq '[.categories[] | select(.name == "Food & Dining" and (.deleted_at == null))] | length')
-assert_equals "$final_food_count" "1"
+assert_equals "$final_food_count" "2"
 
 push_again=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
@@ -96,4 +103,4 @@ assert_json_contains "$push_again" '.expenses | length' "1"
 expense_count=$(sqlite3 "$EXPENSE_DB" "SELECT COUNT(*) FROM expenses WHERE merchant = 'Fresh Install Test';")
 assert_equals "$expense_count" "1"
 
-echo "PASS: sync reconcile default categories"
+echo "PASS: sync without by-name splice (ADR 004)"

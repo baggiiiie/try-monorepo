@@ -12,19 +12,25 @@ import (
 )
 
 type DefaultCategory struct {
+	// ID is a deterministic UUIDv5 derived from
+	// uuid.NameSpaceURL + "expense-tracker:default-category:" + Name.
+	// Both the server and the iOS client must seed default categories with
+	// the same fixed UUID per name (see ADR 004) so they collide on UUID
+	// rather than on name and resolve through normal LWW.
+	ID   string
 	Name string
 	Icon string
 }
 
 var defaultCategories = []DefaultCategory{
-	{Name: "Food & Dining", Icon: "🍽️"},
-	{Name: "Groceries", Icon: "🛒"},
-	{Name: "Transport", Icon: "🚌"},
-	{Name: "Shopping", Icon: "🛍️"},
-	{Name: "Entertainment", Icon: "🎬"},
-	{Name: "Bills", Icon: "📄"},
-	{Name: "Health", Icon: "💊"},
-	{Name: "Other", Icon: "📦"},
+	{ID: "fa9fc4ac-bdb6-577f-8429-6f582a7827b4", Name: "Food & Dining", Icon: "🍽️"},
+	{ID: "950515de-0d1a-5ccb-bc81-868badd1a6fc", Name: "Groceries", Icon: "🛒"},
+	{ID: "6abd2b4f-6db1-5fbc-acc4-f66b8184919d", Name: "Transport", Icon: "🚌"},
+	{ID: "7276fe9b-6a9a-5297-8935-f28f145cded6", Name: "Shopping", Icon: "🛍️"},
+	{ID: "2216ebc9-f734-5d97-a90b-463c4a3ecc69", Name: "Entertainment", Icon: "🎬"},
+	{ID: "63734549-381d-5655-ace8-afe849c5dde5", Name: "Bills", Icon: "📄"},
+	{ID: "375b4aa5-cb75-5f1b-b905-cde070cd073c", Name: "Health", Icon: "💊"},
+	{ID: "5768cc36-cb19-599b-8af8-6dbfefc98840", Name: "Other", Icon: "📦"},
 }
 
 type CategoryService struct {
@@ -62,9 +68,8 @@ func (s *CategoryService) EnsureDefaults(ctx context.Context) error {
 
 	now := time.Now().Unix()
 	for _, dc := range defaultCategories {
-		id := uuid.New().String()
 		_, err := s.queries.CreateCategory(ctx, dbsqlc.CreateCategoryParams{
-			ID:        id,
+			ID:        dc.ID,
 			Name:      dc.Name,
 			Icon:      dc.Icon,
 			CreatedAt: now,

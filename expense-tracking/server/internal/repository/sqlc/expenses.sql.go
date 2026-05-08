@@ -211,20 +211,6 @@ func (q *Queries) ListExpensesSinceServerVersion(ctx context.Context, serverVers
 	return items, nil
 }
 
-const reassignExpensesCategory = `-- name: ReassignExpensesCategory :exec
-UPDATE expenses SET category_id = ? WHERE category_id = ?
-`
-
-type ReassignExpensesCategoryParams struct {
-	CategoryID   string `json:"category_id"`
-	CategoryID_2 string `json:"category_id_2"`
-}
-
-func (q *Queries) ReassignExpensesCategory(ctx context.Context, arg ReassignExpensesCategoryParams) error {
-	_, err := q.db.ExecContext(ctx, reassignExpensesCategory, arg.CategoryID, arg.CategoryID_2)
-	return err
-}
-
 const softDeleteExpense = `-- name: SoftDeleteExpense :exec
 UPDATE expenses SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL
 `

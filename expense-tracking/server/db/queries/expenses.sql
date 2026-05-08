@@ -34,9 +34,6 @@ RETURNING *;
 -- name: ListExpensesSinceServerVersion :many
 SELECT * FROM expenses WHERE server_version > ?;
 
--- name: ReassignExpensesCategory :exec
-UPDATE expenses SET category_id = ? WHERE category_id = ?;
-
 -- name: SumExpensesByCategory :many
 SELECT e.category_id, c.name AS category_name, SUM(e.amount) AS total
 FROM expenses e

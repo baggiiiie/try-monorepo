@@ -266,17 +266,9 @@ func nextServerVersion(ctx context.Context, q *dbsqlc.Queries) (int64, error) {
 }
 
 func (s *SyncService) pushCategory(ctx context.Context, q *dbsqlc.Queries, input PushCategory, now int64) (*Category, error) {
-	// Pre-step: by-name reconciliation. A fresh app install with new
-	// local UUIDs may push a category that matches an existing server
-	// row by *name*. Splice the IDs together rather than creating a
-	// duplicate. Runs only when ID lookup misses.
-	if reconciled, err := s.tryReconcileCategoryByName(ctx, q, input, now); err != nil {
-		return nil, err
-	} else if reconciled != nil {
-		cat := categoryFromRow(*reconciled)
-		return &cat, nil
-	}
-
+	// ADR 004: categories are identified by their UUID. Default categories
+	// have deterministic UUIDs that both clients independently compute, so
+	// the legacy "splice by name" pre-step is no longer needed.
 	serverVersion, err := nextServerVersion(ctx, q)
 	if err != nil {
 		return nil, err
@@ -340,61 +332,6 @@ func categoryLWWHooks(serverVersion int64) LWWHooks[dbsqlc.Category, PushCategor
 			})
 		},
 	}
-}
-
-// tryReconcileCategoryByName handles the "fresh client UUID, same
-// category name" splice. Returns nil if no by-name reconciliation
-// applies and the caller should fall through to ApplyLWW.
-func (s *SyncService) tryReconcileCategoryByName(ctx context.Context, q *dbsqlc.Queries, input PushCategory, now int64) (*dbsqlc.Category, error) {
-	if _, err := q.GetCategoryIncludingDeleted(ctx, input.ID); err == nil {
-		return nil, nil // ID exists — let LWW handle the update path.
-	} else if err != sql.ErrNoRows {
-		return nil, err
-	}
-
-	byName, err := q.GetCategoryByName(ctx, input.Name)
-	if err == sql.ErrNoRows {
-		return nil, nil // No by-name match — let LWW Create.
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	targetID := byName.ID
-	if input.ID != "" {
-		targetID = input.ID
-	}
-	if targetID != byName.ID {
-		if err := q.ReassignExpensesCategory(ctx, dbsqlc.ReassignExpensesCategoryParams{
-			CategoryID:   targetID,
-			CategoryID_2: byName.ID,
-		}); err != nil {
-			return nil, err
-		}
-	}
-
-	serverVersion, err := nextServerVersion(ctx, q)
-	if err != nil {
-		return nil, err
-	}
-	if err := q.ReconcileCategoryByName(ctx, dbsqlc.ReconcileCategoryByNameParams{
-		ID:            targetID,
-		Name:          input.Name,
-		Icon:          input.Icon,
-		Budget:        nullInt64(input.Budget),
-		DeletedAt:     nullInt64(input.DeletedAt),
-		UpdatedAt:     now,
-		ServerVersion: serverVersion,
-		ID_2:          byName.ID,
-	}); err != nil {
-		return nil, err
-	}
-
-	updated, err := q.GetCategoryIncludingDeleted(ctx, targetID)
-	if err != nil {
-		return nil, err
-	}
-	return &updated, nil
 }
 
 func (s *SyncService) pushExpense(ctx context.Context, q *dbsqlc.Queries, input PushExpense, now int64) (*Expense, error) {

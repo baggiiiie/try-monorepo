@@ -335,6 +335,54 @@ struct AppDatabase {
             try db.drop(table: "recurring_expense_runs")
         }
 
+        migrator.registerMigration("v11-deterministic-default-category-ids") { db in
+            // ADR 004: rewrite default-category rows to their deterministic
+            // UUIDv5 so the iOS client and server agree on identity for the
+            // built-in set. Repoint expenses.category_id and
+            // recurring_expenses.category_id under deferred FK enforcement
+            // before mutating the parent primary key.
+            try db.execute(sql: "PRAGMA defer_foreign_keys = ON")
+
+            for entry in DefaultCategories.all {
+                let existingActiveID = try String.fetchOne(
+                    db,
+                    sql: """
+                        SELECT id FROM categories
+                        WHERE name = ? AND deleted_at IS NULL AND id != ?
+                        ORDER BY id
+                        LIMIT 1
+                        """,
+                    arguments: [entry.name, entry.id]
+                )
+                guard let oldID = existingActiveID else { continue }
+
+                let targetExists = try Bool.fetchOne(
+                    db,
+                    sql: "SELECT EXISTS(SELECT 1 FROM categories WHERE id = ?)",
+                    arguments: [entry.id]
+                ) ?? false
+                if targetExists {
+                    // Deterministic UUID already in use (e.g. from a prior
+                    // sync). Leave the legacy duplicate untouched; LWW will
+                    // continue to operate on it as a regular row.
+                    continue
+                }
+
+                try db.execute(
+                    sql: "UPDATE expenses SET category_id = ? WHERE category_id = ?",
+                    arguments: [entry.id, oldID]
+                )
+                try db.execute(
+                    sql: "UPDATE recurring_expenses SET category_id = ? WHERE category_id = ?",
+                    arguments: [entry.id, oldID]
+                )
+                try db.execute(
+                    sql: "UPDATE categories SET id = ? WHERE id = ?",
+                    arguments: [entry.id, oldID]
+                )
+            }
+        }
+
         return migrator
     }
 
@@ -345,11 +393,11 @@ struct AppDatabase {
 
             let now = Int64(Date().timeIntervalSince1970)
 
-            for (name, icon) in DefaultCategories.all {
+            for entry in DefaultCategories.all {
                 let category = Category(
-                    id: UUID().uuidString,
-                    name: name,
-                    icon: icon,
+                    id: entry.id,
+                    name: entry.name,
+                    icon: entry.icon,
                     budget: nil,
                     createdAt: now,
                     updatedAt: now,

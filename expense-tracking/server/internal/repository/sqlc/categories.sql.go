@@ -193,37 +193,6 @@ func (q *Queries) ListCategoriesSinceServerVersion(ctx context.Context, serverVe
 	return items, nil
 }
 
-const reconcileCategoryByName = `-- name: ReconcileCategoryByName :exec
-UPDATE categories
-SET id = ?, name = ?, icon = ?, budget = ?, deleted_at = ?, updated_at = ?, server_version = ?
-WHERE id = ?
-`
-
-type ReconcileCategoryByNameParams struct {
-	ID            string        `json:"id"`
-	Name          string        `json:"name"`
-	Icon          string        `json:"icon"`
-	Budget        sql.NullInt64 `json:"budget"`
-	DeletedAt     sql.NullInt64 `json:"deleted_at"`
-	UpdatedAt     int64         `json:"updated_at"`
-	ServerVersion int64         `json:"server_version"`
-	ID_2          string        `json:"id_2"`
-}
-
-func (q *Queries) ReconcileCategoryByName(ctx context.Context, arg ReconcileCategoryByNameParams) error {
-	_, err := q.db.ExecContext(ctx, reconcileCategoryByName,
-		arg.ID,
-		arg.Name,
-		arg.Icon,
-		arg.Budget,
-		arg.DeletedAt,
-		arg.UpdatedAt,
-		arg.ServerVersion,
-		arg.ID_2,
-	)
-	return err
-}
-
 const softDeleteCategory = `-- name: SoftDeleteCategory :exec
 UPDATE categories SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL
 `

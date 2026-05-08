@@ -211,18 +211,18 @@ func TestPushCategory_LWW(t *testing.T) {
 	}
 }
 
-// TestPushCategory_ByNameReconciliation verifies the pre-step that
-// splices a fresh-UUID push onto an existing same-name row.
-func TestPushCategory_ByNameReconciliation(t *testing.T) {
+// TestPushCategory_DuplicateNameKeepsBothRows verifies ADR 004:
+// categories are identified by UUID. A fresh-UUID push that happens to
+// share a name with an existing server row creates a second distinct
+// row instead of being silently spliced onto the first.
+func TestPushCategory_DuplicateNameKeepsBothRows(t *testing.T) {
 	const now int64 = 1_000_000
 
 	s := newTestSyncService(t)
 	ctx := context.Background()
 
-	// Existing server row under id=server1
 	seedCategory(t, s.queries, "server1", "Food", "🍕", ptr.To[int64](500), 100, nil)
 
-	// Client pushes with a brand-new UUID but the same name.
 	cat, err := s.pushCategory(ctx, s.queries, PushCategory{
 		ID: "client1", Name: "Food", Icon: "🍔", Budget: ptr.To[int64](700),
 		UpdatedAt: 200,
@@ -231,7 +231,6 @@ func TestPushCategory_ByNameReconciliation(t *testing.T) {
 		t.Fatalf("pushCategory: %v", err)
 	}
 
-	// Expect the response to use the client ID (the splice replaces server1's id).
 	if cat.ID != "client1" {
 		t.Errorf("id: got %q, want %q", cat.ID, "client1")
 	}
@@ -239,14 +238,19 @@ func TestPushCategory_ByNameReconciliation(t *testing.T) {
 		t.Errorf("icon: got %q, want %q", cat.Icon, "🍔")
 	}
 
-	// Old ID should no longer exist.
-	if _, err := s.queries.GetCategoryIncludingDeleted(ctx, "server1"); err != sql.ErrNoRows {
-		t.Errorf("expected server1 to be gone, got err=%v", err)
+	// Both rows must coexist; the original row is untouched (no splice,
+	// no LWW overwrite of unrelated fields).
+	original := mustGetCategory(t, s.queries, "server1")
+	if original.Icon != "🍕" {
+		t.Errorf("original icon mutated: got %q, want %q", original.Icon, "🍕")
 	}
-	// New ID should exist.
-	got := mustGetCategory(t, s.queries, "client1")
-	if got.Name != "Food" {
-		t.Errorf("name: got %q, want %q", got.Name, "Food")
+	if !original.Budget.Valid || original.Budget.Int64 != 500 {
+		t.Errorf("original budget mutated: got %+v, want 500", original.Budget)
+	}
+
+	created := mustGetCategory(t, s.queries, "client1")
+	if created.Name != "Food" {
+		t.Errorf("name: got %q, want %q", created.Name, "Food")
 	}
 }
 
