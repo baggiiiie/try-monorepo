@@ -81,26 +81,6 @@ func (q *Queries) GetCategoryByID(ctx context.Context, id string) (Category, err
 	return i, err
 }
 
-const getCategoryByName = `-- name: GetCategoryByName :one
-SELECT id, name, icon, budget, created_at, updated_at, deleted_at, server_version FROM categories WHERE name = ? AND deleted_at IS NULL
-`
-
-func (q *Queries) GetCategoryByName(ctx context.Context, name string) (Category, error) {
-	row := q.db.QueryRowContext(ctx, getCategoryByName, name)
-	var i Category
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Icon,
-		&i.Budget,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-		&i.ServerVersion,
-	)
-	return i, err
-}
-
 const getCategoryIncludingDeleted = `-- name: GetCategoryIncludingDeleted :one
 SELECT id, name, icon, budget, created_at, updated_at, deleted_at, server_version FROM categories WHERE id = ?
 `
@@ -119,6 +99,42 @@ func (q *Queries) GetCategoryIncludingDeleted(ctx context.Context, id string) (C
 		&i.ServerVersion,
 	)
 	return i, err
+}
+
+const listActiveCategoriesByName = `-- name: ListActiveCategoriesByName :many
+SELECT id, name, icon, budget, created_at, updated_at, deleted_at, server_version FROM categories WHERE name = ? AND deleted_at IS NULL ORDER BY created_at, id
+`
+
+func (q *Queries) ListActiveCategoriesByName(ctx context.Context, name string) ([]Category, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveCategoriesByName, name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Category
+	for rows.Next() {
+		var i Category
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Icon,
+			&i.Budget,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.ServerVersion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listCategories = `-- name: ListCategories :many

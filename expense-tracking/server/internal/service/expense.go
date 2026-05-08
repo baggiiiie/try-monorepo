@@ -65,14 +65,14 @@ func (s *ExpenseService) CreateWithQueries(ctx context.Context, q *dbsqlc.Querie
 	// Resolve category
 	categoryID := input.CategoryID
 	if categoryID == "" && input.Category != "" {
-		cat, err := q.GetCategoryByName(ctx, input.Category)
+		resolvedCategoryID, err := resolveActiveCategoryIDByName(ctx, q, input.Category)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return nil, fmt.Errorf("category %q not found. Run 'expense category list' to see available categories", input.Category)
 			}
 			return nil, err
 		}
-		categoryID = cat.ID
+		categoryID = resolvedCategoryID
 	}
 	if categoryID == "" {
 		return nil, fmt.Errorf("category is required")
@@ -156,14 +156,14 @@ func (s *ExpenseService) Update(ctx context.Context, id string, input ExpenseInp
 	}
 	categoryID := existing.CategoryID
 	if input.Category != "" {
-		cat, err := s.queries.GetCategoryByName(ctx, input.Category)
+		resolvedCategoryID, err := resolveActiveCategoryIDByName(ctx, s.queries, input.Category)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return nil, fmt.Errorf("category %q not found", input.Category)
 			}
 			return nil, err
 		}
-		categoryID = cat.ID
+		categoryID = resolvedCategoryID
 	} else if input.CategoryID != "" {
 		categoryID = input.CategoryID
 	}

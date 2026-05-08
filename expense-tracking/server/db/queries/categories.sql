@@ -9,8 +9,8 @@ SELECT * FROM categories WHERE id = ? AND deleted_at IS NULL;
 -- name: GetCategoryIncludingDeleted :one
 SELECT * FROM categories WHERE id = ?;
 
--- name: GetCategoryByName :one
-SELECT * FROM categories WHERE name = ? AND deleted_at IS NULL;
+-- name: ListActiveCategoriesByName :many
+SELECT * FROM categories WHERE name = ? AND deleted_at IS NULL ORDER BY created_at, id;
 
 -- name: ListCategories :many
 SELECT * FROM categories WHERE deleted_at IS NULL ORDER BY name;
