@@ -8,7 +8,7 @@ import (
 
 	"expense-tracker/internal/api"
 	"expense-tracker/internal/app"
-	"expense-tracker/internal/auth"
+	"expense-tracker/internal/singleusersecret"
 
 	"github.com/spf13/cobra"
 )
@@ -28,7 +28,7 @@ func newServeCmd(paths pathProvider) *cobra.Command {
 			}
 			defer a.Close()
 
-			secret, generated, err := auth.LoadOrCreate(secretPath)
+			secret, generated, err := singleusersecret.LoadOrCreate(secretPath)
 			if err != nil {
 				return fmt.Errorf("loading sync secret: %w", err)
 			}

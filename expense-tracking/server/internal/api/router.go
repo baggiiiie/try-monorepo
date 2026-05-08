@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 
-	"expense-tracker/internal/auth"
 	"expense-tracker/internal/config"
 	"expense-tracker/internal/service"
+	"expense-tracker/internal/singleusersecret"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -54,7 +54,7 @@ func NewRouter(services RouterServices, syncSecret string) http.Handler {
 
 	r.Group(func(r chi.Router) {
 		if syncSecret != "" {
-			r.Use(auth.Middleware(syncSecret, writeError))
+			r.Use(singleusersecret.Require(syncSecret, writeError))
 		}
 
 		r.Route("/api/expenses", func(r chi.Router) {

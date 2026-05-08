@@ -1,7 +1,10 @@
-// Package auth handles the shared sync secret used by the iOS client to
-// authenticate against the server. The system is single-user and runs on a
-// trusted network, so we use a static bearer token rather than per-user auth.
-package auth
+// Package singleusersecret implements the shared bearer-token check that
+// guards /api/* (except /api/health). The package name is the assumption:
+// the system has exactly one principal — the project owner — and they hold
+// the secret. There are no users, no sessions, no per-device identity, no
+// revocation list. See docs/adr/005-single-user-auth-scope.md for the named
+// triggers that force replacing this scheme with real auth.
+package singleusersecret
 
 import (
 	"crypto/rand"
@@ -93,11 +96,11 @@ func writeSecretFile(path, secret string) error {
 	return nil
 }
 
-// Middleware returns an http.Handler middleware that requires every request
-// to carry the configured secret as an "Authorization: Bearer <secret>"
-// header. Comparison is constant-time. The errorWriter callback is invoked on
-// failure so the caller can render an error in the project's preferred shape.
-func Middleware(secret string, errorWriter func(http.ResponseWriter, *http.Request, int, string)) func(http.Handler) http.Handler {
+// Require returns an http.Handler middleware that requires every request to
+// carry the configured secret as an "Authorization: Bearer <secret>" header.
+// Comparison is constant-time. The errorWriter callback is invoked on failure
+// so the caller can render an error in the project's preferred shape.
+func Require(secret string, errorWriter func(http.ResponseWriter, *http.Request, int, string)) func(http.Handler) http.Handler {
 	want := []byte(secret)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

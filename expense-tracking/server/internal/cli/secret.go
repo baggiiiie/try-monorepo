@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"expense-tracker/internal/auth"
+	"expense-tracker/internal/singleusersecret"
 
 	"github.com/spf13/cobra"
 )
@@ -19,7 +19,7 @@ func newSecretCmd(paths pathProvider) *cobra.Command {
 		Short: "Print the current sync secret",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, _, secretPath := paths()
-			s, generated, err := auth.LoadOrCreate(secretPath)
+			s, generated, err := singleusersecret.LoadOrCreate(secretPath)
 			if err != nil {
 				return err
 			}
@@ -36,7 +36,7 @@ func newSecretCmd(paths pathProvider) *cobra.Command {
 		Short: "Generate a new sync secret, replacing the existing one",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, _, secretPath := paths()
-			s, err := auth.Rotate(secretPath)
+			s, err := singleusersecret.Rotate(secretPath)
 			if err != nil {
 				return err
 			}
