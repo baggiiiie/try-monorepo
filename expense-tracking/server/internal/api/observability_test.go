@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -66,5 +68,31 @@ func TestObservabilityMiddlewareGeneratesRequestIDForErrors(t *testing.T) {
 	}
 	if body.RequestID != requestID {
 		t.Fatalf("expected body request id %q, got %q", requestID, body.RequestID)
+	}
+}
+
+func TestObservabilityMiddlewareMergesAttrBagIntoSingleEvent(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	handler := observabilityMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wideevent.AddAttrs(r.Context(), slog.Int("expenses_pushed", 7))
+		writeJSON(w, http.StatusOK, struct{}{})
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/sync/push", nil)
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	var entry map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &entry); err != nil {
+		t.Fatalf("expected exactly one JSON log entry, got %q: %v", buf.String(), err)
+	}
+	if got := entry["msg"]; got != wideevent.EventHTTPRequest {
+		t.Fatalf("expected msg %q, got %v", wideevent.EventHTTPRequest, got)
+	}
+	if got := entry["expenses_pushed"]; got != float64(7) {
+		t.Fatalf("expected expenses_pushed=7 from attr bag, got %v", got)
 	}
 }

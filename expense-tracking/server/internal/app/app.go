@@ -117,6 +117,12 @@ func (a *App) reloadPreferences() error {
 }
 
 func runMigrations(db *sql.DB) error {
+	// goose's default logger uses the stdlib `log` package, which
+	// slog's default bridge re-emits as JSON for every CLI command.
+	// We surface migration outcomes via runMigrations' returned error;
+	// silence the per-step chatter so it doesn't pollute CLI stderr or
+	// the surrounding cli.command event.
+	goose.SetLogger(goose.NopLogger())
 	goose.SetBaseFS(dbmigrations.Migrations)
 	if err := goose.SetDialect("sqlite3"); err != nil {
 		return err

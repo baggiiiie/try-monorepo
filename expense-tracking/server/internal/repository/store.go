@@ -8,6 +8,7 @@ import (
 	"time"
 
 	dbsqlc "expense-tracker/internal/repository/sqlc"
+	"expense-tracker/internal/wideevent"
 )
 
 // Store centralizes data-layer access. It owns the *sql.DB, exposes
@@ -160,6 +161,10 @@ func execWithBusyRetry(ctx context.Context, fn func() error) error {
 		if err == nil || !isSQLiteBusy(err) || time.Now().After(deadline) {
 			return err
 		}
+		// SQLITE_BUSY: bump the unit-of-work counter so the surrounding
+		// http.request / cli.command event records lock contention.
+		// No-op when ctx has no attr bag.
+		wideevent.IncrCounter(ctx, "tx_retries", 1)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

@@ -8,6 +8,7 @@ import (
 
 	dbsqlc "expense-tracker/internal/repository/sqlc"
 	"expense-tracker/internal/timeutil"
+	"expense-tracker/internal/wideevent"
 
 	"github.com/google/uuid"
 )
@@ -156,6 +157,12 @@ func (s *RecurringService) MaterializeDue(ctx context.Context, now time.Time) er
 	})
 }
 
+// materializeDueRecurringExpenses scans for recurring expenses with
+// next_run_date <= today and materializes the missed occurrences. It
+// reports the count of recurring expenses it touched (not the total
+// number of materialized occurrences) on the unit-of-work attr bag as
+// `materialized` so the surrounding event records what happened. Zero
+// is intentionally suppressed by the bag's counter machinery.
 func materializeDueRecurringExpenses(ctx context.Context, q *dbsqlc.Queries, now time.Time, location *time.Location) error {
 	today := startOfDay(now, location).Unix()
 	rows, err := q.ListDueRecurringExpenses(ctx, today)
@@ -169,6 +176,7 @@ func materializeDueRecurringExpenses(ctx context.Context, q *dbsqlc.Queries, now
 			return fmt.Errorf("materializing recurring expense %q: %w", r.ID, err)
 		}
 	}
+	wideevent.IncrCounter(ctx, "materialized", int64(len(rows)))
 	return nil
 }
 

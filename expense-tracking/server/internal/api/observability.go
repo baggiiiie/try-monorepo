@@ -43,7 +43,8 @@ func observabilityMiddleware(next http.Handler) http.Handler {
 		requestID := requestIDFromHeader(r)
 		clientBuild := strings.TrimSpace(r.Header.Get(wideevent.HeaderClientBuild))
 
-		ctx := wideevent.WithRequestID(r.Context(), requestID)
+		ctx := wideevent.WithAttrBag(r.Context())
+		ctx = wideevent.WithRequestID(ctx, requestID)
 		if clientBuild != "" {
 			ctx = wideevent.WithClientBuild(ctx, clientBuild)
 		}
@@ -54,7 +55,7 @@ func observabilityMiddleware(next http.Handler) http.Handler {
 
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				wideevent.Error(ctx, "http.request.panic",
+				wideevent.Error(ctx, wideevent.EventHTTPRequestPanic,
 					slog.String("method", r.Method),
 					slog.String("path", r.URL.Path),
 					slog.Any("panic", recovered),
@@ -76,14 +77,15 @@ func observabilityMiddleware(next http.Handler) http.Handler {
 			if userAgent := r.UserAgent(); userAgent != "" {
 				attrs = append(attrs, slog.String("user_agent", userAgent))
 			}
+			attrs = append(attrs, wideevent.Attrs(ctx)...)
 
 			switch {
 			case recorder.status >= http.StatusInternalServerError:
-				wideevent.Error(ctx, "http.request", attrs...)
+				wideevent.Error(ctx, wideevent.EventHTTPRequest, attrs...)
 			case recorder.status >= http.StatusBadRequest:
-				wideevent.Warn(ctx, "http.request", attrs...)
+				wideevent.Warn(ctx, wideevent.EventHTTPRequest, attrs...)
 			default:
-				wideevent.Info(ctx, "http.request", attrs...)
+				wideevent.Info(ctx, wideevent.EventHTTPRequest, attrs...)
 			}
 		}()
 

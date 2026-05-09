@@ -1,10 +1,15 @@
 package cli
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"os"
+	"runtime/debug"
+	"time"
 
 	"expense-tracker/internal/app"
+	"expense-tracker/internal/wideevent"
 
 	"github.com/spf13/cobra"
 )
@@ -127,5 +132,75 @@ func newRootCmd() *cobra.Command {
 }
 
 func Execute() error {
-	return newRootCmd().Execute()
+	// Route logs through the JSON handler so the cli.command wide event
+	// (and any other slog calls) are emitted in the same format as the
+	// HTTP server's events. CLI logs go to stderr to keep stdout free
+	// for command output; serve overrides this to stdout.
+	slog.SetDefault(slog.New(newServerLogHandler(os.Stderr)))
+
+	rootCmd := newRootCmd()
+	ctx := wideevent.WithAttrBag(context.Background())
+	rootCmd.SetContext(ctx)
+
+	start := time.Now()
+	args := os.Args[1:]
+
+	var (
+		executedCmd *cobra.Command
+		execErr     error
+		recovered   any
+	)
+
+	defer func() {
+		// Drain any pending panic from ExecuteC so we can record it on
+		// the cli.command event. We re-panic at the end so the process
+		// still crashes loudly.
+		if r := recover(); r != nil {
+			recovered = r
+		}
+
+		outcome := "ok"
+		switch {
+		case recovered != nil:
+			outcome = "panic"
+		case execErr != nil:
+			outcome = "error"
+		}
+
+		commandName := rootCmd.Name()
+		if executedCmd != nil {
+			commandName = executedCmd.CommandPath()
+		}
+
+		attrs := []slog.Attr{
+			slog.String("command", commandName),
+			slog.Int("args_count", len(args)),
+			slog.Int64("duration_ms", time.Since(start).Milliseconds()),
+			slog.String("outcome", outcome),
+		}
+		if execErr != nil {
+			attrs = append(attrs, slog.Any("error", execErr))
+		}
+		if recovered != nil {
+			attrs = append(attrs,
+				slog.Any("panic", recovered),
+				slog.String("stack", string(debug.Stack())),
+			)
+		}
+		attrs = append(attrs, wideevent.Attrs(ctx)...)
+
+		switch outcome {
+		case "panic", "error":
+			wideevent.Error(ctx, wideevent.EventCLICommand, attrs...)
+		default:
+			wideevent.Info(ctx, wideevent.EventCLICommand, attrs...)
+		}
+
+		if recovered != nil {
+			panic(recovered)
+		}
+	}()
+
+	executedCmd, execErr = rootCmd.ExecuteC()
+	return execErr
 }
