@@ -54,9 +54,10 @@ struct SyncRepository {
 
     private func markCategorySynced(_ serverCategory: PullCategory, in db: Database) throws {
         try db.execute(
-            sql: "UPDATE categories SET updated_at = ?, sync_status = ? WHERE id = ?",
+            sql: "UPDATE categories SET updated_at = ?, client_updated_at = ?, sync_status = ? WHERE id = ?",
             arguments: [
                 serverCategory.updatedAt,
+                serverCategory.clientUpdatedAt,
                 RecordSyncStatus.synced.rawValue,
                 serverCategory.id,
             ]
@@ -65,10 +66,11 @@ struct SyncRepository {
 
     private func markExpenseSynced(_ serverExpense: PullExpense, in db: Database) throws {
         try db.execute(
-            sql: "UPDATE expenses SET category_id = ?, updated_at = ?, sync_status = ? WHERE id = ?",
+            sql: "UPDATE expenses SET category_id = ?, updated_at = ?, client_updated_at = ?, sync_status = ? WHERE id = ?",
             arguments: [
                 serverExpense.categoryId,
                 serverExpense.updatedAt,
+                serverExpense.clientUpdatedAt,
                 RecordSyncStatus.synced.rawValue,
                 serverExpense.id,
             ]
@@ -77,12 +79,13 @@ struct SyncRepository {
 
     private func markRecurringExpenseSynced(_ serverRecurringExpense: PullRecurringExpense, in db: Database) throws {
         try db.execute(
-            sql: "UPDATE recurring_expenses SET category_id = ?, next_run_date = ?, last_run_date = ?, updated_at = ?, sync_status = ? WHERE id = ?",
+            sql: "UPDATE recurring_expenses SET category_id = ?, next_run_date = ?, last_run_date = ?, updated_at = ?, client_updated_at = ?, sync_status = ? WHERE id = ?",
             arguments: [
                 serverRecurringExpense.categoryId,
                 serverRecurringExpense.nextRunDate,
                 serverRecurringExpense.lastRunDate,
                 serverRecurringExpense.updatedAt,
+                serverRecurringExpense.clientUpdatedAt,
                 RecordSyncStatus.synced.rawValue,
                 serverRecurringExpense.id,
             ]
@@ -99,6 +102,7 @@ struct SyncRepository {
             budget: serverCategory.budget,
             createdAt: serverCategory.createdAt,
             updatedAt: serverCategory.updatedAt,
+            clientUpdatedAt: serverCategory.clientUpdatedAt,
             deletedAt: serverCategory.deletedAt,
             syncStatus: RecordSyncStatus.synced.rawValue
         )
@@ -117,6 +121,7 @@ struct SyncRepository {
             source: serverExpense.source,
             createdAt: serverExpense.createdAt,
             updatedAt: serverExpense.updatedAt,
+            clientUpdatedAt: serverExpense.clientUpdatedAt,
             deletedAt: serverExpense.deletedAt,
             syncStatus: RecordSyncStatus.synced.rawValue
         )
@@ -139,6 +144,7 @@ struct SyncRepository {
             lastRunDate: serverRecurringExpense.lastRunDate,
             createdAt: serverRecurringExpense.createdAt,
             updatedAt: serverRecurringExpense.updatedAt,
+            clientUpdatedAt: serverRecurringExpense.clientUpdatedAt,
             deletedAt: serverRecurringExpense.deletedAt,
             syncStatus: RecordSyncStatus.synced.rawValue
         )

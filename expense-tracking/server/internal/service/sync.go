@@ -30,36 +30,39 @@ type PushRequest struct {
 	RecurringExpenses []PushRecurringExpense `json:"recurring_expenses"`
 }
 
+// PushExpense is the wire form of a client-side expense edit. Per ADR 007,
+// the client's wall-clock at edit time travels as `client_updated_at`; the
+// server-stamped `updated_at` is no longer part of the push payload.
 type PushExpense struct {
-	ID          string `json:"id"`
-	Amount      int64  `json:"amount"`
-	Currency    string `json:"currency"`
-	CategoryID  string `json:"category_id"`
-	Description string `json:"description"`
-	Merchant    string `json:"merchant"`
-	Date        int64  `json:"date"`
-	Source      string `json:"source"`
-	UpdatedAt   int64  `json:"updated_at"`
-	DeletedAt   *int64 `json:"deleted_at,omitempty"`
+	ID              string `json:"id"`
+	Amount          int64  `json:"amount"`
+	Currency        string `json:"currency"`
+	CategoryID      string `json:"category_id"`
+	Description     string `json:"description"`
+	Merchant        string `json:"merchant"`
+	Date            int64  `json:"date"`
+	Source          string `json:"source"`
+	ClientUpdatedAt int64  `json:"client_updated_at"`
+	DeletedAt       *int64 `json:"deleted_at,omitempty"`
 }
 
 type PushCategory struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Icon      string `json:"icon"`
-	Budget    *int64 `json:"budget,omitempty"`
-	UpdatedAt int64  `json:"updated_at"`
-	DeletedAt *int64 `json:"deleted_at,omitempty"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Icon            string `json:"icon"`
+	Budget          *int64 `json:"budget,omitempty"`
+	ClientUpdatedAt int64  `json:"client_updated_at"`
+	DeletedAt       *int64 `json:"deleted_at,omitempty"`
 }
 
-func (p PushCategory) GetUpdatedAt() int64  { return p.UpdatedAt }
-func (p PushCategory) GetDeletedAt() *int64 { return p.DeletedAt }
+func (p PushCategory) GetClientUpdatedAt() int64 { return p.ClientUpdatedAt }
+func (p PushCategory) GetDeletedAt() *int64      { return p.DeletedAt }
 
-func (p PushExpense) GetUpdatedAt() int64  { return p.UpdatedAt }
-func (p PushExpense) GetDeletedAt() *int64 { return p.DeletedAt }
+func (p PushExpense) GetClientUpdatedAt() int64 { return p.ClientUpdatedAt }
+func (p PushExpense) GetDeletedAt() *int64      { return p.DeletedAt }
 
-func (p PushRecurringExpense) GetUpdatedAt() int64  { return p.UpdatedAt }
-func (p PushRecurringExpense) GetDeletedAt() *int64 { return p.DeletedAt }
+func (p PushRecurringExpense) GetClientUpdatedAt() int64 { return p.ClientUpdatedAt }
+func (p PushRecurringExpense) GetDeletedAt() *int64      { return p.DeletedAt }
 
 type PullResponse struct {
 	Expenses          []Expense          `json:"expenses"`
@@ -138,17 +141,18 @@ func pullResponse(ctx context.Context, q *dbsqlc.Queries, sinceVersion, serverVe
 
 	for _, e := range expenses {
 		resp.Expenses = append(resp.Expenses, Expense{
-			ID:          e.ID,
-			Amount:      e.Amount,
-			Currency:    e.Currency,
-			CategoryID:  e.CategoryID,
-			Description: e.Description,
-			Merchant:    e.Merchant,
-			Date:        e.Date,
-			Source:      e.Source,
-			CreatedAt:   e.CreatedAt,
-			UpdatedAt:   e.UpdatedAt,
-			DeletedAt:   toInt64Ptr(e.DeletedAt),
+			ID:              e.ID,
+			Amount:          e.Amount,
+			Currency:        e.Currency,
+			CategoryID:      e.CategoryID,
+			Description:     e.Description,
+			Merchant:        e.Merchant,
+			Date:            e.Date,
+			Source:          e.Source,
+			CreatedAt:       e.CreatedAt,
+			UpdatedAt:       e.UpdatedAt,
+			ClientUpdatedAt: e.ClientUpdatedAt,
+			DeletedAt:       toInt64Ptr(e.DeletedAt),
 		})
 
 		if _, ok := includedCategoryIDs[e.CategoryID]; ok {
@@ -294,8 +298,8 @@ func categoryLWWHooks(serverVersion int64) LWWHooks[dbsqlc.Category, PushCategor
 			}
 			return row, true, nil
 		},
-		ExistingUpdatedAt: func(c dbsqlc.Category) int64 { return c.UpdatedAt },
-		ExistingDeleted:   func(c dbsqlc.Category) bool { return c.DeletedAt.Valid },
+		ExistingClientUpdatedAt: func(c dbsqlc.Category) int64 { return c.ClientUpdatedAt },
+		ExistingDeleted:         func(c dbsqlc.Category) bool { return c.DeletedAt.Valid },
 		EqualState: func(c dbsqlc.Category, in PushCategory) bool {
 			return c.Name == in.Name &&
 				c.Icon == in.Icon &&
@@ -304,31 +308,34 @@ func categoryLWWHooks(serverVersion int64) LWWHooks[dbsqlc.Category, PushCategor
 		},
 		Create: func(ctx context.Context, q *dbsqlc.Queries, in PushCategory, now int64) (dbsqlc.Category, error) {
 			return q.CreateCategory(ctx, dbsqlc.CreateCategoryParams{
-				ID:        in.ID,
-				Name:      in.Name,
-				Icon:      in.Icon,
-				Budget:    nullInt64(in.Budget),
-				CreatedAt: now,
-				UpdatedAt: now,
-				DeletedAt: deletedAtNullInt64(in.DeletedAt != nil, now),
+				ID:              in.ID,
+				Name:            in.Name,
+				Icon:            in.Icon,
+				Budget:          nullInt64(in.Budget),
+				CreatedAt:       now,
+				UpdatedAt:       now,
+				ClientUpdatedAt: in.ClientUpdatedAt,
+				DeletedAt:       deletedAtNullInt64(in.DeletedAt != nil, now),
 			})
 		},
 		Update: func(ctx context.Context, q *dbsqlc.Queries, existing dbsqlc.Category, in PushCategory, now int64) (dbsqlc.Category, error) {
 			return q.UpdateCategoryReturning(ctx, dbsqlc.UpdateCategoryReturningParams{
-				Name:          in.Name,
-				Icon:          in.Icon,
-				Budget:        nullInt64(in.Budget),
-				UpdatedAt:     now,
-				ServerVersion: serverVersion,
-				ID:            existing.ID,
+				Name:            in.Name,
+				Icon:            in.Icon,
+				Budget:          nullInt64(in.Budget),
+				UpdatedAt:       now,
+				ClientUpdatedAt: in.ClientUpdatedAt,
+				ServerVersion:   serverVersion,
+				ID:              existing.ID,
 			})
 		},
-		SoftDelete: func(ctx context.Context, q *dbsqlc.Queries, existing dbsqlc.Category, now int64) (dbsqlc.Category, error) {
+		SoftDelete: func(ctx context.Context, q *dbsqlc.Queries, existing dbsqlc.Category, in PushCategory, now int64) (dbsqlc.Category, error) {
 			return q.SoftDeleteCategoryReturning(ctx, dbsqlc.SoftDeleteCategoryReturningParams{
-				DeletedAt:     sql.NullInt64{Int64: now, Valid: true},
-				UpdatedAt:     now,
-				ServerVersion: serverVersion,
-				ID:            existing.ID,
+				DeletedAt:       sql.NullInt64{Int64: now, Valid: true},
+				UpdatedAt:       now,
+				ClientUpdatedAt: in.ClientUpdatedAt,
+				ServerVersion:   serverVersion,
+				ID:              existing.ID,
 			})
 		},
 	}
@@ -361,8 +368,8 @@ func expenseLWWHooks(serverVersion int64) LWWHooks[dbsqlc.Expense, PushExpense] 
 			}
 			return row, true, nil
 		},
-		ExistingUpdatedAt: func(e dbsqlc.Expense) int64 { return e.UpdatedAt },
-		ExistingDeleted:   func(e dbsqlc.Expense) bool { return e.DeletedAt.Valid },
+		ExistingClientUpdatedAt: func(e dbsqlc.Expense) int64 { return e.ClientUpdatedAt },
+		ExistingDeleted:         func(e dbsqlc.Expense) bool { return e.DeletedAt.Valid },
 		Normalize: func(in PushExpense) PushExpense {
 			if in.Source == "" {
 				in.Source = "manual"
@@ -381,39 +388,42 @@ func expenseLWWHooks(serverVersion int64) LWWHooks[dbsqlc.Expense, PushExpense] 
 		},
 		Create: func(ctx context.Context, q *dbsqlc.Queries, in PushExpense, now int64) (dbsqlc.Expense, error) {
 			return q.CreateExpense(ctx, dbsqlc.CreateExpenseParams{
-				ID:          in.ID,
-				Amount:      in.Amount,
-				Currency:    in.Currency,
-				CategoryID:  in.CategoryID,
-				Description: in.Description,
-				Merchant:    in.Merchant,
-				Date:        in.Date,
-				Source:      in.Source,
-				CreatedAt:   now,
-				UpdatedAt:   now,
-				DeletedAt:   deletedAtNullInt64(in.DeletedAt != nil, now),
+				ID:              in.ID,
+				Amount:          in.Amount,
+				Currency:        in.Currency,
+				CategoryID:      in.CategoryID,
+				Description:     in.Description,
+				Merchant:        in.Merchant,
+				Date:            in.Date,
+				Source:          in.Source,
+				CreatedAt:       now,
+				UpdatedAt:       now,
+				ClientUpdatedAt: in.ClientUpdatedAt,
+				DeletedAt:       deletedAtNullInt64(in.DeletedAt != nil, now),
 			})
 		},
 		Update: func(ctx context.Context, q *dbsqlc.Queries, existing dbsqlc.Expense, in PushExpense, now int64) (dbsqlc.Expense, error) {
 			return q.UpdateExpenseReturning(ctx, dbsqlc.UpdateExpenseReturningParams{
-				Amount:        in.Amount,
-				Currency:      in.Currency,
-				CategoryID:    in.CategoryID,
-				Description:   in.Description,
-				Merchant:      in.Merchant,
-				Date:          in.Date,
-				Source:        in.Source,
-				UpdatedAt:     now,
-				ServerVersion: serverVersion,
-				ID:            existing.ID,
+				Amount:          in.Amount,
+				Currency:        in.Currency,
+				CategoryID:      in.CategoryID,
+				Description:     in.Description,
+				Merchant:        in.Merchant,
+				Date:            in.Date,
+				Source:          in.Source,
+				UpdatedAt:       now,
+				ClientUpdatedAt: in.ClientUpdatedAt,
+				ServerVersion:   serverVersion,
+				ID:              existing.ID,
 			})
 		},
-		SoftDelete: func(ctx context.Context, q *dbsqlc.Queries, existing dbsqlc.Expense, now int64) (dbsqlc.Expense, error) {
+		SoftDelete: func(ctx context.Context, q *dbsqlc.Queries, existing dbsqlc.Expense, in PushExpense, now int64) (dbsqlc.Expense, error) {
 			return q.SoftDeleteExpenseReturning(ctx, dbsqlc.SoftDeleteExpenseReturningParams{
-				DeletedAt:     sql.NullInt64{Int64: now, Valid: true},
-				UpdatedAt:     now,
-				ServerVersion: serverVersion,
-				ID:            existing.ID,
+				DeletedAt:       sql.NullInt64{Int64: now, Valid: true},
+				UpdatedAt:       now,
+				ClientUpdatedAt: in.ClientUpdatedAt,
+				ServerVersion:   serverVersion,
+				ID:              existing.ID,
 			})
 		},
 	}
@@ -458,8 +468,8 @@ func recurringExpenseLWWHooks(serverVersion int64) LWWHooks[dbsqlc.RecurringExpe
 			}
 			return row, true, nil
 		},
-		ExistingUpdatedAt: func(r dbsqlc.RecurringExpense) int64 { return r.UpdatedAt },
-		ExistingDeleted:   func(r dbsqlc.RecurringExpense) bool { return r.DeletedAt.Valid },
+		ExistingClientUpdatedAt: func(r dbsqlc.RecurringExpense) int64 { return r.ClientUpdatedAt },
+		ExistingDeleted:         func(r dbsqlc.RecurringExpense) bool { return r.DeletedAt.Valid },
 		EqualState: func(r dbsqlc.RecurringExpense, in PushRecurringExpense) bool {
 			return r.Amount == in.Amount &&
 				r.Currency == in.Currency &&
@@ -476,21 +486,22 @@ func recurringExpenseLWWHooks(serverVersion int64) LWWHooks[dbsqlc.RecurringExpe
 		},
 		Create: func(ctx context.Context, q *dbsqlc.Queries, in PushRecurringExpense, now int64) (dbsqlc.RecurringExpense, error) {
 			if err := q.CreateRecurringExpense(ctx, dbsqlc.CreateRecurringExpenseParams{
-				ID:          in.ID,
-				Amount:      in.Amount,
-				Currency:    in.Currency,
-				CategoryID:  in.CategoryID,
-				Description: in.Description,
-				Merchant:    in.Merchant,
-				Frequency:   in.Frequency,
-				DayOfMonth:  nullInt64(in.DayOfMonth),
-				StartDate:   in.StartDate,
-				EndDate:     nullInt64(in.EndDate),
-				NextRunDate: in.NextRunDate,
-				LastRunDate: nullInt64(in.LastRunDate),
-				CreatedAt:   now,
-				UpdatedAt:   now,
-				DeletedAt:   deletedAtNullInt64(in.DeletedAt != nil, now),
+				ID:              in.ID,
+				Amount:          in.Amount,
+				Currency:        in.Currency,
+				CategoryID:      in.CategoryID,
+				Description:     in.Description,
+				Merchant:        in.Merchant,
+				Frequency:       in.Frequency,
+				DayOfMonth:      nullInt64(in.DayOfMonth),
+				StartDate:       in.StartDate,
+				EndDate:         nullInt64(in.EndDate),
+				NextRunDate:     in.NextRunDate,
+				LastRunDate:     nullInt64(in.LastRunDate),
+				CreatedAt:       now,
+				UpdatedAt:       now,
+				ClientUpdatedAt: in.ClientUpdatedAt,
+				DeletedAt:       deletedAtNullInt64(in.DeletedAt != nil, now),
 			}); err != nil {
 				return dbsqlc.RecurringExpense{}, err
 			}
@@ -501,28 +512,30 @@ func recurringExpenseLWWHooks(serverVersion int64) LWWHooks[dbsqlc.RecurringExpe
 		},
 		Update: func(ctx context.Context, q *dbsqlc.Queries, existing dbsqlc.RecurringExpense, in PushRecurringExpense, now int64) (dbsqlc.RecurringExpense, error) {
 			return q.UpdateRecurringExpenseReturning(ctx, dbsqlc.UpdateRecurringExpenseReturningParams{
-				Amount:        in.Amount,
-				Currency:      in.Currency,
-				CategoryID:    in.CategoryID,
-				Description:   in.Description,
-				Merchant:      in.Merchant,
-				Frequency:     in.Frequency,
-				DayOfMonth:    nullInt64(in.DayOfMonth),
-				StartDate:     in.StartDate,
-				EndDate:       nullInt64(in.EndDate),
-				NextRunDate:   in.NextRunDate,
-				LastRunDate:   nullInt64(in.LastRunDate),
-				UpdatedAt:     now,
-				ServerVersion: serverVersion,
-				ID:            existing.ID,
+				Amount:          in.Amount,
+				Currency:        in.Currency,
+				CategoryID:      in.CategoryID,
+				Description:     in.Description,
+				Merchant:        in.Merchant,
+				Frequency:       in.Frequency,
+				DayOfMonth:      nullInt64(in.DayOfMonth),
+				StartDate:       in.StartDate,
+				EndDate:         nullInt64(in.EndDate),
+				NextRunDate:     in.NextRunDate,
+				LastRunDate:     nullInt64(in.LastRunDate),
+				UpdatedAt:       now,
+				ClientUpdatedAt: in.ClientUpdatedAt,
+				ServerVersion:   serverVersion,
+				ID:              existing.ID,
 			})
 		},
-		SoftDelete: func(ctx context.Context, q *dbsqlc.Queries, existing dbsqlc.RecurringExpense, now int64) (dbsqlc.RecurringExpense, error) {
+		SoftDelete: func(ctx context.Context, q *dbsqlc.Queries, existing dbsqlc.RecurringExpense, in PushRecurringExpense, now int64) (dbsqlc.RecurringExpense, error) {
 			return q.SoftDeleteRecurringExpenseReturning(ctx, dbsqlc.SoftDeleteRecurringExpenseReturningParams{
-				DeletedAt:     sql.NullInt64{Int64: now, Valid: true},
-				UpdatedAt:     now,
-				ServerVersion: serverVersion,
-				ID:            existing.ID,
+				DeletedAt:       sql.NullInt64{Int64: now, Valid: true},
+				UpdatedAt:       now,
+				ClientUpdatedAt: in.ClientUpdatedAt,
+				ServerVersion:   serverVersion,
+				ID:              existing.ID,
 			})
 		},
 	}

@@ -48,13 +48,14 @@ type CategoryInput struct {
 }
 
 type Category struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Icon      string `json:"icon"`
-	Budget    *int64 `json:"budget"`
-	CreatedAt int64  `json:"created_at"`
-	UpdatedAt int64  `json:"updated_at"`
-	DeletedAt *int64 `json:"deleted_at,omitempty"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Icon            string `json:"icon"`
+	Budget          *int64 `json:"budget"`
+	CreatedAt       int64  `json:"created_at"`
+	UpdatedAt       int64  `json:"updated_at"`
+	ClientUpdatedAt int64  `json:"client_updated_at"`
+	DeletedAt       *int64 `json:"deleted_at,omitempty"`
 }
 
 func (s *CategoryService) EnsureDefaults(ctx context.Context) error {
@@ -69,11 +70,12 @@ func (s *CategoryService) EnsureDefaults(ctx context.Context) error {
 	now := time.Now().Unix()
 	for _, dc := range defaultCategories {
 		_, err := s.queries.CreateCategory(ctx, dbsqlc.CreateCategoryParams{
-			ID:        dc.ID,
-			Name:      dc.Name,
-			Icon:      dc.Icon,
-			CreatedAt: now,
-			UpdatedAt: now,
+			ID:              dc.ID,
+			Name:            dc.Name,
+			Icon:            dc.Icon,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+			ClientUpdatedAt: now,
 		})
 		if err != nil {
 			return fmt.Errorf("seeding category %s: %w", dc.Name, err)
@@ -102,12 +104,13 @@ func (s *CategoryService) Create(ctx context.Context, input CategoryInput) (*Cat
 	now := time.Now().Unix()
 	id := uuid.New().String()
 	row, err := s.queries.CreateCategory(ctx, dbsqlc.CreateCategoryParams{
-		ID:        id,
-		Name:      input.Name,
-		Icon:      input.Icon,
-		Budget:    nullInt64(input.Budget),
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:              id,
+		Name:            input.Name,
+		Icon:            input.Icon,
+		Budget:          nullInt64(input.Budget),
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		ClientUpdatedAt: now,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating category: %w", err)
@@ -140,11 +143,12 @@ func (s *CategoryService) Update(ctx context.Context, id string, input CategoryI
 
 	now := time.Now().Unix()
 	err = s.queries.UpdateCategory(ctx, dbsqlc.UpdateCategoryParams{
-		Name:      name,
-		Icon:      icon,
-		Budget:    budget,
-		UpdatedAt: now,
-		ID:        id,
+		Name:            name,
+		Icon:            icon,
+		Budget:          budget,
+		UpdatedAt:       now,
+		ClientUpdatedAt: now,
+		ID:              id,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("updating category: %w", err)
@@ -161,21 +165,23 @@ func (s *CategoryService) Update(ctx context.Context, id string, input CategoryI
 func (s *CategoryService) Delete(ctx context.Context, id string) error {
 	now := time.Now().Unix()
 	return s.queries.SoftDeleteCategory(ctx, dbsqlc.SoftDeleteCategoryParams{
-		DeletedAt: sql.NullInt64{Int64: now, Valid: true},
-		UpdatedAt: now,
-		ID:        id,
+		DeletedAt:       sql.NullInt64{Int64: now, Valid: true},
+		UpdatedAt:       now,
+		ClientUpdatedAt: now,
+		ID:              id,
 	})
 }
 
 func categoryFromRow(r dbsqlc.Category) Category {
 	cat := Category{
-		ID:        r.ID,
-		Name:      r.Name,
-		Icon:      r.Icon,
-		Budget:    toInt64Ptr(r.Budget),
-		CreatedAt: r.CreatedAt,
-		UpdatedAt: r.UpdatedAt,
-		DeletedAt: toInt64Ptr(r.DeletedAt),
+		ID:              r.ID,
+		Name:            r.Name,
+		Icon:            r.Icon,
+		Budget:          toInt64Ptr(r.Budget),
+		CreatedAt:       r.CreatedAt,
+		UpdatedAt:       r.UpdatedAt,
+		ClientUpdatedAt: r.ClientUpdatedAt,
+		DeletedAt:       toInt64Ptr(r.DeletedAt),
 	}
 	return cat
 }

@@ -9,7 +9,7 @@ source "$(dirname "$0")/../helpers.sh"
 setup_test_db
 start_test_server
 
-updated_at=$(date +%s)
+client_updated_at=$(date +%s)
 local_category_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
 expense_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
 
@@ -34,7 +34,7 @@ push_response=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
             \"id\": \"$local_category_id\",
             \"name\": \"Food & Dining\",
             \"icon\": \"🍽️\",
-            \"updated_at\": $updated_at
+            \"client_updated_at\": $client_updated_at
         }],
         \"expenses\": [{
             \"id\": \"$expense_id\",
@@ -43,8 +43,8 @@ push_response=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
             \"category_id\": \"$local_category_id\",
             \"merchant\": \"Fresh Install Test\",
             \"description\": \"Default category reconciliation\",
-            \"date\": $updated_at,
-            \"updated_at\": $updated_at
+            \"date\": $client_updated_at,
+            \"client_updated_at\": $client_updated_at
         }]
     }")
 
@@ -83,7 +83,7 @@ push_again=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
             \"id\": \"$local_category_id\",
             \"name\": \"Food & Dining\",
             \"icon\": \"🍽️\",
-            \"updated_at\": $updated_at
+            \"client_updated_at\": $client_updated_at
         }],
         \"expenses\": [{
             \"id\": \"$expense_id\",
@@ -92,8 +92,8 @@ push_again=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
             \"category_id\": \"$local_category_id\",
             \"merchant\": \"Fresh Install Test\",
             \"description\": \"Default category reconciliation\",
-            \"date\": $updated_at,
-            \"updated_at\": $updated_at
+            \"date\": $client_updated_at,
+            \"client_updated_at\": $client_updated_at
         }]
     }")
 

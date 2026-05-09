@@ -22,6 +22,11 @@ pull_response=$(api_curl "$EXPENSE_API/api/sync/pull?since=0")
 assert_json_contains "$pull_response" '.expenses | length' "1"
 assert_json_contains "$pull_response" '.expenses[0].merchant' "Ya Kun"
 assert_json_contains "$pull_response" '.expenses[0].amount' "1000"
+client_clock=$(echo "$pull_response" | jq -r '.expenses[0].client_updated_at')
+if [[ "$client_clock" == "null" || -z "$client_clock" || "$client_clock" == "0" ]]; then
+    echo "FAIL: expected pulled expense to include client_updated_at"
+    exit 1
+fi
 
 # Should also contain seeded categories
 category_count=$(echo "$pull_response" | jq '.categories | length')
@@ -37,6 +42,7 @@ fi
 # Simulate iOS push — send a new expense with an id
 expense_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
 food_id=$(echo "$pull_response" | jq -r '.categories[] | select(.name == "Food & Dining") | .id')
+client_updated_at=$(date +%s)
 
 push_response=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
@@ -48,13 +54,15 @@ push_response=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
             \"category_id\": \"$food_id\",
             \"merchant\": \"Toast Box\",
             \"description\": \"Kaya toast set\",
-            \"date\": $(date +%s)
+            \"date\": $client_updated_at,
+            \"client_updated_at\": $client_updated_at
         }],
         \"categories\": []
     }")
 
 # Verify push response acknowledges the new expense
 assert_json_contains "$push_response" '.expenses | length' "1"
+assert_json_contains "$push_response" '.expenses[0].client_updated_at' "$client_updated_at"
 
 # Verify CLI can see the pushed expense
 cli_list=$($EXPENSE list --json)
@@ -76,7 +84,8 @@ push_again=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
             \"category_id\": \"$food_id\",
             \"merchant\": \"Toast Box\",
             \"description\": \"Kaya toast set\",
-            \"date\": $(date +%s)
+            \"date\": $client_updated_at,
+            \"client_updated_at\": $client_updated_at
         }],
         \"categories\": []
     }")

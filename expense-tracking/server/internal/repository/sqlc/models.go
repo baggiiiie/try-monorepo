@@ -9,48 +9,51 @@ import (
 )
 
 type Category struct {
-	ID            string        `json:"id"`
-	Name          string        `json:"name"`
-	Icon          string        `json:"icon"`
-	Budget        sql.NullInt64 `json:"budget"`
-	CreatedAt     int64         `json:"created_at"`
-	UpdatedAt     int64         `json:"updated_at"`
-	DeletedAt     sql.NullInt64 `json:"deleted_at"`
-	ServerVersion int64         `json:"server_version"`
+	ID              string        `json:"id"`
+	Name            string        `json:"name"`
+	Icon            string        `json:"icon"`
+	Budget          sql.NullInt64 `json:"budget"`
+	CreatedAt       int64         `json:"created_at"`
+	UpdatedAt       int64         `json:"updated_at"`
+	DeletedAt       sql.NullInt64 `json:"deleted_at"`
+	ServerVersion   int64         `json:"server_version"`
+	ClientUpdatedAt int64         `json:"client_updated_at"`
 }
 
 type Expense struct {
-	ID            string        `json:"id"`
-	Amount        int64         `json:"amount"`
-	Currency      string        `json:"currency"`
-	CategoryID    string        `json:"category_id"`
-	Description   string        `json:"description"`
-	Merchant      string        `json:"merchant"`
-	Date          int64         `json:"date"`
-	Source        string        `json:"source"`
-	CreatedAt     int64         `json:"created_at"`
-	UpdatedAt     int64         `json:"updated_at"`
-	DeletedAt     sql.NullInt64 `json:"deleted_at"`
-	ServerVersion int64         `json:"server_version"`
+	ID              string        `json:"id"`
+	Amount          int64         `json:"amount"`
+	Currency        string        `json:"currency"`
+	CategoryID      string        `json:"category_id"`
+	Description     string        `json:"description"`
+	Merchant        string        `json:"merchant"`
+	Date            int64         `json:"date"`
+	Source          string        `json:"source"`
+	CreatedAt       int64         `json:"created_at"`
+	UpdatedAt       int64         `json:"updated_at"`
+	DeletedAt       sql.NullInt64 `json:"deleted_at"`
+	ServerVersion   int64         `json:"server_version"`
+	ClientUpdatedAt int64         `json:"client_updated_at"`
 }
 
 type RecurringExpense struct {
-	ID            string        `json:"id"`
-	Amount        int64         `json:"amount"`
-	Currency      string        `json:"currency"`
-	CategoryID    string        `json:"category_id"`
-	Description   string        `json:"description"`
-	Merchant      string        `json:"merchant"`
-	Frequency     string        `json:"frequency"`
-	DayOfMonth    sql.NullInt64 `json:"day_of_month"`
-	StartDate     int64         `json:"start_date"`
-	EndDate       sql.NullInt64 `json:"end_date"`
-	NextRunDate   int64         `json:"next_run_date"`
-	LastRunDate   sql.NullInt64 `json:"last_run_date"`
-	CreatedAt     int64         `json:"created_at"`
-	UpdatedAt     int64         `json:"updated_at"`
-	DeletedAt     sql.NullInt64 `json:"deleted_at"`
-	ServerVersion int64         `json:"server_version"`
+	ID              string        `json:"id"`
+	Amount          int64         `json:"amount"`
+	Currency        string        `json:"currency"`
+	CategoryID      string        `json:"category_id"`
+	Description     string        `json:"description"`
+	Merchant        string        `json:"merchant"`
+	Frequency       string        `json:"frequency"`
+	DayOfMonth      sql.NullInt64 `json:"day_of_month"`
+	StartDate       int64         `json:"start_date"`
+	EndDate         sql.NullInt64 `json:"end_date"`
+	NextRunDate     int64         `json:"next_run_date"`
+	LastRunDate     sql.NullInt64 `json:"last_run_date"`
+	CreatedAt       int64         `json:"created_at"`
+	UpdatedAt       int64         `json:"updated_at"`
+	DeletedAt       sql.NullInt64 `json:"deleted_at"`
+	ServerVersion   int64         `json:"server_version"`
+	ClientUpdatedAt int64         `json:"client_updated_at"`
 }
 
 type RecurringExpenseRun struct {

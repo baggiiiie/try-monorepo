@@ -59,7 +59,7 @@ struct RecurringExpenseRepository {
                 existingRecurringExpense.startDate = draft.startDate
                 existingRecurringExpense.endDate = draft.endDate
                 existingRecurringExpense.nextRunDate = nextRunDate
-                existingRecurringExpense.updatedAt = now
+                existingRecurringExpense.clientUpdatedAt = now
                 existingRecurringExpense.syncStatus = RecordSyncStatus.pendingPush.rawValue
                 try existingRecurringExpense.update(db)
                 return
@@ -87,6 +87,7 @@ struct RecurringExpenseRepository {
                 lastRunDate: nil,
                 createdAt: now,
                 updatedAt: now,
+                clientUpdatedAt: now,
                 deletedAt: nil,
                 syncStatus: RecordSyncStatus.pendingPush.rawValue
             )
@@ -100,7 +101,7 @@ struct RecurringExpenseRepository {
         try dbQueue.write { db in
             var recurringExpense = recurringExpense
             recurringExpense.deletedAt = deletedAt
-            recurringExpense.updatedAt = deletedAt
+            recurringExpense.clientUpdatedAt = deletedAt
             recurringExpense.syncStatus = RecordSyncStatus.pendingPush.rawValue
             try recurringExpense.update(db)
         }

@@ -21,7 +21,7 @@ struct CategoryRepository {
                 existingCategory.name = draft.name
                 existingCategory.icon = draft.icon
                 existingCategory.budget = draft.budget
-                existingCategory.updatedAt = now
+                existingCategory.clientUpdatedAt = now
                 existingCategory.syncStatus = RecordSyncStatus.pendingPush.rawValue
                 try existingCategory.update(db)
                 return
@@ -34,6 +34,7 @@ struct CategoryRepository {
                 budget: draft.budget,
                 createdAt: now,
                 updatedAt: now,
+                clientUpdatedAt: now,
                 deletedAt: nil,
                 syncStatus: RecordSyncStatus.pendingPush.rawValue
             )
@@ -47,7 +48,7 @@ struct CategoryRepository {
         try dbQueue.write { db in
             var category = category
             category.deletedAt = deletedAt
-            category.updatedAt = deletedAt
+            category.clientUpdatedAt = deletedAt
             category.syncStatus = RecordSyncStatus.pendingPush.rawValue
             try category.update(db)
         }

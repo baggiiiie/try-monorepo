@@ -14,38 +14,39 @@ import (
 )
 
 type RecurringExpense struct {
-	ID          string `json:"id"`
-	Amount      int64  `json:"amount"`
-	Currency    string `json:"currency"`
-	CategoryID  string `json:"category_id"`
-	Description string `json:"description"`
-	Merchant    string `json:"merchant"`
-	Frequency   string `json:"frequency"`
-	DayOfMonth  *int64 `json:"day_of_month,omitempty"`
-	StartDate   int64  `json:"start_date"`
-	EndDate     *int64 `json:"end_date,omitempty"`
-	NextRunDate int64  `json:"next_run_date"`
-	LastRunDate *int64 `json:"last_run_date,omitempty"`
-	CreatedAt   int64  `json:"created_at"`
-	UpdatedAt   int64  `json:"updated_at"`
-	DeletedAt   *int64 `json:"deleted_at,omitempty"`
+	ID              string `json:"id"`
+	Amount          int64  `json:"amount"`
+	Currency        string `json:"currency"`
+	CategoryID      string `json:"category_id"`
+	Description     string `json:"description"`
+	Merchant        string `json:"merchant"`
+	Frequency       string `json:"frequency"`
+	DayOfMonth      *int64 `json:"day_of_month,omitempty"`
+	StartDate       int64  `json:"start_date"`
+	EndDate         *int64 `json:"end_date,omitempty"`
+	NextRunDate     int64  `json:"next_run_date"`
+	LastRunDate     *int64 `json:"last_run_date,omitempty"`
+	CreatedAt       int64  `json:"created_at"`
+	UpdatedAt       int64  `json:"updated_at"`
+	ClientUpdatedAt int64  `json:"client_updated_at"`
+	DeletedAt       *int64 `json:"deleted_at,omitempty"`
 }
 
 type PushRecurringExpense struct {
-	ID          string `json:"id"`
-	Amount      int64  `json:"amount"`
-	Currency    string `json:"currency"`
-	CategoryID  string `json:"category_id"`
-	Description string `json:"description"`
-	Merchant    string `json:"merchant"`
-	Frequency   string `json:"frequency"`
-	DayOfMonth  *int64 `json:"day_of_month,omitempty"`
-	StartDate   int64  `json:"start_date"`
-	EndDate     *int64 `json:"end_date,omitempty"`
-	NextRunDate int64  `json:"next_run_date"`
-	LastRunDate *int64 `json:"last_run_date,omitempty"`
-	UpdatedAt   int64  `json:"updated_at"`
-	DeletedAt   *int64 `json:"deleted_at,omitempty"`
+	ID              string `json:"id"`
+	Amount          int64  `json:"amount"`
+	Currency        string `json:"currency"`
+	CategoryID      string `json:"category_id"`
+	Description     string `json:"description"`
+	Merchant        string `json:"merchant"`
+	Frequency       string `json:"frequency"`
+	DayOfMonth      *int64 `json:"day_of_month,omitempty"`
+	StartDate       int64  `json:"start_date"`
+	EndDate         *int64 `json:"end_date,omitempty"`
+	NextRunDate     int64  `json:"next_run_date"`
+	LastRunDate     *int64 `json:"last_run_date,omitempty"`
+	ClientUpdatedAt int64  `json:"client_updated_at"`
+	DeletedAt       *int64 `json:"deleted_at,omitempty"`
 }
 
 type TxManager interface {
@@ -124,21 +125,22 @@ func (s *RecurringService) CreateWithQueries(ctx context.Context, q *dbsqlc.Quer
 	now := time.Now().Unix()
 	id := uuid.New().String()
 	if err := q.CreateRecurringExpense(ctx, dbsqlc.CreateRecurringExpenseParams{
-		ID:          id,
-		Amount:      input.Amount,
-		Currency:    input.Currency,
-		CategoryID:  categoryID,
-		Description: input.Description,
-		Merchant:    input.Merchant,
-		Frequency:   input.Frequency,
-		DayOfMonth:  nullInt64(input.DayOfMonth),
-		StartDate:   input.StartDate,
-		EndDate:     nullInt64(input.EndDate),
-		NextRunDate: input.StartDate,
-		LastRunDate: nullInt64(nil),
-		CreatedAt:   now,
-		UpdatedAt:   now,
-		DeletedAt:   nullInt64(nil),
+		ID:              id,
+		Amount:          input.Amount,
+		Currency:        input.Currency,
+		CategoryID:      categoryID,
+		Description:     input.Description,
+		Merchant:        input.Merchant,
+		Frequency:       input.Frequency,
+		DayOfMonth:      nullInt64(input.DayOfMonth),
+		StartDate:       input.StartDate,
+		EndDate:         nullInt64(input.EndDate),
+		NextRunDate:     input.StartDate,
+		LastRunDate:     nullInt64(nil),
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		ClientUpdatedAt: now,
+		DeletedAt:       nullInt64(nil),
 	}); err != nil {
 		return nil, fmt.Errorf("creating recurring expense: %w", err)
 	}
@@ -190,15 +192,16 @@ func materializeRecurringExpense(ctx context.Context, q *dbsqlc.Queries, r Recur
 		}
 		expenseID, runID := recurringIDs(r.ID, next)
 		if err := q.InsertRecurringExpenseRunExpense(ctx, dbsqlc.InsertRecurringExpenseRunExpenseParams{
-			ID:          expenseID,
-			Amount:      r.Amount,
-			Currency:    r.Currency,
-			CategoryID:  r.CategoryID,
-			Description: r.Description,
-			Merchant:    r.Merchant,
-			Date:        next,
-			CreatedAt:   now,
-			UpdatedAt:   now,
+			ID:              expenseID,
+			Amount:          r.Amount,
+			Currency:        r.Currency,
+			CategoryID:      r.CategoryID,
+			Description:     r.Description,
+			Merchant:        r.Merchant,
+			Date:            next,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+			ClientUpdatedAt: now, // ADR 007: materializer is server-only; no client clock to honour.
 		}); err != nil {
 			return err
 		}
@@ -224,11 +227,12 @@ func materializeRecurringExpense(ctx context.Context, q *dbsqlc.Queries, r Recur
 		return err
 	}
 	return q.UpdateRecurringExpenseRunDates(ctx, dbsqlc.UpdateRecurringExpenseRunDatesParams{
-		LastRunDate:   nullInt64(last),
-		NextRunDate:   next,
-		UpdatedAt:     now,
-		ServerVersion: recurringVersion,
-		ID:            r.ID,
+		LastRunDate:     nullInt64(last),
+		NextRunDate:     next,
+		UpdatedAt:       now,
+		ClientUpdatedAt: now, // ADR 007: materializer is server-only; no client clock to honour.
+		ServerVersion:   recurringVersion,
+		ID:              r.ID,
 	})
 }
 
@@ -281,20 +285,21 @@ func startOfDay(t time.Time, location *time.Location) time.Time {
 
 func recurringExpenseFromRow(r dbsqlc.RecurringExpense) RecurringExpense {
 	return RecurringExpense{
-		ID:          r.ID,
-		Amount:      r.Amount,
-		Currency:    r.Currency,
-		CategoryID:  r.CategoryID,
-		Description: r.Description,
-		Merchant:    r.Merchant,
-		Frequency:   r.Frequency,
-		DayOfMonth:  toInt64Ptr(r.DayOfMonth),
-		StartDate:   r.StartDate,
-		EndDate:     toInt64Ptr(r.EndDate),
-		NextRunDate: r.NextRunDate,
-		LastRunDate: toInt64Ptr(r.LastRunDate),
-		CreatedAt:   r.CreatedAt,
-		UpdatedAt:   r.UpdatedAt,
-		DeletedAt:   toInt64Ptr(r.DeletedAt),
+		ID:              r.ID,
+		Amount:          r.Amount,
+		Currency:        r.Currency,
+		CategoryID:      r.CategoryID,
+		Description:     r.Description,
+		Merchant:        r.Merchant,
+		Frequency:       r.Frequency,
+		DayOfMonth:      toInt64Ptr(r.DayOfMonth),
+		StartDate:       r.StartDate,
+		EndDate:         toInt64Ptr(r.EndDate),
+		NextRunDate:     r.NextRunDate,
+		LastRunDate:     toInt64Ptr(r.LastRunDate),
+		CreatedAt:       r.CreatedAt,
+		UpdatedAt:       r.UpdatedAt,
+		ClientUpdatedAt: r.ClientUpdatedAt,
+		DeletedAt:       toInt64Ptr(r.DeletedAt),
 	}
 }

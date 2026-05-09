@@ -38,7 +38,7 @@ struct ExpenseRepository {
                 existingExpense.merchant = draft.merchant
                 existingExpense.description = draft.description
                 existingExpense.date = draft.date
-                existingExpense.updatedAt = now
+                existingExpense.clientUpdatedAt = now
                 existingExpense.syncStatus = RecordSyncStatus.pendingPush.rawValue
                 try existingExpense.update(db)
                 return
@@ -55,6 +55,7 @@ struct ExpenseRepository {
                 source: draft.source.rawValue,
                 createdAt: now,
                 updatedAt: now,
+                clientUpdatedAt: now,
                 deletedAt: nil
             )
             try expense.insert(db)
@@ -74,7 +75,7 @@ struct ExpenseRepository {
         try dbQueue.write { db in
             var expense = expense
             expense.deletedAt = deletedAt
-            expense.updatedAt = deletedAt
+            expense.clientUpdatedAt = deletedAt
             expense.syncStatus = RecordSyncStatus.pendingPush.rawValue
             try expense.update(db)
         }

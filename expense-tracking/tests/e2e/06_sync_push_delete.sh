@@ -9,7 +9,7 @@ start_test_server
 pull_response=$(api_curl "$EXPENSE_API/api/sync/pull?since=0")
 food_id=$(echo "$pull_response" | jq -r '.categories[] | select(.name == "Food & Dining") | .id')
 expense_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
-updated_at=$(date +%s)
+client_updated_at=$(date +%s)
 
 after_create=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
@@ -20,8 +20,8 @@ after_create=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
             \"currency\": \"SGD\",
             \"category_id\": \"$food_id\",
             \"merchant\": \"Delete Me\",
-            \"date\": $updated_at,
-            \"updated_at\": $updated_at
+            \"date\": $client_updated_at,
+            \"client_updated_at\": $client_updated_at
         }],
         \"categories\": []
     }")
@@ -29,7 +29,7 @@ after_create=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
 assert_json_contains "$after_create" '.expenses | length' "1"
 
 # Re-push the same record as deleted.
-delete_marker=$((updated_at + 1))
+delete_marker=$((client_updated_at + 1))
 after_delete=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
     -d "{
@@ -39,8 +39,8 @@ after_delete=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
             \"currency\": \"SGD\",
             \"category_id\": \"$food_id\",
             \"merchant\": \"Delete Me\",
-            \"date\": $updated_at,
-            \"updated_at\": $delete_marker,
+            \"date\": $client_updated_at,
+            \"client_updated_at\": $delete_marker,
             \"deleted_at\": $delete_marker
         }],
         \"categories\": []

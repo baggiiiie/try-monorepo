@@ -11,26 +11,27 @@ import (
 )
 
 const createRecurringExpense = `-- name: CreateRecurringExpense :exec
-INSERT INTO recurring_expenses (id, amount, currency, category_id, description, merchant, frequency, day_of_month, start_date, end_date, next_run_date, last_run_date, created_at, updated_at, deleted_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO recurring_expenses (id, amount, currency, category_id, description, merchant, frequency, day_of_month, start_date, end_date, next_run_date, last_run_date, created_at, updated_at, client_updated_at, deleted_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateRecurringExpenseParams struct {
-	ID          string        `json:"id"`
-	Amount      int64         `json:"amount"`
-	Currency    string        `json:"currency"`
-	CategoryID  string        `json:"category_id"`
-	Description string        `json:"description"`
-	Merchant    string        `json:"merchant"`
-	Frequency   string        `json:"frequency"`
-	DayOfMonth  sql.NullInt64 `json:"day_of_month"`
-	StartDate   int64         `json:"start_date"`
-	EndDate     sql.NullInt64 `json:"end_date"`
-	NextRunDate int64         `json:"next_run_date"`
-	LastRunDate sql.NullInt64 `json:"last_run_date"`
-	CreatedAt   int64         `json:"created_at"`
-	UpdatedAt   int64         `json:"updated_at"`
-	DeletedAt   sql.NullInt64 `json:"deleted_at"`
+	ID              string        `json:"id"`
+	Amount          int64         `json:"amount"`
+	Currency        string        `json:"currency"`
+	CategoryID      string        `json:"category_id"`
+	Description     string        `json:"description"`
+	Merchant        string        `json:"merchant"`
+	Frequency       string        `json:"frequency"`
+	DayOfMonth      sql.NullInt64 `json:"day_of_month"`
+	StartDate       int64         `json:"start_date"`
+	EndDate         sql.NullInt64 `json:"end_date"`
+	NextRunDate     int64         `json:"next_run_date"`
+	LastRunDate     sql.NullInt64 `json:"last_run_date"`
+	CreatedAt       int64         `json:"created_at"`
+	UpdatedAt       int64         `json:"updated_at"`
+	ClientUpdatedAt int64         `json:"client_updated_at"`
+	DeletedAt       sql.NullInt64 `json:"deleted_at"`
 }
 
 func (q *Queries) CreateRecurringExpense(ctx context.Context, arg CreateRecurringExpenseParams) error {
@@ -49,13 +50,14 @@ func (q *Queries) CreateRecurringExpense(ctx context.Context, arg CreateRecurrin
 		arg.LastRunDate,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.ClientUpdatedAt,
 		arg.DeletedAt,
 	)
 	return err
 }
 
 const getRecurringExpense = `-- name: GetRecurringExpense :one
-SELECT id, amount, currency, category_id, description, merchant, frequency, day_of_month, start_date, end_date, next_run_date, last_run_date, created_at, updated_at, deleted_at, server_version
+SELECT id, amount, currency, category_id, description, merchant, frequency, day_of_month, start_date, end_date, next_run_date, last_run_date, created_at, updated_at, deleted_at, server_version, client_updated_at
 FROM recurring_expenses
 WHERE id = ?
 `
@@ -80,6 +82,7 @@ func (q *Queries) GetRecurringExpense(ctx context.Context, id string) (Recurring
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ServerVersion,
+		&i.ClientUpdatedAt,
 	)
 	return i, err
 }
@@ -109,20 +112,21 @@ func (q *Queries) InsertRecurringExpenseRun(ctx context.Context, arg InsertRecur
 }
 
 const insertRecurringExpenseRunExpense = `-- name: InsertRecurringExpenseRunExpense :exec
-INSERT OR IGNORE INTO expenses (id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, 'recurring', ?, ?)
+INSERT OR IGNORE INTO expenses (id, amount, currency, category_id, description, merchant, date, source, created_at, updated_at, client_updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, 'recurring', ?, ?, ?)
 `
 
 type InsertRecurringExpenseRunExpenseParams struct {
-	ID          string `json:"id"`
-	Amount      int64  `json:"amount"`
-	Currency    string `json:"currency"`
-	CategoryID  string `json:"category_id"`
-	Description string `json:"description"`
-	Merchant    string `json:"merchant"`
-	Date        int64  `json:"date"`
-	CreatedAt   int64  `json:"created_at"`
-	UpdatedAt   int64  `json:"updated_at"`
+	ID              string `json:"id"`
+	Amount          int64  `json:"amount"`
+	Currency        string `json:"currency"`
+	CategoryID      string `json:"category_id"`
+	Description     string `json:"description"`
+	Merchant        string `json:"merchant"`
+	Date            int64  `json:"date"`
+	CreatedAt       int64  `json:"created_at"`
+	UpdatedAt       int64  `json:"updated_at"`
+	ClientUpdatedAt int64  `json:"client_updated_at"`
 }
 
 func (q *Queries) InsertRecurringExpenseRunExpense(ctx context.Context, arg InsertRecurringExpenseRunExpenseParams) error {
@@ -136,12 +140,13 @@ func (q *Queries) InsertRecurringExpenseRunExpense(ctx context.Context, arg Inse
 		arg.Date,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.ClientUpdatedAt,
 	)
 	return err
 }
 
 const listDueRecurringExpenses = `-- name: ListDueRecurringExpenses :many
-SELECT id, amount, currency, category_id, description, merchant, frequency, day_of_month, start_date, end_date, next_run_date, last_run_date, created_at, updated_at, deleted_at, server_version
+SELECT id, amount, currency, category_id, description, merchant, frequency, day_of_month, start_date, end_date, next_run_date, last_run_date, created_at, updated_at, deleted_at, server_version, client_updated_at
 FROM recurring_expenses
 WHERE deleted_at IS NULL AND next_run_date <= ? AND (end_date IS NULL OR end_date >= next_run_date)
 ORDER BY next_run_date
@@ -174,6 +179,7 @@ func (q *Queries) ListDueRecurringExpenses(ctx context.Context, nextRunDate int6
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.ServerVersion,
+			&i.ClientUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -189,7 +195,7 @@ func (q *Queries) ListDueRecurringExpenses(ctx context.Context, nextRunDate int6
 }
 
 const listRecurringExpensesSinceServerVersion = `-- name: ListRecurringExpensesSinceServerVersion :many
-SELECT id, amount, currency, category_id, description, merchant, frequency, day_of_month, start_date, end_date, next_run_date, last_run_date, created_at, updated_at, deleted_at, server_version
+SELECT id, amount, currency, category_id, description, merchant, frequency, day_of_month, start_date, end_date, next_run_date, last_run_date, created_at, updated_at, deleted_at, server_version, client_updated_at
 FROM recurring_expenses
 WHERE server_version > ?
 `
@@ -220,6 +226,7 @@ func (q *Queries) ListRecurringExpensesSinceServerVersion(ctx context.Context, s
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.ServerVersion,
+			&i.ClientUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -236,24 +243,26 @@ func (q *Queries) ListRecurringExpensesSinceServerVersion(ctx context.Context, s
 
 const softDeleteRecurringExpenseReturning = `-- name: SoftDeleteRecurringExpenseReturning :one
 UPDATE recurring_expenses
-SET deleted_at = ?, updated_at = ?, server_version = ?
+SET deleted_at = ?, updated_at = ?, client_updated_at = ?, server_version = ?
 WHERE id = ?
 RETURNING id, amount, currency, category_id, description, merchant, frequency,
           day_of_month, start_date, end_date, next_run_date, last_run_date,
-          created_at, updated_at, deleted_at, server_version
+          created_at, updated_at, deleted_at, server_version, client_updated_at
 `
 
 type SoftDeleteRecurringExpenseReturningParams struct {
-	DeletedAt     sql.NullInt64 `json:"deleted_at"`
-	UpdatedAt     int64         `json:"updated_at"`
-	ServerVersion int64         `json:"server_version"`
-	ID            string        `json:"id"`
+	DeletedAt       sql.NullInt64 `json:"deleted_at"`
+	UpdatedAt       int64         `json:"updated_at"`
+	ClientUpdatedAt int64         `json:"client_updated_at"`
+	ServerVersion   int64         `json:"server_version"`
+	ID              string        `json:"id"`
 }
 
 func (q *Queries) SoftDeleteRecurringExpenseReturning(ctx context.Context, arg SoftDeleteRecurringExpenseReturningParams) (RecurringExpense, error) {
 	row := q.db.QueryRowContext(ctx, softDeleteRecurringExpenseReturning,
 		arg.DeletedAt,
 		arg.UpdatedAt,
+		arg.ClientUpdatedAt,
 		arg.ServerVersion,
 		arg.ID,
 	)
@@ -275,31 +284,33 @@ func (q *Queries) SoftDeleteRecurringExpenseReturning(ctx context.Context, arg S
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ServerVersion,
+		&i.ClientUpdatedAt,
 	)
 	return i, err
 }
 
 const updateRecurringExpense = `-- name: UpdateRecurringExpense :exec
 UPDATE recurring_expenses
-SET amount = ?, currency = ?, category_id = ?, description = ?, merchant = ?, frequency = ?, day_of_month = ?, start_date = ?, end_date = ?, next_run_date = ?, last_run_date = ?, updated_at = ?, deleted_at = ?
+SET amount = ?, currency = ?, category_id = ?, description = ?, merchant = ?, frequency = ?, day_of_month = ?, start_date = ?, end_date = ?, next_run_date = ?, last_run_date = ?, updated_at = ?, client_updated_at = ?, deleted_at = ?
 WHERE id = ?
 `
 
 type UpdateRecurringExpenseParams struct {
-	Amount      int64         `json:"amount"`
-	Currency    string        `json:"currency"`
-	CategoryID  string        `json:"category_id"`
-	Description string        `json:"description"`
-	Merchant    string        `json:"merchant"`
-	Frequency   string        `json:"frequency"`
-	DayOfMonth  sql.NullInt64 `json:"day_of_month"`
-	StartDate   int64         `json:"start_date"`
-	EndDate     sql.NullInt64 `json:"end_date"`
-	NextRunDate int64         `json:"next_run_date"`
-	LastRunDate sql.NullInt64 `json:"last_run_date"`
-	UpdatedAt   int64         `json:"updated_at"`
-	DeletedAt   sql.NullInt64 `json:"deleted_at"`
-	ID          string        `json:"id"`
+	Amount          int64         `json:"amount"`
+	Currency        string        `json:"currency"`
+	CategoryID      string        `json:"category_id"`
+	Description     string        `json:"description"`
+	Merchant        string        `json:"merchant"`
+	Frequency       string        `json:"frequency"`
+	DayOfMonth      sql.NullInt64 `json:"day_of_month"`
+	StartDate       int64         `json:"start_date"`
+	EndDate         sql.NullInt64 `json:"end_date"`
+	NextRunDate     int64         `json:"next_run_date"`
+	LastRunDate     sql.NullInt64 `json:"last_run_date"`
+	UpdatedAt       int64         `json:"updated_at"`
+	ClientUpdatedAt int64         `json:"client_updated_at"`
+	DeletedAt       sql.NullInt64 `json:"deleted_at"`
+	ID              string        `json:"id"`
 }
 
 func (q *Queries) UpdateRecurringExpense(ctx context.Context, arg UpdateRecurringExpenseParams) error {
@@ -316,6 +327,7 @@ func (q *Queries) UpdateRecurringExpense(ctx context.Context, arg UpdateRecurrin
 		arg.NextRunDate,
 		arg.LastRunDate,
 		arg.UpdatedAt,
+		arg.ClientUpdatedAt,
 		arg.DeletedAt,
 		arg.ID,
 	)
@@ -326,28 +338,29 @@ const updateRecurringExpenseReturning = `-- name: UpdateRecurringExpenseReturnin
 UPDATE recurring_expenses
 SET amount = ?, currency = ?, category_id = ?, description = ?, merchant = ?,
     frequency = ?, day_of_month = ?, start_date = ?, end_date = ?,
-    next_run_date = ?, last_run_date = ?, updated_at = ?, server_version = ?
+    next_run_date = ?, last_run_date = ?, updated_at = ?, client_updated_at = ?, server_version = ?
 WHERE id = ?
 RETURNING id, amount, currency, category_id, description, merchant, frequency,
           day_of_month, start_date, end_date, next_run_date, last_run_date,
-          created_at, updated_at, deleted_at, server_version
+          created_at, updated_at, deleted_at, server_version, client_updated_at
 `
 
 type UpdateRecurringExpenseReturningParams struct {
-	Amount        int64         `json:"amount"`
-	Currency      string        `json:"currency"`
-	CategoryID    string        `json:"category_id"`
-	Description   string        `json:"description"`
-	Merchant      string        `json:"merchant"`
-	Frequency     string        `json:"frequency"`
-	DayOfMonth    sql.NullInt64 `json:"day_of_month"`
-	StartDate     int64         `json:"start_date"`
-	EndDate       sql.NullInt64 `json:"end_date"`
-	NextRunDate   int64         `json:"next_run_date"`
-	LastRunDate   sql.NullInt64 `json:"last_run_date"`
-	UpdatedAt     int64         `json:"updated_at"`
-	ServerVersion int64         `json:"server_version"`
-	ID            string        `json:"id"`
+	Amount          int64         `json:"amount"`
+	Currency        string        `json:"currency"`
+	CategoryID      string        `json:"category_id"`
+	Description     string        `json:"description"`
+	Merchant        string        `json:"merchant"`
+	Frequency       string        `json:"frequency"`
+	DayOfMonth      sql.NullInt64 `json:"day_of_month"`
+	StartDate       int64         `json:"start_date"`
+	EndDate         sql.NullInt64 `json:"end_date"`
+	NextRunDate     int64         `json:"next_run_date"`
+	LastRunDate     sql.NullInt64 `json:"last_run_date"`
+	UpdatedAt       int64         `json:"updated_at"`
+	ClientUpdatedAt int64         `json:"client_updated_at"`
+	ServerVersion   int64         `json:"server_version"`
+	ID              string        `json:"id"`
 }
 
 func (q *Queries) UpdateRecurringExpenseReturning(ctx context.Context, arg UpdateRecurringExpenseReturningParams) (RecurringExpense, error) {
@@ -364,6 +377,7 @@ func (q *Queries) UpdateRecurringExpenseReturning(ctx context.Context, arg Updat
 		arg.NextRunDate,
 		arg.LastRunDate,
 		arg.UpdatedAt,
+		arg.ClientUpdatedAt,
 		arg.ServerVersion,
 		arg.ID,
 	)
@@ -385,22 +399,24 @@ func (q *Queries) UpdateRecurringExpenseReturning(ctx context.Context, arg Updat
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ServerVersion,
+		&i.ClientUpdatedAt,
 	)
 	return i, err
 }
 
 const updateRecurringExpenseRunDates = `-- name: UpdateRecurringExpenseRunDates :exec
 UPDATE recurring_expenses
-SET last_run_date = ?, next_run_date = ?, updated_at = ?, server_version = ?
+SET last_run_date = ?, next_run_date = ?, updated_at = ?, client_updated_at = ?, server_version = ?
 WHERE id = ?
 `
 
 type UpdateRecurringExpenseRunDatesParams struct {
-	LastRunDate   sql.NullInt64 `json:"last_run_date"`
-	NextRunDate   int64         `json:"next_run_date"`
-	UpdatedAt     int64         `json:"updated_at"`
-	ServerVersion int64         `json:"server_version"`
-	ID            string        `json:"id"`
+	LastRunDate     sql.NullInt64 `json:"last_run_date"`
+	NextRunDate     int64         `json:"next_run_date"`
+	UpdatedAt       int64         `json:"updated_at"`
+	ClientUpdatedAt int64         `json:"client_updated_at"`
+	ServerVersion   int64         `json:"server_version"`
+	ID              string        `json:"id"`
 }
 
 func (q *Queries) UpdateRecurringExpenseRunDates(ctx context.Context, arg UpdateRecurringExpenseRunDatesParams) error {
@@ -408,6 +424,7 @@ func (q *Queries) UpdateRecurringExpenseRunDates(ctx context.Context, arg Update
 		arg.LastRunDate,
 		arg.NextRunDate,
 		arg.UpdatedAt,
+		arg.ClientUpdatedAt,
 		arg.ServerVersion,
 		arg.ID,
 	)

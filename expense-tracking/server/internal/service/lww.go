@@ -10,8 +10,13 @@ import (
 
 // LWWInput is satisfied by every PushX type. The reconciler reads only
 // the timestamps from the input; everything else is opaque to it.
+//
+// The conflict-resolution clock is `client_updated_at` (ADR 007), the
+// client's wall-clock at edit time. The server-side `updated_at` column
+// continues to exist as an audit "received at" stamp but is intentionally
+// not used here — comparing client vs. server clocks is apples-to-oranges.
 type LWWInput interface {
-	GetUpdatedAt() int64
+	GetClientUpdatedAt() int64
 	GetDeletedAt() *int64
 }
 
@@ -23,9 +28,10 @@ type LWWHooks[E any, I LWWInput] struct {
 	// Returning a sql.ErrNoRows wrapped error is also accepted.
 	Load func(ctx context.Context, q *dbsqlc.Queries, incoming I) (E, bool, error)
 
-	// ExistingUpdatedAt extracts the row's updated_at — sqlc rows are
-	// plain structs, so this is a one-line accessor per entity.
-	ExistingUpdatedAt func(existing E) int64
+	// ExistingClientUpdatedAt extracts the row's client_updated_at — sqlc
+	// rows are plain structs, so this is a one-line accessor per entity.
+	// This is the conflict-resolution clock per ADR 007.
+	ExistingClientUpdatedAt func(existing E) int64
 
 	// ExistingDeleted reports whether the row is soft-deleted.
 	ExistingDeleted func(existing E) bool
@@ -36,7 +42,7 @@ type LWWHooks[E any, I LWWInput] struct {
 	Normalize func(I) I
 
 	// EqualState reports whether existing and incoming are the same
-	// in everything except UpdatedAt. The deleted-state comparison
+	// in everything except ClientUpdatedAt. The deleted-state comparison
 	// is a boolean ("is-deleted-or-not"), not a timestamp comparison.
 	EqualState func(existing E, incoming I) bool
 
@@ -50,15 +56,17 @@ type LWWHooks[E any, I LWWInput] struct {
 	Update func(ctx context.Context, q *dbsqlc.Queries, existing E, incoming I, now int64) (E, error)
 
 	// SoftDelete marks existing as deleted. Only called when existing
-	// is not already soft-deleted.
-	SoftDelete func(ctx context.Context, q *dbsqlc.Queries, existing E, now int64) (E, error)
+	// is not already soft-deleted. Receives `incoming` so the adapter
+	// can persist the client's claimed client_updated_at on the
+	// resulting tombstone (ADR 007).
+	SoftDelete func(ctx context.Context, q *dbsqlc.Queries, existing E, incoming I, now int64) (E, error)
 }
 
 // ApplyLWW runs the LWWMerge rule (see server/CONTEXT.md):
 //
 //  1. No existing row -> Create.
-//  2. Apply iff incoming.UpdatedAt > existing.UpdatedAt, OR the
-//     timestamps are equal and EqualState is false.
+//  2. Apply iff incoming.ClientUpdatedAt > existing.ClientUpdatedAt, OR
+//     the timestamps are equal and EqualState is false.
 //  3. If incoming carries a deleted_at, SoftDelete (idempotent on
 //     already-deleted rows). Otherwise Update.
 //
@@ -88,8 +96,8 @@ func ApplyLWW[E any, I LWWInput](
 		return hooks.Create(ctx, q, incoming, now)
 	}
 
-	incomingTs := incoming.GetUpdatedAt()
-	existingTs := hooks.ExistingUpdatedAt(existing)
+	incomingTs := incoming.GetClientUpdatedAt()
+	existingTs := hooks.ExistingClientUpdatedAt(existing)
 
 	switch {
 	case incomingTs > existingTs:
@@ -104,7 +112,7 @@ func ApplyLWW[E any, I LWWInput](
 		if hooks.ExistingDeleted(existing) {
 			return existing, nil
 		}
-		return hooks.SoftDelete(ctx, q, existing, now)
+		return hooks.SoftDelete(ctx, q, existing, incoming, now)
 	}
 	return hooks.Update(ctx, q, existing, incoming, now)
 }

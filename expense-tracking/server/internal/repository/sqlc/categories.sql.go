@@ -22,19 +22,20 @@ func (q *Queries) CountActiveCategories(ctx context.Context) (int64, error) {
 }
 
 const createCategory = `-- name: CreateCategory :one
-INSERT INTO categories (id, name, icon, budget, created_at, updated_at, deleted_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, name, icon, budget, created_at, updated_at, deleted_at, server_version
+INSERT INTO categories (id, name, icon, budget, created_at, updated_at, client_updated_at, deleted_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, name, icon, budget, created_at, updated_at, deleted_at, server_version, client_updated_at
 `
 
 type CreateCategoryParams struct {
-	ID        string        `json:"id"`
-	Name      string        `json:"name"`
-	Icon      string        `json:"icon"`
-	Budget    sql.NullInt64 `json:"budget"`
-	CreatedAt int64         `json:"created_at"`
-	UpdatedAt int64         `json:"updated_at"`
-	DeletedAt sql.NullInt64 `json:"deleted_at"`
+	ID              string        `json:"id"`
+	Name            string        `json:"name"`
+	Icon            string        `json:"icon"`
+	Budget          sql.NullInt64 `json:"budget"`
+	CreatedAt       int64         `json:"created_at"`
+	UpdatedAt       int64         `json:"updated_at"`
+	ClientUpdatedAt int64         `json:"client_updated_at"`
+	DeletedAt       sql.NullInt64 `json:"deleted_at"`
 }
 
 func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error) {
@@ -45,6 +46,7 @@ func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) 
 		arg.Budget,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.ClientUpdatedAt,
 		arg.DeletedAt,
 	)
 	var i Category
@@ -57,12 +59,13 @@ func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) 
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ServerVersion,
+		&i.ClientUpdatedAt,
 	)
 	return i, err
 }
 
 const getCategoryByID = `-- name: GetCategoryByID :one
-SELECT id, name, icon, budget, created_at, updated_at, deleted_at, server_version FROM categories WHERE id = ? AND deleted_at IS NULL
+SELECT id, name, icon, budget, created_at, updated_at, deleted_at, server_version, client_updated_at FROM categories WHERE id = ? AND deleted_at IS NULL
 `
 
 func (q *Queries) GetCategoryByID(ctx context.Context, id string) (Category, error) {
@@ -77,12 +80,13 @@ func (q *Queries) GetCategoryByID(ctx context.Context, id string) (Category, err
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ServerVersion,
+		&i.ClientUpdatedAt,
 	)
 	return i, err
 }
 
 const getCategoryIncludingDeleted = `-- name: GetCategoryIncludingDeleted :one
-SELECT id, name, icon, budget, created_at, updated_at, deleted_at, server_version FROM categories WHERE id = ?
+SELECT id, name, icon, budget, created_at, updated_at, deleted_at, server_version, client_updated_at FROM categories WHERE id = ?
 `
 
 func (q *Queries) GetCategoryIncludingDeleted(ctx context.Context, id string) (Category, error) {
@@ -97,12 +101,13 @@ func (q *Queries) GetCategoryIncludingDeleted(ctx context.Context, id string) (C
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ServerVersion,
+		&i.ClientUpdatedAt,
 	)
 	return i, err
 }
 
 const listActiveCategoriesByName = `-- name: ListActiveCategoriesByName :many
-SELECT id, name, icon, budget, created_at, updated_at, deleted_at, server_version FROM categories WHERE name = ? AND deleted_at IS NULL ORDER BY created_at, id
+SELECT id, name, icon, budget, created_at, updated_at, deleted_at, server_version, client_updated_at FROM categories WHERE name = ? AND deleted_at IS NULL ORDER BY created_at, id
 `
 
 func (q *Queries) ListActiveCategoriesByName(ctx context.Context, name string) ([]Category, error) {
@@ -123,6 +128,7 @@ func (q *Queries) ListActiveCategoriesByName(ctx context.Context, name string) (
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.ServerVersion,
+			&i.ClientUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -138,7 +144,7 @@ func (q *Queries) ListActiveCategoriesByName(ctx context.Context, name string) (
 }
 
 const listCategories = `-- name: ListCategories :many
-SELECT id, name, icon, budget, created_at, updated_at, deleted_at, server_version FROM categories WHERE deleted_at IS NULL ORDER BY name
+SELECT id, name, icon, budget, created_at, updated_at, deleted_at, server_version, client_updated_at FROM categories WHERE deleted_at IS NULL ORDER BY name
 `
 
 func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
@@ -159,6 +165,7 @@ func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.ServerVersion,
+			&i.ClientUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -174,7 +181,7 @@ func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 }
 
 const listCategoriesSinceServerVersion = `-- name: ListCategoriesSinceServerVersion :many
-SELECT id, name, icon, budget, created_at, updated_at, deleted_at, server_version FROM categories WHERE server_version > ?
+SELECT id, name, icon, budget, created_at, updated_at, deleted_at, server_version, client_updated_at FROM categories WHERE server_version > ?
 `
 
 func (q *Queries) ListCategoriesSinceServerVersion(ctx context.Context, serverVersion int64) ([]Category, error) {
@@ -195,6 +202,7 @@ func (q *Queries) ListCategoriesSinceServerVersion(ctx context.Context, serverVe
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.ServerVersion,
+			&i.ClientUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -210,36 +218,44 @@ func (q *Queries) ListCategoriesSinceServerVersion(ctx context.Context, serverVe
 }
 
 const softDeleteCategory = `-- name: SoftDeleteCategory :exec
-UPDATE categories SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL
+UPDATE categories SET deleted_at = ?, updated_at = ?, client_updated_at = ? WHERE id = ? AND deleted_at IS NULL
 `
 
 type SoftDeleteCategoryParams struct {
-	DeletedAt sql.NullInt64 `json:"deleted_at"`
-	UpdatedAt int64         `json:"updated_at"`
-	ID        string        `json:"id"`
+	DeletedAt       sql.NullInt64 `json:"deleted_at"`
+	UpdatedAt       int64         `json:"updated_at"`
+	ClientUpdatedAt int64         `json:"client_updated_at"`
+	ID              string        `json:"id"`
 }
 
 func (q *Queries) SoftDeleteCategory(ctx context.Context, arg SoftDeleteCategoryParams) error {
-	_, err := q.db.ExecContext(ctx, softDeleteCategory, arg.DeletedAt, arg.UpdatedAt, arg.ID)
+	_, err := q.db.ExecContext(ctx, softDeleteCategory,
+		arg.DeletedAt,
+		arg.UpdatedAt,
+		arg.ClientUpdatedAt,
+		arg.ID,
+	)
 	return err
 }
 
 const softDeleteCategoryReturning = `-- name: SoftDeleteCategoryReturning :one
-UPDATE categories SET deleted_at = ?, updated_at = ?, server_version = ? WHERE id = ?
-RETURNING id, name, icon, budget, created_at, updated_at, deleted_at, server_version
+UPDATE categories SET deleted_at = ?, updated_at = ?, client_updated_at = ?, server_version = ? WHERE id = ?
+RETURNING id, name, icon, budget, created_at, updated_at, deleted_at, server_version, client_updated_at
 `
 
 type SoftDeleteCategoryReturningParams struct {
-	DeletedAt     sql.NullInt64 `json:"deleted_at"`
-	UpdatedAt     int64         `json:"updated_at"`
-	ServerVersion int64         `json:"server_version"`
-	ID            string        `json:"id"`
+	DeletedAt       sql.NullInt64 `json:"deleted_at"`
+	UpdatedAt       int64         `json:"updated_at"`
+	ClientUpdatedAt int64         `json:"client_updated_at"`
+	ServerVersion   int64         `json:"server_version"`
+	ID              string        `json:"id"`
 }
 
 func (q *Queries) SoftDeleteCategoryReturning(ctx context.Context, arg SoftDeleteCategoryReturningParams) (Category, error) {
 	row := q.db.QueryRowContext(ctx, softDeleteCategoryReturning,
 		arg.DeletedAt,
 		arg.UpdatedAt,
+		arg.ClientUpdatedAt,
 		arg.ServerVersion,
 		arg.ID,
 	)
@@ -253,20 +269,22 @@ func (q *Queries) SoftDeleteCategoryReturning(ctx context.Context, arg SoftDelet
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ServerVersion,
+		&i.ClientUpdatedAt,
 	)
 	return i, err
 }
 
 const updateCategory = `-- name: UpdateCategory :exec
-UPDATE categories SET name = ?, icon = ?, budget = ?, updated_at = ? WHERE id = ?
+UPDATE categories SET name = ?, icon = ?, budget = ?, updated_at = ?, client_updated_at = ? WHERE id = ?
 `
 
 type UpdateCategoryParams struct {
-	Name      string        `json:"name"`
-	Icon      string        `json:"icon"`
-	Budget    sql.NullInt64 `json:"budget"`
-	UpdatedAt int64         `json:"updated_at"`
-	ID        string        `json:"id"`
+	Name            string        `json:"name"`
+	Icon            string        `json:"icon"`
+	Budget          sql.NullInt64 `json:"budget"`
+	UpdatedAt       int64         `json:"updated_at"`
+	ClientUpdatedAt int64         `json:"client_updated_at"`
+	ID              string        `json:"id"`
 }
 
 func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) error {
@@ -275,23 +293,25 @@ func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) 
 		arg.Icon,
 		arg.Budget,
 		arg.UpdatedAt,
+		arg.ClientUpdatedAt,
 		arg.ID,
 	)
 	return err
 }
 
 const updateCategoryReturning = `-- name: UpdateCategoryReturning :one
-UPDATE categories SET name = ?, icon = ?, budget = ?, updated_at = ?, server_version = ? WHERE id = ?
-RETURNING id, name, icon, budget, created_at, updated_at, deleted_at, server_version
+UPDATE categories SET name = ?, icon = ?, budget = ?, updated_at = ?, client_updated_at = ?, server_version = ? WHERE id = ?
+RETURNING id, name, icon, budget, created_at, updated_at, deleted_at, server_version, client_updated_at
 `
 
 type UpdateCategoryReturningParams struct {
-	Name          string        `json:"name"`
-	Icon          string        `json:"icon"`
-	Budget        sql.NullInt64 `json:"budget"`
-	UpdatedAt     int64         `json:"updated_at"`
-	ServerVersion int64         `json:"server_version"`
-	ID            string        `json:"id"`
+	Name            string        `json:"name"`
+	Icon            string        `json:"icon"`
+	Budget          sql.NullInt64 `json:"budget"`
+	UpdatedAt       int64         `json:"updated_at"`
+	ClientUpdatedAt int64         `json:"client_updated_at"`
+	ServerVersion   int64         `json:"server_version"`
+	ID              string        `json:"id"`
 }
 
 func (q *Queries) UpdateCategoryReturning(ctx context.Context, arg UpdateCategoryReturningParams) (Category, error) {
@@ -300,6 +320,7 @@ func (q *Queries) UpdateCategoryReturning(ctx context.Context, arg UpdateCategor
 		arg.Icon,
 		arg.Budget,
 		arg.UpdatedAt,
+		arg.ClientUpdatedAt,
 		arg.ServerVersion,
 		arg.ID,
 	)
@@ -313,6 +334,7 @@ func (q *Queries) UpdateCategoryReturning(ctx context.Context, arg UpdateCategor
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ServerVersion,
+		&i.ClientUpdatedAt,
 	)
 	return i, err
 }

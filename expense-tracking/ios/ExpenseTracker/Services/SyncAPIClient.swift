@@ -251,7 +251,7 @@ struct PushExpense: Codable {
     let merchant: String
     let date: Int64
     let source: String
-    let updatedAt: Int64
+    let clientUpdatedAt: Int64
     let deletedAt: Int64?
 }
 
@@ -260,7 +260,7 @@ struct PushCategory: Codable {
     let name: String
     let icon: String
     let budget: Int64?
-    let updatedAt: Int64
+    let clientUpdatedAt: Int64
     let deletedAt: Int64?
 }
 
@@ -277,7 +277,7 @@ struct PushRecurringExpense: Codable {
     let endDate: Int64?
     let nextRunDate: Int64
     let lastRunDate: Int64?
-    let updatedAt: Int64
+    let clientUpdatedAt: Int64
     let deletedAt: Int64?
 }
 
@@ -306,6 +306,7 @@ struct PullExpense: Codable {
     let source: String
     let createdAt: Int64
     let updatedAt: Int64
+    let clientUpdatedAt: Int64
     let deletedAt: Int64?
 }
 
@@ -316,6 +317,7 @@ struct PullCategory: Codable {
     let budget: Int64?
     let createdAt: Int64
     let updatedAt: Int64
+    let clientUpdatedAt: Int64
     let deletedAt: Int64?
 }
 
@@ -334,6 +336,7 @@ struct PullRecurringExpense: Codable {
     let lastRunDate: Int64?
     let createdAt: Int64
     let updatedAt: Int64
+    let clientUpdatedAt: Int64
     let deletedAt: Int64?
 }
 
@@ -348,7 +351,7 @@ extension PushExpense {
             merchant: expense.merchant,
             date: expense.date,
             source: expense.source,
-            updatedAt: expense.updatedAt,
+            clientUpdatedAt: expense.clientUpdatedAt,
             deletedAt: expense.deletedAt
         )
     }
@@ -361,7 +364,7 @@ extension PushCategory {
             name: category.name,
             icon: category.icon,
             budget: category.budget,
-            updatedAt: category.updatedAt,
+            clientUpdatedAt: category.clientUpdatedAt,
             deletedAt: category.deletedAt
         )
     }
@@ -382,7 +385,7 @@ extension PushRecurringExpense {
             endDate: recurringExpense.endDate,
             nextRunDate: recurringExpense.nextRunDate,
             lastRunDate: recurringExpense.lastRunDate,
-            updatedAt: recurringExpense.updatedAt,
+            clientUpdatedAt: recurringExpense.clientUpdatedAt,
             deletedAt: recurringExpense.deletedAt
         )
     }

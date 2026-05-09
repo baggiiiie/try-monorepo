@@ -1,6 +1,6 @@
 -- name: CreateCategory :one
-INSERT INTO categories (id, name, icon, budget, created_at, updated_at, deleted_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO categories (id, name, icon, budget, created_at, updated_at, client_updated_at, deleted_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetCategoryByID :one
@@ -16,17 +16,17 @@ SELECT * FROM categories WHERE name = ? AND deleted_at IS NULL ORDER BY created_
 SELECT * FROM categories WHERE deleted_at IS NULL ORDER BY name;
 
 -- name: UpdateCategory :exec
-UPDATE categories SET name = ?, icon = ?, budget = ?, updated_at = ? WHERE id = ?;
+UPDATE categories SET name = ?, icon = ?, budget = ?, updated_at = ?, client_updated_at = ? WHERE id = ?;
 
 -- name: UpdateCategoryReturning :one
-UPDATE categories SET name = ?, icon = ?, budget = ?, updated_at = ?, server_version = ? WHERE id = ?
+UPDATE categories SET name = ?, icon = ?, budget = ?, updated_at = ?, client_updated_at = ?, server_version = ? WHERE id = ?
 RETURNING *;
 
 -- name: SoftDeleteCategory :exec
-UPDATE categories SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL;
+UPDATE categories SET deleted_at = ?, updated_at = ?, client_updated_at = ? WHERE id = ? AND deleted_at IS NULL;
 
 -- name: SoftDeleteCategoryReturning :one
-UPDATE categories SET deleted_at = ?, updated_at = ?, server_version = ? WHERE id = ?
+UPDATE categories SET deleted_at = ?, updated_at = ?, client_updated_at = ?, server_version = ? WHERE id = ?
 RETURNING *;
 
 -- name: CountActiveCategories :one

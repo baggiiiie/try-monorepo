@@ -36,18 +36,19 @@ type ExpenseInput struct {
 }
 
 type Expense struct {
-	ID          string `json:"id"`
-	Amount      int64  `json:"amount"`
-	Currency    string `json:"currency"`
-	CategoryID  string `json:"category_id"`
-	Category    string `json:"category"`
-	Description string `json:"description"`
-	Merchant    string `json:"merchant"`
-	Date        int64  `json:"date"`
-	Source      string `json:"source"`
-	CreatedAt   int64  `json:"created_at"`
-	UpdatedAt   int64  `json:"updated_at"`
-	DeletedAt   *int64 `json:"deleted_at,omitempty"`
+	ID              string `json:"id"`
+	Amount          int64  `json:"amount"`
+	Currency        string `json:"currency"`
+	CategoryID      string `json:"category_id"`
+	Category        string `json:"category"`
+	Description     string `json:"description"`
+	Merchant        string `json:"merchant"`
+	Date            int64  `json:"date"`
+	Source          string `json:"source"`
+	CreatedAt       int64  `json:"created_at"`
+	UpdatedAt       int64  `json:"updated_at"`
+	ClientUpdatedAt int64  `json:"client_updated_at"`
+	DeletedAt       *int64 `json:"deleted_at,omitempty"`
 }
 
 func (s *ExpenseService) Create(ctx context.Context, input ExpenseInput) (*Expense, error) {
@@ -91,16 +92,17 @@ func (s *ExpenseService) CreateWithQueries(ctx context.Context, q *dbsqlc.Querie
 	now := time.Now().Unix()
 	id := uuid.New().String()
 	row, err := q.CreateExpense(ctx, dbsqlc.CreateExpenseParams{
-		ID:          id,
-		Amount:      input.Amount,
-		Currency:    currency,
-		CategoryID:  categoryID,
-		Description: input.Description,
-		Merchant:    input.Merchant,
-		Date:        date,
-		Source:      "cli",
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:              id,
+		Amount:          input.Amount,
+		Currency:        currency,
+		CategoryID:      categoryID,
+		Description:     input.Description,
+		Merchant:        input.Merchant,
+		Date:            date,
+		Source:          "cli",
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		ClientUpdatedAt: now,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating expense: %w", err)
@@ -182,14 +184,15 @@ func (s *ExpenseService) Update(ctx context.Context, id string, input ExpenseInp
 
 	now := time.Now().Unix()
 	err = s.queries.UpdateExpense(ctx, dbsqlc.UpdateExpenseParams{
-		Amount:      amount,
-		Currency:    currency,
-		CategoryID:  categoryID,
-		Description: description,
-		Merchant:    merchant,
-		Date:        date,
-		UpdatedAt:   now,
-		ID:          id,
+		Amount:          amount,
+		Currency:        currency,
+		CategoryID:      categoryID,
+		Description:     description,
+		Merchant:        merchant,
+		Date:            date,
+		UpdatedAt:       now,
+		ClientUpdatedAt: now,
+		ID:              id,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("updating expense: %w", err)
@@ -201,44 +204,47 @@ func (s *ExpenseService) Update(ctx context.Context, id string, input ExpenseInp
 func (s *ExpenseService) Delete(ctx context.Context, id string) error {
 	now := time.Now().Unix()
 	return s.queries.SoftDeleteExpense(ctx, dbsqlc.SoftDeleteExpenseParams{
-		DeletedAt: sql.NullInt64{Int64: now, Valid: true},
-		UpdatedAt: now,
-		ID:        id,
+		DeletedAt:       sql.NullInt64{Int64: now, Valid: true},
+		UpdatedAt:       now,
+		ClientUpdatedAt: now,
+		ID:              id,
 	})
 }
 
 func expenseFromRow(r dbsqlc.Expense, categoryName string) Expense {
 	exp := Expense{
-		ID:          r.ID,
-		Amount:      r.Amount,
-		Currency:    r.Currency,
-		CategoryID:  r.CategoryID,
-		Category:    categoryName,
-		Description: r.Description,
-		Merchant:    r.Merchant,
-		Date:        r.Date,
-		Source:      r.Source,
-		CreatedAt:   r.CreatedAt,
-		UpdatedAt:   r.UpdatedAt,
-		DeletedAt:   toInt64Ptr(r.DeletedAt),
+		ID:              r.ID,
+		Amount:          r.Amount,
+		Currency:        r.Currency,
+		CategoryID:      r.CategoryID,
+		Category:        categoryName,
+		Description:     r.Description,
+		Merchant:        r.Merchant,
+		Date:            r.Date,
+		Source:          r.Source,
+		CreatedAt:       r.CreatedAt,
+		UpdatedAt:       r.UpdatedAt,
+		ClientUpdatedAt: r.ClientUpdatedAt,
+		DeletedAt:       toInt64Ptr(r.DeletedAt),
 	}
 	return exp
 }
 
 func expenseFromListRow(r dbsqlc.ListExpensesRow) Expense {
 	exp := Expense{
-		ID:          r.ID,
-		Amount:      r.Amount,
-		Currency:    r.Currency,
-		CategoryID:  r.CategoryID,
-		Category:    r.CategoryName.String,
-		Description: r.Description,
-		Merchant:    r.Merchant,
-		Date:        r.Date,
-		Source:      r.Source,
-		CreatedAt:   r.CreatedAt,
-		UpdatedAt:   r.UpdatedAt,
-		DeletedAt:   toInt64Ptr(r.DeletedAt),
+		ID:              r.ID,
+		Amount:          r.Amount,
+		Currency:        r.Currency,
+		CategoryID:      r.CategoryID,
+		Category:        r.CategoryName.String,
+		Description:     r.Description,
+		Merchant:        r.Merchant,
+		Date:            r.Date,
+		Source:          r.Source,
+		CreatedAt:       r.CreatedAt,
+		UpdatedAt:       r.UpdatedAt,
+		ClientUpdatedAt: r.ClientUpdatedAt,
+		DeletedAt:       toInt64Ptr(r.DeletedAt),
 	}
 	return exp
 }

@@ -99,18 +99,22 @@ struct AppDatabase {
 
         migrator.registerMigration("v4-normalize-icons") { db in
             let now = Int64(Date().timeIntervalSince1970)
-            let categories = try Category
-                .filter(Category.Columns.deletedAt == nil)
-                .fetchAll(db)
+            let categories = try Row.fetchAll(
+                db,
+                sql: "SELECT id, name, icon FROM categories WHERE deleted_at IS NULL"
+            )
 
-            for var category in categories {
-                let resolvedIcon = Category.resolvedIcon(name: category.name, icon: category.icon)
-                guard resolvedIcon != category.icon, !resolvedIcon.isEmpty else { continue }
+            for category in categories {
+                let id: String = category["id"]
+                let name: String = category["name"]
+                let icon: String = category["icon"]
+                let resolvedIcon = Category.resolvedIcon(name: name, icon: icon)
+                guard resolvedIcon != icon, !resolvedIcon.isEmpty else { continue }
 
-                category.icon = resolvedIcon
-                category.updatedAt = now
-                category.syncStatus = RecordSyncStatus.pendingPush.rawValue
-                try category.update(db)
+                try db.execute(
+                    sql: "UPDATE categories SET icon = ?, updated_at = ?, sync_status = ? WHERE id = ?",
+                    arguments: [resolvedIcon, now, RecordSyncStatus.pendingPush.rawValue, id]
+                )
             }
         }
 
@@ -383,6 +387,26 @@ struct AppDatabase {
             }
         }
 
+        migrator.registerMigration("v12-client-updated-at") { db in
+            try db.alter(table: "categories") { t in
+                t.add(column: "client_updated_at", .integer).notNull().defaults(to: 0)
+            }
+            try db.alter(table: "expenses") { t in
+                t.add(column: "client_updated_at", .integer).notNull().defaults(to: 0)
+            }
+            try db.alter(table: "recurring_expenses") { t in
+                t.add(column: "client_updated_at", .integer).notNull().defaults(to: 0)
+            }
+
+            try db.execute(sql: "UPDATE categories SET client_updated_at = updated_at")
+            try db.execute(sql: "UPDATE expenses SET client_updated_at = updated_at")
+            try db.execute(sql: "UPDATE recurring_expenses SET client_updated_at = updated_at")
+
+            try db.create(index: "idx_categories_client_updated_at", on: "categories", columns: ["client_updated_at"])
+            try db.create(index: "idx_expenses_client_updated_at", on: "expenses", columns: ["client_updated_at"])
+            try db.create(index: "idx_recurring_expenses_client_updated_at", on: "recurring_expenses", columns: ["client_updated_at"])
+        }
+
         return migrator
     }
 
@@ -401,6 +425,7 @@ struct AppDatabase {
                     budget: nil,
                     createdAt: now,
                     updatedAt: now,
+                    clientUpdatedAt: now,
                     deletedAt: nil,
                     syncStatus: RecordSyncStatus.pendingPush.rawValue
                 )

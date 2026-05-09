@@ -55,21 +55,23 @@ func mustGetCategory(t *testing.T, q *dbsqlc.Queries, id string) dbsqlc.Category
 func seedCategory(t *testing.T, q *dbsqlc.Queries, id, name, icon string, budget *int64, updatedAt int64, deletedAt *int64) {
 	t.Helper()
 	_, err := q.CreateCategory(context.Background(), dbsqlc.CreateCategoryParams{
-		ID:        id,
-		Name:      name,
-		Icon:      icon,
-		Budget:    nullInt64(budget),
-		CreatedAt: updatedAt,
-		UpdatedAt: updatedAt,
+		ID:              id,
+		Name:            name,
+		Icon:            icon,
+		Budget:          nullInt64(budget),
+		CreatedAt:       updatedAt,
+		UpdatedAt:       updatedAt,
+		ClientUpdatedAt: updatedAt,
 	})
 	if err != nil {
 		t.Fatalf("seed category: %v", err)
 	}
 	if deletedAt != nil {
 		_, err := q.SoftDeleteCategoryReturning(context.Background(), dbsqlc.SoftDeleteCategoryReturningParams{
-			DeletedAt: sql.NullInt64{Int64: *deletedAt, Valid: true},
-			UpdatedAt: updatedAt,
-			ID:        id,
+			DeletedAt:       sql.NullInt64{Int64: *deletedAt, Valid: true},
+			UpdatedAt:       updatedAt,
+			ClientUpdatedAt: updatedAt,
+			ID:              id,
 		})
 		if err != nil {
 			t.Fatalf("seed soft-delete: %v", err)
@@ -94,7 +96,7 @@ func TestPushCategory_LWW(t *testing.T) {
 			name: "create new",
 			input: PushCategory{
 				ID: "c1", Name: "Food", Icon: "🍕", Budget: ptr.To[int64](500),
-				UpdatedAt: 100,
+				ClientUpdatedAt: 100,
 			},
 			wantName: "Food", wantIcon: "🍕", wantBudget: ptr.To[int64](500),
 			wantDeleted: false, wantUpdatedAt: now,
@@ -103,7 +105,7 @@ func TestPushCategory_LWW(t *testing.T) {
 			name: "create soft-deleted",
 			input: PushCategory{
 				ID: "c1", Name: "Food", Icon: "🍕",
-				UpdatedAt: 100, DeletedAt: ptr.To[int64](150),
+				ClientUpdatedAt: 100, DeletedAt: ptr.To[int64](150),
 			},
 			wantName: "Food", wantIcon: "🍕", wantDeleted: true, wantUpdatedAt: now,
 		},
@@ -114,7 +116,7 @@ func TestPushCategory_LWW(t *testing.T) {
 			},
 			input: PushCategory{
 				ID: "c1", Name: "Groceries", Icon: "🛒", Budget: ptr.To[int64](800),
-				UpdatedAt: 200,
+				ClientUpdatedAt: 200,
 			},
 			wantName: "Groceries", wantIcon: "🛒", wantBudget: ptr.To[int64](800),
 			wantDeleted: false, wantUpdatedAt: now,
@@ -126,7 +128,7 @@ func TestPushCategory_LWW(t *testing.T) {
 			},
 			input: PushCategory{
 				ID: "c1", Name: "Food", Icon: "🍕",
-				UpdatedAt: 200, DeletedAt: ptr.To[int64](150),
+				ClientUpdatedAt: 200, DeletedAt: ptr.To[int64](150),
 			},
 			wantName: "Food", wantDeleted: true, wantUpdatedAt: now,
 		},
@@ -137,7 +139,7 @@ func TestPushCategory_LWW(t *testing.T) {
 			},
 			input: PushCategory{
 				ID: "c1", Name: "Food", Icon: "🍕",
-				UpdatedAt: 200, DeletedAt: ptr.To[int64](150),
+				ClientUpdatedAt: 200, DeletedAt: ptr.To[int64](150),
 			},
 			wantName: "Food", wantDeleted: true, wantUpdatedAt: 100, // existing untouched
 		},
@@ -148,7 +150,7 @@ func TestPushCategory_LWW(t *testing.T) {
 			},
 			input: PushCategory{
 				ID: "c1", Name: "Food", Icon: "🍕", Budget: ptr.To[int64](500),
-				UpdatedAt: 100,
+				ClientUpdatedAt: 100,
 			},
 			wantName: "Groceries", wantIcon: "🛒", wantBudget: ptr.To[int64](800),
 			wantUpdatedAt: 200, // existing untouched
@@ -160,7 +162,7 @@ func TestPushCategory_LWW(t *testing.T) {
 			},
 			input: PushCategory{
 				ID: "c1", Name: "Food", Icon: "🍕", Budget: ptr.To[int64](500),
-				UpdatedAt: 200,
+				ClientUpdatedAt: 200,
 			},
 			wantName: "Food", wantIcon: "🍕", wantBudget: ptr.To[int64](500),
 			wantUpdatedAt: 200, // unchanged
@@ -172,7 +174,7 @@ func TestPushCategory_LWW(t *testing.T) {
 			},
 			input: PushCategory{
 				ID: "c1", Name: "Food", Icon: "🍕", Budget: ptr.To[int64](800),
-				UpdatedAt: 200,
+				ClientUpdatedAt: 200,
 			},
 			wantName: "Food", wantIcon: "🍕", wantBudget: ptr.To[int64](800),
 			wantUpdatedAt: now, // tie-break applied
@@ -225,7 +227,7 @@ func TestPushCategory_DuplicateNameKeepsBothRows(t *testing.T) {
 
 	cat, err := s.pushCategory(ctx, s.queries, PushCategory{
 		ID: "client1", Name: "Food", Icon: "🍔", Budget: ptr.To[int64](700),
-		UpdatedAt: 200,
+		ClientUpdatedAt: 200,
 	}, now)
 	if err != nil {
 		t.Fatalf("pushCategory: %v", err)
@@ -277,7 +279,7 @@ func TestPushExpense_LWW(t *testing.T) {
 
 		exp, err := s.pushExpense(context.Background(), s.queries, PushExpense{
 			ID: "e1", Amount: 1000, Currency: "USD", CategoryID: "cat1",
-			Date: 200, UpdatedAt: 100,
+			Date: 200, ClientUpdatedAt: 100,
 			// Source intentionally empty — Normalize hook should set it.
 		}, now)
 		if err != nil {
@@ -294,7 +296,7 @@ func TestPushExpense_LWW(t *testing.T) {
 		seedCategoryForFK(t, s.queries, "cat1")
 		_, err := s.queries.CreateExpense(context.Background(), dbsqlc.CreateExpenseParams{
 			ID: "e1", Amount: 1000, Currency: "USD", CategoryID: "cat1",
-			Date: 200, Source: "manual", CreatedAt: 100, UpdatedAt: 100,
+			Date: 200, Source: "manual", CreatedAt: 100, UpdatedAt: 100, ClientUpdatedAt: 100,
 		})
 		if err != nil {
 			t.Fatalf("seed: %v", err)
@@ -302,7 +304,7 @@ func TestPushExpense_LWW(t *testing.T) {
 
 		exp, err := s.pushExpense(context.Background(), s.queries, PushExpense{
 			ID: "e1", Amount: 1000, Currency: "USD", CategoryID: "cat1",
-			Date: 200, UpdatedAt: 100, // equal ts; blank source
+			Date: 200, ClientUpdatedAt: 100, // equal ts; blank source
 		}, now)
 		if err != nil {
 			t.Fatalf("pushExpense: %v", err)
@@ -319,7 +321,7 @@ func TestPushExpense_LWW(t *testing.T) {
 
 		exp, err := s.pushExpense(context.Background(), s.queries, PushExpense{
 			ID: "e1", Amount: 1000, Currency: "USD", CategoryID: "cat1",
-			Date: 200, UpdatedAt: 100, DeletedAt: ptr.To[int64](150),
+			Date: 200, ClientUpdatedAt: 100, DeletedAt: ptr.To[int64](150),
 		}, now)
 		if err != nil {
 			t.Fatalf("pushExpense: %v", err)
@@ -343,7 +345,7 @@ func TestPushRecurringExpense_LWW(t *testing.T) {
 		if err := s.queries.CreateRecurringExpense(context.Background(), dbsqlc.CreateRecurringExpenseParams{
 			ID: "r1", Amount: 5000, Currency: "USD", CategoryID: "cat1",
 			Frequency: "monthly", StartDate: 100, NextRunDate: 100,
-			CreatedAt: 100, UpdatedAt: 200,
+			CreatedAt: 100, UpdatedAt: 200, ClientUpdatedAt: 200,
 			DeletedAt: sql.NullInt64{Int64: 180, Valid: true},
 		}); err != nil {
 			t.Fatalf("seed: %v", err)
@@ -355,7 +357,7 @@ func TestPushRecurringExpense_LWW(t *testing.T) {
 		_, err := s.pushRecurringExpense(context.Background(), s.queries, PushRecurringExpense{
 			ID: "r1", Amount: 5000, Currency: "USD", CategoryID: "cat1",
 			Frequency: "monthly", StartDate: 100, NextRunDate: 100,
-			UpdatedAt: 200, DeletedAt: ptr.To[int64](999), // different timestamp
+			ClientUpdatedAt: 200, DeletedAt: ptr.To[int64](999), // different timestamp
 		}, now)
 		if err != nil {
 			t.Fatalf("pushRecurringExpense: %v", err)
@@ -376,7 +378,7 @@ func TestPushRecurringExpense_LWW(t *testing.T) {
 		if err := s.queries.CreateRecurringExpense(context.Background(), dbsqlc.CreateRecurringExpenseParams{
 			ID: "r1", Amount: 5000, Currency: "USD", CategoryID: "cat1",
 			Frequency: "monthly", StartDate: 100, NextRunDate: 100,
-			CreatedAt: 100, UpdatedAt: 100,
+			CreatedAt: 100, UpdatedAt: 100, ClientUpdatedAt: 100,
 		}); err != nil {
 			t.Fatalf("seed: %v", err)
 		}
@@ -384,7 +386,7 @@ func TestPushRecurringExpense_LWW(t *testing.T) {
 		r, err := s.pushRecurringExpense(context.Background(), s.queries, PushRecurringExpense{
 			ID: "r1", Amount: 9999, Currency: "USD", CategoryID: "cat1",
 			Frequency: "monthly", StartDate: 100, NextRunDate: 100,
-			UpdatedAt: 200,
+			ClientUpdatedAt: 200,
 		}, now)
 		if err != nil {
 			t.Fatalf("pushRecurringExpense: %v", err)

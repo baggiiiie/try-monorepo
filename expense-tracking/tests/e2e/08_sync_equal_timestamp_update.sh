@@ -1,5 +1,5 @@
 #!/bin/bash
-# E2E: If two pushes have the same updated_at, changed data should still be applied.
+# E2E: If two pushes have the same client_updated_at, changed data should still be applied.
 set -euo pipefail
 source "$(dirname "$0")/../helpers.sh"
 
@@ -9,7 +9,7 @@ start_test_server
 pull_response=$(api_curl "$EXPENSE_API/api/sync/pull?since=0")
 food_id=$(echo "$pull_response" | jq -r '.categories[] | select(.name == "Food & Dining") | .id')
 expense_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
-updated_at=$(date +%s)
+client_updated_at=$(date +%s)
 
 first_push=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
@@ -20,13 +20,13 @@ first_push=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
             \"currency\": \"SGD\",
             \"category_id\": \"$food_id\",
             \"merchant\": \"Old Merchant\",
-            \"date\": $updated_at,
-            \"updated_at\": $updated_at
+            \"date\": $client_updated_at,
+            \"client_updated_at\": $client_updated_at
         }],
         \"categories\": []
     }")
 
-same_timestamp=$(echo "$first_push" | jq -r '.expenses[0].updated_at')
+same_timestamp=$client_updated_at
 
 second_push=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
     -H "Content-Type: application/json" \
@@ -37,8 +37,8 @@ second_push=$(api_curl -X POST "$EXPENSE_API/api/sync/push" \
             \"currency\": \"SGD\",
             \"category_id\": \"$food_id\",
             \"merchant\": \"New Merchant\",
-            \"date\": $updated_at,
-            \"updated_at\": $same_timestamp
+            \"date\": $client_updated_at,
+            \"client_updated_at\": $same_timestamp
         }],
         \"categories\": []
     }")

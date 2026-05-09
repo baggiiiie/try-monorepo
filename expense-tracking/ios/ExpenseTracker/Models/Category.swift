@@ -8,6 +8,7 @@ struct Category: Codable, Identifiable, FetchableRecord, PersistableRecord {
     var budget: Int64?
     var createdAt: Int64
     var updatedAt: Int64
+    var clientUpdatedAt: Int64
     var deletedAt: Int64?
     var syncStatus: String = RecordSyncStatus.pendingPush.rawValue
 
@@ -44,6 +45,7 @@ struct Category: Codable, Identifiable, FetchableRecord, PersistableRecord {
         static let budget = Column("budget")
         static let createdAt = Column("created_at")
         static let updatedAt = Column("updated_at")
+        static let clientUpdatedAt = Column("client_updated_at")
         static let deletedAt = Column("deleted_at")
         static let syncStatus = Column("sync_status")
     }
