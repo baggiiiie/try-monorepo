@@ -12,10 +12,9 @@ struct CategoryListView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            List {
-                ForEach(viewModel.categories) { cat in
-                    CategoryRow(category: cat, isDefault: viewModel.defaultCategoryId == cat.id)
+        List {
+            ForEach(viewModel.categories) { cat in
+                CategoryRow(category: cat, isDefault: viewModel.defaultCategoryId == cat.id)
                     .contentShape(Rectangle())
                     .onTapGesture { editingCategory = cat }
                     .swipeActions(edge: .leading) {
@@ -33,32 +32,31 @@ struct CategoryListView: View {
                         HapticManager.notify(.warning)
                         viewModel.delete(cat)
                     }
-                }
             }
-            .emptyState(
-                viewModel.categories.isEmpty,
-                title: "No Categories",
-                systemImage: "tag",
-                description: "Tap + to create your first category"
-            )
-            .navigationTitle("Categories")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { showingAddCategory = true } label: {
-                        Image(systemName: "plus")
-                    }
-                }
-            }
-            .sheet(isPresented: $showingAddCategory) {
-                CategoryFormView(database: database, category: nil)
-                    .onDisappear(perform: viewModel.refresh)
-            }
-            .sheet(item: $editingCategory) { cat in
-                CategoryFormView(database: database, category: cat)
-                    .onDisappear(perform: viewModel.refresh)
-            }
-            .onAppear { viewModel.refresh() }
         }
+        .emptyState(
+            viewModel.categories.isEmpty,
+            title: "No Categories",
+            systemImage: "tag",
+            description: "Tap + to create your first category"
+        )
+        .navigationTitle("Categories")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showingAddCategory = true } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .sheet(isPresented: $showingAddCategory) {
+            CategoryFormView(database: database, category: nil)
+                .onDisappear(perform: viewModel.refresh)
+        }
+        .sheet(item: $editingCategory) { cat in
+            CategoryFormView(database: database, category: cat)
+                .onDisappear(perform: viewModel.refresh)
+        }
+        .onAppear { viewModel.refresh() }
     }
 }
 

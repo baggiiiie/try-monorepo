@@ -12,53 +12,51 @@ struct RecurringExpensesView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            List {
-                ForEach(viewModel.recurringExpenses) { item in
-                    Button {
-                        viewModel.edit(item.recurringExpense)
-                        showingForm = true
-                    } label: {
-                        RecurringExpenseRow(item: item)
-                    }
-                    .tint(.primary)
-                    .deleteSwipeAction {
-                        viewModel.delete(item.recurringExpense)
-                    }
+        List {
+            ForEach(viewModel.recurringExpenses) { item in
+                Button {
+                    viewModel.edit(item.recurringExpense)
+                    showingForm = true
+                } label: {
+                    RecurringExpenseRow(item: item)
+                }
+                .tint(.primary)
+                .deleteSwipeAction {
+                    viewModel.delete(item.recurringExpense)
                 }
             }
-            .navigationTitle("Recurring")
-            .emptyState(
-                viewModel.recurringExpenses.isEmpty,
-                title: "No Recurring Expenses",
-                systemImage: "repeat",
-                description: "Add rent, subscriptions, or bills that repeat automatically"
+        }
+        .navigationTitle("Recurring")
+        .emptyState(
+            viewModel.recurringExpenses.isEmpty,
+            title: "No Recurring Expenses",
+            systemImage: "repeat",
+            description: "Add rent, subscriptions, or bills that repeat automatically"
+        )
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    viewModel.resetForm()
+                    showingForm = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .sheet(isPresented: $showingForm) {
+            RecurringExpenseFormView(
+                viewModel: viewModel,
+                onSave: handleSaveTapped,
+                onCancel: { showingForm = false }
             )
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        viewModel.resetForm()
-                        showingForm = true
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                }
-            }
-            .sheet(isPresented: $showingForm) {
-                RecurringExpenseFormView(
-                    viewModel: viewModel,
-                    onSave: handleSaveTapped,
-                    onCancel: { showingForm = false }
-                )
-            }
-            .alert("Recurring Expense", isPresented: alertBinding) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(alertMessage ?? "")
-            }
-            .onAppear {
-                viewModel.refresh()
-            }
+        }
+        .alert("Recurring Expense", isPresented: alertBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(alertMessage ?? "")
+        }
+        .onAppear {
+            viewModel.refresh()
         }
     }
 

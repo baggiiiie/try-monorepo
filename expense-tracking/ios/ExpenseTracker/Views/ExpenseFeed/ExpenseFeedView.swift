@@ -90,10 +90,15 @@ struct ExpenseFeedView: View {
                     )
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    Button { showingAddExpense = true } label: {
-                        Image(systemName: "plus")
+                    NavigationLink {
+                        SettingsView(database: database, syncService: syncService)
+                    } label: {
+                        Image(systemName: "gearshape")
                     }
                 }
+            }
+            .safeAreaInset(edge: .bottom, alignment: .trailing) {
+                addExpenseButton
             }
             .refreshable {
                 // Safe to await: SyncService runs the work in an unstructured
@@ -118,6 +123,23 @@ struct ExpenseFeedView: View {
             }
             .onAppear(perform: refreshViewModels)
         }
+    }
+
+    private var addExpenseButton: some View {
+        Button {
+            showingAddExpense = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 60, height: 60)
+                .background(Color.accentColor)
+                .clipShape(Circle())
+                .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 4)
+        }
+        .padding(.trailing, 20)
+        .padding(.bottom, 8)
+        .accessibilityLabel("Add Expense")
     }
 
     private func refreshViewModels() {

@@ -14,41 +14,15 @@ struct ExpenseTrackerApp: App {
 
     var body: some Scene {
         WindowGroup {
-            TabView {
-                ExpenseFeedView(database: database, syncService: syncService)
-                    .tabItem {
-                        Label("Expenses", systemImage: "list.bullet")
-                    }
-
-                WalletSuggestionsView(database: database)
-                    .tabItem {
-                        Label("Wallet", systemImage: "creditcard")
-                    }
-
-                CategoryListView(database: database)
-                    .tabItem {
-                        Label("Categories", systemImage: "tag")
-                    }
-
-                RecurringExpensesView(database: database)
-                    .tabItem {
-                        Label("Recurring", systemImage: "repeat")
-                    }
-
-                SettingsView(syncService: syncService)
-                    .tabItem {
-                        Label("Settings", systemImage: "gear")
-                    }
-            }
-            .task {
-                // App-level initial sync. Lives across tab switches and is
-                // immune to view-cycle cancellation.
-                await syncService.sync()
-            }
-            .onChange(of: scenePhase) { _, newPhase in
-                guard newPhase == .active else { return }
-                Task { await syncService.sync() }
-            }
+            ExpenseFeedView(database: database, syncService: syncService)
+                .task {
+                    // App-level initial sync. Immune to view-cycle cancellation.
+                    await syncService.sync()
+                }
+                .onChange(of: scenePhase) { _, newPhase in
+                    guard newPhase == .active else { return }
+                    Task { await syncService.sync() }
+                }
         }
     }
 }
