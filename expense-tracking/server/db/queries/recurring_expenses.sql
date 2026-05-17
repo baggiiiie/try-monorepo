@@ -1,3 +1,14 @@
+-- name: ListRecurringExpenses :many
+SELECT id, amount, currency, category_id, description, merchant, frequency, day_of_month, start_date, end_date, next_run_date, last_run_date, created_at, updated_at, deleted_at, server_version, client_updated_at
+FROM recurring_expenses
+WHERE deleted_at IS NULL
+ORDER BY next_run_date;
+
+-- name: SoftDeleteRecurringExpense :exec
+UPDATE recurring_expenses
+SET deleted_at = ?, updated_at = ?, client_updated_at = ?
+WHERE id = ? AND deleted_at IS NULL;
+
 -- name: ListDueRecurringExpenses :many
 SELECT id, amount, currency, category_id, description, merchant, frequency, day_of_month, start_date, end_date, next_run_date, last_run_date, created_at, updated_at, deleted_at, server_version, client_updated_at
 FROM recurring_expenses

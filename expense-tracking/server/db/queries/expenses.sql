@@ -16,6 +16,16 @@ LEFT JOIN categories c ON e.category_id = c.id
 WHERE e.deleted_at IS NULL
 ORDER BY e.date DESC, e.created_at DESC;
 
+-- name: ListExpensesByDateWindow :many
+SELECT e.*, c.name AS category_name
+FROM expenses e
+LEFT JOIN categories c ON e.category_id = c.id
+WHERE e.deleted_at IS NULL
+  AND e.date < sqlc.arg(before)
+  AND e.date >= sqlc.arg(since)
+ORDER BY e.date DESC, e.created_at DESC, e.id DESC
+LIMIT sqlc.arg(max_rows);
+
 -- name: UpdateExpense :exec
 UPDATE expenses SET amount = ?, currency = ?, category_id = ?, description = ?, merchant = ?, date = ?, updated_at = ?, client_updated_at = ? WHERE id = ?;
 

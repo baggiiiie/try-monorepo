@@ -153,6 +153,135 @@ func (s *RecurringService) CreateWithQueries(ctx context.Context, q *dbsqlc.Quer
 	return &r, nil
 }
 
+// List returns every active (non-deleted) recurring expense, ordered by the
+// next scheduled run date. Used by the PWA's recurring-expenses screen; iOS
+// reads recurring expenses through the sync protocol instead.
+func (s *RecurringService) List(ctx context.Context) ([]RecurringExpense, error) {
+	rows, err := s.queries.ListRecurringExpenses(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RecurringExpense, len(rows))
+	for i, r := range rows {
+		out[i] = recurringExpenseFromRow(r)
+	}
+	return out, nil
+}
+
+// Update applies a partial change to an existing recurring expense. Only
+// fields explicitly supplied by the caller are overwritten; unspecified
+// fields retain the existing value. The server_version cursor is bumped
+// automatically by the per-table trigger (see migration 6), so REST writes
+// flow through to sync-pull on iOS without any explicit version handling
+// here.
+func (s *RecurringService) Update(ctx context.Context, id string, input RecurringExpenseInput) (*RecurringExpense, error) {
+	existing, err := s.queries.GetRecurringExpense(ctx, id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("recurring expense not found")
+		}
+		return nil, err
+	}
+	if existing.DeletedAt.Valid {
+		return nil, fmt.Errorf("recurring expense not found")
+	}
+
+	amount := existing.Amount
+	if input.Amount > 0 {
+		amount = input.Amount
+	}
+	currency := existing.Currency
+	if input.Currency != "" {
+		currency = input.Currency
+	}
+	categoryID := existing.CategoryID
+	if input.CategoryID != "" {
+		categoryID = input.CategoryID
+	} else if input.Category != "" {
+		resolved, err := resolveActiveCategoryIDByName(ctx, s.queries, input.Category)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return nil, fmt.Errorf("category %q not found", input.Category)
+			}
+			return nil, err
+		}
+		categoryID = resolved
+	}
+	description := existing.Description
+	if input.Description != "" {
+		description = input.Description
+	}
+	merchant := existing.Merchant
+	if input.Merchant != "" {
+		merchant = input.Merchant
+	}
+	frequency := existing.Frequency
+	if input.Frequency != "" {
+		switch input.Frequency {
+		case "weekly", "monthly", "yearly":
+			frequency = input.Frequency
+		default:
+			return nil, fmt.Errorf("frequency must be one of weekly, monthly, yearly")
+		}
+	}
+	dayOfMonth := existing.DayOfMonth
+	if input.DayOfMonth != nil {
+		dayOfMonth = nullInt64(input.DayOfMonth)
+	}
+	startDate := existing.StartDate
+	if input.StartDate > 0 {
+		startDate = input.StartDate
+	}
+	endDate := existing.EndDate
+	if input.EndDate != nil {
+		endDate = nullInt64(input.EndDate)
+	}
+	if endDate.Valid && endDate.Int64 < startDate {
+		return nil, fmt.Errorf("end_date must be on or after start_date")
+	}
+
+	now := time.Now().Unix()
+	if err := s.queries.UpdateRecurringExpense(ctx, dbsqlc.UpdateRecurringExpenseParams{
+		Amount:          amount,
+		Currency:        currency,
+		CategoryID:      categoryID,
+		Description:     description,
+		Merchant:        merchant,
+		Frequency:       frequency,
+		DayOfMonth:      dayOfMonth,
+		StartDate:       startDate,
+		EndDate:         endDate,
+		NextRunDate:     existing.NextRunDate,
+		LastRunDate:     existing.LastRunDate,
+		UpdatedAt:       now,
+		ClientUpdatedAt: now,
+		DeletedAt:       existing.DeletedAt,
+		ID:              id,
+	}); err != nil {
+		return nil, fmt.Errorf("updating recurring expense: %w", err)
+	}
+
+	updated, err := s.queries.GetRecurringExpense(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	r := recurringExpenseFromRow(updated)
+	return &r, nil
+}
+
+// Delete soft-deletes a recurring expense. Already-materialized expenses
+// remain; only future occurrences stop. The server_version trigger picks up
+// the soft-delete and propagates it to iOS on next sync-pull.
+func (s *RecurringService) Delete(ctx context.Context, id string) error {
+	now := time.Now().Unix()
+	return s.queries.SoftDeleteRecurringExpense(ctx, dbsqlc.SoftDeleteRecurringExpenseParams{
+		DeletedAt:       sql.NullInt64{Int64: now, Valid: true},
+		UpdatedAt:       now,
+		ClientUpdatedAt: now,
+		ID:              id,
+	})
+}
+
 func (s *RecurringService) MaterializeDue(ctx context.Context, now time.Time) error {
 	return s.tx.WithTx(ctx, func(q *dbsqlc.Queries) error {
 		return materializeDueRecurringExpenses(ctx, q, now, s.location)

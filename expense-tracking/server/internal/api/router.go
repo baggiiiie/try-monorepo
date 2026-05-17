@@ -14,6 +14,7 @@ import (
 type ExpenseService interface {
 	Create(context.Context, service.ExpenseInput) (*service.Expense, error)
 	List(context.Context) ([]service.Expense, error)
+	ListWindow(context.Context, service.ListWindowOptions) ([]service.Expense, error)
 	Get(context.Context, string) (*service.Expense, error)
 	Update(context.Context, string, service.ExpenseInput) (*service.Expense, error)
 	Delete(context.Context, string) error
@@ -26,9 +27,23 @@ type CategoryService interface {
 	Delete(context.Context, string) error
 }
 
+type RecurringService interface {
+	Create(context.Context, service.RecurringExpenseInput) (*service.RecurringExpense, error)
+	List(context.Context) ([]service.RecurringExpense, error)
+	Update(context.Context, string, service.RecurringExpenseInput) (*service.RecurringExpense, error)
+	Delete(context.Context, string) error
+}
+
 type SyncService interface {
 	Pull(context.Context, int64) (*service.PullResponse, error)
 	Push(context.Context, service.PushRequest) (*service.PushResponse, error)
+}
+
+type WalletSuggestionService interface {
+	Create(context.Context, service.WalletSuggestionInput) (*service.WalletSuggestion, error)
+	List(context.Context, string) ([]service.WalletSuggestion, error)
+	Confirm(context.Context, string, service.ExpenseInput) (*service.WalletSuggestion, *service.Expense, error)
+	Dismiss(context.Context, string) (*service.WalletSuggestion, error)
 }
 
 type PreferencesService interface {
@@ -37,10 +52,12 @@ type PreferencesService interface {
 }
 
 type RouterServices struct {
-	Expenses    ExpenseService
-	Categories  CategoryService
-	Sync        SyncService
-	Preferences PreferencesService
+	Expenses          ExpenseService
+	Categories        CategoryService
+	Recurring         RecurringService
+	Sync              SyncService
+	Preferences       PreferencesService
+	WalletSuggestions WalletSuggestionService
 }
 
 // NewRouter builds the HTTP API router. The syncSecret is required on every
@@ -72,8 +89,24 @@ func NewRouter(services RouterServices, syncSecret string) http.Handler {
 			r.Delete("/{id}", deleteCategory(services.Categories))
 		})
 
+		r.Route("/api/recurring-expenses", func(r chi.Router) {
+			r.Post("/", createRecurringExpense(services.Recurring))
+			r.Get("/", listRecurringExpenses(services.Recurring))
+			r.Put("/{id}", updateRecurringExpense(services.Recurring))
+			r.Delete("/{id}", deleteRecurringExpense(services.Recurring))
+		})
+
 		r.Get("/api/preferences", getPreferences(services.Preferences))
 		r.Put("/api/preferences", updatePreferences(services.Preferences))
+
+		r.Route("/api/wallet-suggestions", func(r chi.Router) {
+			r.Post("/", createWalletSuggestion(services.WalletSuggestions))
+			r.Get("/", listWalletSuggestions(services.WalletSuggestions))
+			r.Post("/{id}/confirm", confirmWalletSuggestion(services.WalletSuggestions))
+			r.Post("/{id}/dismiss", dismissWalletSuggestion(services.WalletSuggestions))
+		})
+
+		r.Post("/api/auth/exchange", authExchange())
 
 		r.Get("/api/sync/pull", syncPull(services.Sync))
 		r.Post("/api/sync/push", syncPush(services.Sync))

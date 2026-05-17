@@ -16,11 +16,12 @@ import (
 )
 
 type Services struct {
-	Expenses   *service.ExpenseService
-	Categories *service.CategoryService
-	Reports    *service.ReportService
-	Sync       *service.SyncService
-	Recurring  *service.RecurringService
+	Expenses          *service.ExpenseService
+	Categories        *service.CategoryService
+	Reports           *service.ReportService
+	Sync              *service.SyncService
+	Recurring         *service.RecurringService
+	WalletSuggestions *service.WalletSuggestionService
 }
 
 type App struct {
@@ -56,6 +57,7 @@ func Open(dbPath, configPath string) (*App, error) {
 	expenseService := service.NewExpenseService(queries, &prefs)
 	reportService := service.NewReportService(queries, &prefs)
 	recurringService := service.NewRecurringService(queries, store, prefs.Timezone)
+	walletSuggestionService := service.NewWalletSuggestionService(queries, store, expenseService)
 	syncService := service.NewSyncService(queries, store, prefs.Timezone)
 
 	app := &App{
@@ -64,11 +66,12 @@ func Open(dbPath, configPath string) (*App, error) {
 		preferences:     prefs,
 		preferencesPath: configPath,
 		services: Services{
-			Expenses:   expenseService,
-			Categories: categoryService,
-			Reports:    reportService,
-			Sync:       syncService,
-			Recurring:  recurringService,
+			Expenses:          expenseService,
+			Categories:        categoryService,
+			Reports:           reportService,
+			Sync:              syncService,
+			Recurring:         recurringService,
+			WalletSuggestions: walletSuggestionService,
 		},
 	}
 

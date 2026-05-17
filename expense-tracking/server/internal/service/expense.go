@@ -26,13 +26,16 @@ func (s *ExpenseService) UpdatePreferences(p *config.Preferences) {
 }
 
 type ExpenseInput struct {
-	Amount      int64
-	Currency    string
-	CategoryID  string
-	Category    string // category name, resolved to ID
-	Description string
-	Merchant    string
-	Date        int64
+	ID              string
+	Amount          int64
+	Currency        string
+	CategoryID      string
+	Category        string // category name, resolved to ID
+	Description     string
+	Merchant        string
+	Date            int64
+	Source          string
+	ClientUpdatedAt int64
 }
 
 type Expense struct {
@@ -90,7 +93,18 @@ func (s *ExpenseService) CreateWithQueries(ctx context.Context, q *dbsqlc.Querie
 	}
 
 	now := time.Now().Unix()
-	id := uuid.New().String()
+	id := input.ID
+	if id == "" {
+		id = uuid.New().String()
+	}
+	source := input.Source
+	if source == "" {
+		source = "cli"
+	}
+	clientUpdatedAt := input.ClientUpdatedAt
+	if clientUpdatedAt == 0 {
+		clientUpdatedAt = now
+	}
 	row, err := q.CreateExpense(ctx, dbsqlc.CreateExpenseParams{
 		ID:              id,
 		Amount:          input.Amount,
@@ -99,10 +113,10 @@ func (s *ExpenseService) CreateWithQueries(ctx context.Context, q *dbsqlc.Querie
 		Description:     input.Description,
 		Merchant:        input.Merchant,
 		Date:            date,
-		Source:          "cli",
+		Source:          source,
 		CreatedAt:       now,
 		UpdatedAt:       now,
-		ClientUpdatedAt: now,
+		ClientUpdatedAt: clientUpdatedAt,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating expense: %w", err)
@@ -122,6 +136,54 @@ func (s *ExpenseService) List(ctx context.Context) ([]Expense, error) {
 	expenses := make([]Expense, len(rows))
 	for i, r := range rows {
 		expenses[i] = expenseFromListRow(r)
+	}
+	return expenses, nil
+}
+
+// ListWindowOptions defines a cursor-paginated window over the expense feed.
+// All fields are unix seconds; Limit is the page size.
+//
+// The PWA expense feed wants to render "recent first" with the option to
+// scroll back through history, but does not want to download every expense
+// ever recorded on each cold start. Callers therefore typically pass
+// (Before=now+1, Since=now-7d, Limit=N) for the first page and then
+// (Before=cursor, Since=0, Limit=N) for subsequent pages — see the API
+// handler for the default-window logic.
+type ListWindowOptions struct {
+	Before int64
+	Since  int64
+	Limit  int
+}
+
+// ListWindow returns expenses with Since <= date < Before, ordered newest
+// first, capped at Limit rows. Used by the PWA's paginated GET /api/expenses
+// endpoint; the CLI continues to use List() which returns the unbounded feed.
+func (s *ExpenseService) ListWindow(ctx context.Context, opts ListWindowOptions) ([]Expense, error) {
+	rows, err := s.queries.ListExpensesByDateWindow(ctx, dbsqlc.ListExpensesByDateWindowParams{
+		Before:  opts.Before,
+		Since:   opts.Since,
+		MaxRows: int64(opts.Limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	expenses := make([]Expense, len(rows))
+	for i, r := range rows {
+		expenses[i] = Expense{
+			ID:              r.ID,
+			Amount:          r.Amount,
+			Currency:        r.Currency,
+			CategoryID:      r.CategoryID,
+			Category:        r.CategoryName.String,
+			Description:     r.Description,
+			Merchant:        r.Merchant,
+			Date:            r.Date,
+			Source:          r.Source,
+			CreatedAt:       r.CreatedAt,
+			UpdatedAt:       r.UpdatedAt,
+			ClientUpdatedAt: r.ClientUpdatedAt,
+			DeletedAt:       toInt64Ptr(r.DeletedAt),
+		}
 	}
 	return expenses, nil
 }

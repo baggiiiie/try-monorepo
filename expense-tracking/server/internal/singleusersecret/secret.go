@@ -96,22 +96,74 @@ func writeSecretFile(path, secret string) error {
 	return nil
 }
 
+// SessionCookieName is the cookie that the PWA uses to carry the shared
+// secret. It is set by the auth-exchange endpoint after the client posts a
+// valid bearer token, and accepted as an equivalent credential by Require.
+const SessionCookieName = "et_session"
+
 // Require returns an http.Handler middleware that requires every request to
-// carry the configured secret as an "Authorization: Bearer <secret>" header.
-// Comparison is constant-time. The errorWriter callback is invoked on failure
-// so the caller can render an error in the project's preferred shape.
+// carry the configured secret either as an "Authorization: Bearer <secret>"
+// header (used by the iOS app and the Apple Pay Shortcut) or as the
+// SessionCookieName cookie (used by the PWA after /api/auth/exchange).
+// Comparison is constant-time.
+//
+// Repeated auth failures from the same client IP are rate-limited (10 burst,
+// ~10/minute refill) to slow brute-force guessing once the server is exposed
+// to the public internet; rate-limited requests get a 429 instead of a 401
+// and the trip is recorded on the request's wide event.
+//
+// The errorWriter callback is invoked on failure so the caller can render an
+// error in the project's preferred shape.
 func Require(secret string, errorWriter func(http.ResponseWriter, *http.Request, int, string)) func(http.Handler) http.Handler {
 	want := []byte(secret)
+	limiter := newAuthFailureLimiter()
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			got := bearerToken(r.Header.Get("Authorization"))
-			if got == "" || subtle.ConstantTimeCompare([]byte(got), want) != 1 {
-				errorWriter(w, r, http.StatusUnauthorized, "unauthorized")
+			if presented(r, want) {
+				next.ServeHTTP(w, r)
 				return
 			}
-			next.ServeHTTP(w, r)
+			if !limiter.allow(clientIP(r)) {
+				errorWriter(w, r, http.StatusTooManyRequests, "too many auth failures")
+				return
+			}
+			errorWriter(w, r, http.StatusUnauthorized, "unauthorized")
 		})
 	}
+}
+
+// presented reports whether r carries the wanted secret via either the
+// Authorization header or the session cookie. Both sources are checked in
+// constant time; if neither matches the request is unauthenticated.
+func presented(r *http.Request, want []byte) bool {
+	if got := bearerToken(r.Header.Get("Authorization")); got != "" {
+		if subtle.ConstantTimeCompare([]byte(got), want) == 1 {
+			return true
+		}
+	}
+	if c, err := r.Cookie(SessionCookieName); err == nil && c.Value != "" {
+		if subtle.ConstantTimeCompare([]byte(c.Value), want) == 1 {
+			return true
+		}
+	}
+	return false
+}
+
+// Verify reports whether s equals the configured secret in constant time. It
+// is exposed for handlers that need to validate a bearer header without
+// installing the middleware (e.g. /api/auth/exchange, which both authenticates
+// the caller and issues the session cookie).
+func Verify(secret, presented string) bool {
+	if presented == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(presented), []byte(secret)) == 1
+}
+
+// BearerToken extracts the value following "Bearer " in an Authorization
+// header, returning "" if the header is empty or malformed.
+func BearerToken(header string) string {
+	return bearerToken(header)
 }
 
 func bearerToken(header string) string {

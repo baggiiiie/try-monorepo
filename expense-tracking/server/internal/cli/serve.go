@@ -45,10 +45,12 @@ func newServeCmd(paths pathProvider) *cobra.Command {
 
 			services := a.Services()
 			router := api.NewRouter(api.RouterServices{
-				Expenses:    services.Expenses,
-				Categories:  services.Categories,
-				Sync:        services.Sync,
-				Preferences: a,
+				Expenses:          services.Expenses,
+				Categories:        services.Categories,
+				Recurring:         services.Recurring,
+				Sync:              services.Sync,
+				Preferences:       a,
+				WalletSuggestions: services.WalletSuggestions,
 			}, secret)
 
 			addr := fmt.Sprintf(":%d", port)

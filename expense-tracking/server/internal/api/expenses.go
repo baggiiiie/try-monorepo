@@ -2,10 +2,25 @@ package api
 
 import (
 	"net/http"
+	"strconv"
+	"time"
 
 	"expense-tracker/internal/service"
 
 	"github.com/go-chi/chi/v5"
+)
+
+// expenseListDefaults bound the PWA's expense feed in two ways:
+//   - defaultWindow caps the initial page to the last week so the first paint
+//     is cheap; the client uses the returned cursor to load older history on
+//     demand.
+//   - defaultLimit / maxLimit cap the response size regardless of how far
+//     back the caller scrolls, so a malformed cursor cannot drag down the
+//     whole feed.
+const (
+	expenseDefaultWindow = 7 * 24 * time.Hour
+	expenseDefaultLimit  = 100
+	expenseMaxLimit      = 500
 )
 
 type createExpenseRequest struct {
@@ -51,18 +66,79 @@ func createExpense(expenses ExpenseService) http.HandlerFunc {
 	}
 }
 
+// listExpenses serves the paginated expense feed for the PWA.
+//
+// Query parameters:
+//   - before: exclusive upper bound on expense date (unix seconds). Used as
+//     the cursor when scrolling back through history. Omit on the first
+//     page; the server then defaults to "newer than 7 days ago".
+//   - limit: page size. Defaults to expenseDefaultLimit, capped at
+//     expenseMaxLimit.
+//
+// The response includes a next_before cursor whenever the page filled
+// exactly to the limit — the client uses it verbatim as the before parameter
+// on the next request. When fewer rows are returned the feed has reached
+// the bottom and next_before is omitted.
 func listExpenses(expenses ExpenseService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		expenses, err := expenses.List(r.Context())
+		q := r.URL.Query()
+		now := time.Now()
+
+		var (
+			before    int64
+			since     int64
+			explicit  = q.Has("before")
+		)
+		if explicit {
+			parsed, err := strconv.ParseInt(q.Get("before"), 10, 64)
+			if err != nil || parsed <= 0 {
+				writeError(w, r, http.StatusBadRequest, "invalid 'before' parameter")
+				return
+			}
+			before = parsed
+			// When a cursor is supplied the caller is explicitly walking
+			// older history; do not also apply the 7-day floor.
+			since = 0
+		} else {
+			// Half-open upper bound so a row recorded at exactly `now` is
+			// included on the first page.
+			before = now.Unix() + 1
+			since = now.Add(-expenseDefaultWindow).Unix()
+		}
+
+		limit := expenseDefaultLimit
+		if raw := q.Get("limit"); raw != "" {
+			parsed, err := strconv.Atoi(raw)
+			if err != nil || parsed <= 0 {
+				writeError(w, r, http.StatusBadRequest, "invalid 'limit' parameter")
+				return
+			}
+			if parsed > expenseMaxLimit {
+				parsed = expenseMaxLimit
+			}
+			limit = parsed
+		}
+
+		rows, err := expenses.ListWindow(r.Context(), service.ListWindowOptions{
+			Before: before,
+			Since:  since,
+			Limit:  limit,
+		})
 		if err != nil {
 			writeError(w, r, http.StatusInternalServerError, err.Error())
 			return
 		}
 
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"expenses": expenses,
-			"count":    len(expenses),
-		})
+		resp := map[string]interface{}{
+			"expenses": rows,
+			"count":    len(rows),
+		}
+		// Only advertise a cursor when the page was full; otherwise the
+		// client knows it has reached the end of the feed.
+		if len(rows) == limit {
+			resp["next_before"] = rows[len(rows)-1].Date
+		}
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 
