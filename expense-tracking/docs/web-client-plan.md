@@ -6,7 +6,7 @@
 
 ## Status & Handoff (read me first)
 
-**Last updated:** 2026-05-17
+**Last updated:** 2026-05-19
 
 **What is done:**
 - Plan fully grilled and locked (see Decisions Log at the end of this doc —
@@ -14,10 +14,25 @@
 - [ADR-005](adr/005-single-user-auth-scope.md) amended with an "Update
   (2026-05-17)" section covering CF Tunnel exposure, the cookie credential
   path, the rate-limit decision, and three new replacement triggers.
-- **No code has been written yet.** Server, iOS, and `server/web/` are
-  untouched.
+- Phase 1 server work is implemented:
+  - `POST /api/auth/exchange`, `HttpOnly` cookie auth support, and per-IP
+    auth-failure rate limiting in
+    [singleusersecret](../server/internal/singleusersecret/).
+  - `GET /api/expenses` pagination with default last-7-days window.
+  - Recurring expenses REST handlers.
+  - `wallet_suggestions` migration, sqlc queries, service, REST handlers,
+    and sync cursor integration.
+  - API handler tests for auth exchange, expenses pagination, recurring
+    expenses, and wallet suggestions; service round-trip tests for
+    suggestion confirm.
+- Phase 2 server static plumbing is implemented: `server/web/dist` is embedded
+  and served with SPA fallback and cache headers; `make web` / `make web-dev`
+  exist.
+- Phase 3 is started: SvelteKit is scaffolded under `server/web/`, builds to
+  `server/web/dist`, includes install metadata/icons, and has a service worker
+  with shell pre-cache plus network-first GET caching.
 
-**What is in progress:** nothing. Implementation has not started.
+**What is in progress:** nothing.
 
 **What blocks implementation:**
 - **Phase 0 manual work — user responsibility:** provision Cloudflare
@@ -25,28 +40,13 @@
   HTTPS reachable at a stable hostname, Phase 3 PWA installability cannot
   be validated. This is not an agent task.
 
-**Recommended next step for the next agent (smallest-to-largest, all in
-Phase 1, all independently shippable):**
+**Recommended next step for the next agent:**
 
-1. **`POST /api/auth/exchange`** + extend
-   [singleusersecret middleware](../server/internal/singleusersecret/) to
-   also accept the cookie. Smallest change; needed before anything
-   browser-side works.
-2. **Per-IP rate limit on auth failures** in the same package (Phase 0
-   item; trivial to bundle with #1).
-3. **Pagination on `GET /api/expenses`**: `?before=<unix>&limit=<n>`,
-   default last 7 days. Server-side only — iOS does not use this endpoint.
-4. **Recurring expenses REST handlers** mirroring
-   [expenses.go](../server/internal/api/expenses.go). sqlc queries already
-   exist in
-   [recurring_expenses.sql](../server/db/queries/recurring_expenses.sql).
-5. **`wallet_suggestions` table + sqlc + 4 handlers** (`POST /`,
-   `GET /?status=pending`, `POST /:id/confirm`, `POST /:id/dismiss`).
-   Joins the `server_version` sync cursor (pattern in
-   [migration 6](../server/db/migrations/00006_server_version_sync_cursor.sql)).
-
-Phase 1 work is parallelizable. Phase 2 (embed PWA) and Phase 3 (SvelteKit
-scaffold) can begin in parallel with Phase 1 once #1 lands.
+1. Finish the Phase 3 update flow: when a new service worker is detected, post
+   a message to the page and show a dismissable "Update available — reload"
+   banner. Do not add auto-`skipWaiting()`.
+2. Add the one-time iOS Safari "Add to Home Screen" instruction sheet.
+3. Start Phase 4 feature screens after those PWA shell details are in place.
 
 **Conventions a new agent must follow** (already in root
 [AGENTS.md](../AGENTS.md), but repeated here for handoff clarity):
@@ -197,9 +197,9 @@ option — but is not part of this plan.
 - [ ] Provision Cloudflare Tunnel: domain, tunnel daemon on the host,
       DNS record pointing the chosen hostname at the tunnel.
 - [ ] Verify the existing Go server is reachable over HTTPS via the tunnel.
-- [ ] Amend or supersede [ADR-005](adr/005-single-user-auth-scope.md) to
+- [x] Amend or supersede [ADR-005](adr/005-single-user-auth-scope.md) to
       reflect public-network exposure.
-- [ ] Add a basic auth-failure rate limit to
+- [x] Add a basic auth-failure rate limit to
       [`internal/singleusersecret`](../server/internal/singleusersecret/)
       (e.g., naive in-memory token bucket per remote IP, log on trip).
 
@@ -208,14 +208,14 @@ option — but is not part of this plan.
 All endpoints sit behind the existing shared-secret middleware (header
 **or** cookie — see auth exchange below).
 
-- [ ] **goose migration** — `wallet_suggestions` table with columns:
+- [x] **goose migration** — `wallet_suggestions` table with columns:
       `id (PK), amount (nullable cents), currency, merchant, card_name (nullable),
       captured_at (unix), source, status (pending|accepted|dismissed),
       linked_expense_id (nullable FK), created_at, client_updated_at,
       server_version`. Add triggers for the `server_version` cursor (same
       pattern as [migration 6](../server/db/migrations/00006_server_version_sync_cursor.sql)).
-- [ ] **sqlc queries** under `server/db/queries/wallet_suggestions.sql`.
-- [ ] **HTTP handlers**:
+- [x] **sqlc queries** under `server/db/queries/wallet_suggestions.sql`.
+- [x] **HTTP handlers**:
   - `POST   /api/wallet-suggestions` — accepts `{id, merchant, amount,
     currency, captured_at, card_name?, source?}`. `id` is client-generated.
     Idempotent on `id`.
@@ -225,45 +225,45 @@ All endpoints sit behind the existing shared-secret middleware (header
     expense and atomically sets the suggestion to
     `status='accepted'`, `linked_expense_id=<expense.id>`. One transaction.
   - `POST   /api/wallet-suggestions/:id/dismiss` — sets `status='dismissed'`.
-- [ ] **Recurring expenses REST handlers** (parallel shape to
+- [x] **Recurring expenses REST handlers** (parallel shape to
       [expenses.go](../server/internal/api/expenses.go)):
       `GET /api/recurring-expenses`, `POST`, `PUT /:id`, `DELETE /:id`.
       sqlc queries already exist in
       [recurring_expenses.sql](../server/db/queries/recurring_expenses.sql);
       this is HTTP glue only.
-- [ ] **Pagination** on `GET /api/expenses`:
+- [x] **Pagination** on `GET /api/expenses`:
       `?before=<unix>&limit=<n>`. **Default window: last 7 days.** Returns
       the oldest `captured_at` in the page as the next cursor.
-- [ ] **`POST /api/auth/exchange`** — accepts `Authorization: Bearer <secret>`,
+- [x] **`POST /api/auth/exchange`** — accepts `Authorization: Bearer <secret>`,
       responds `Set-Cookie: et_session=<secret>; HttpOnly; Secure;
       SameSite=Strict; Path=/api; Max-Age=<long>`. The
       `singleusersecret.Require` middleware learns to accept the cookie
       as an equivalent credential.
-- [ ] Tests: handler tests for each new endpoint; round-trip test for
+- [x] Tests: handler tests for each new endpoint; round-trip test for
       suggestion → confirm → expense.
 
 ### Phase 2 — Server: serve the PWA
 
-- [ ] Add `server/web/` for the SvelteKit project (`pnpm create svelte@latest`).
-- [ ] Build output goes to `server/web/dist`.
-- [ ] Embed via `//go:embed all:web/dist` and mount at `/` with SPA
+- [x] Add `server/web/` for the SvelteKit project (`pnpm create svelte@latest`).
+- [x] Build output goes to `server/web/dist`.
+- [x] Embed via `//go:embed all:web/dist` and mount at `/` with SPA
       fallback to `index.html`.
-- [ ] Response headers (set in the static handler):
+- [x] Response headers (set in the static handler):
   - `index.html`: `Cache-Control: no-cache`
   - `sw.js`: `Cache-Control: no-cache`, `Service-Worker-Allowed: /`
   - hashed assets (`/_app/immutable/*`): `Cache-Control: public, max-age=31536000, immutable`
   - `manifest.webmanifest`: `Content-Type: application/manifest+json`
-- [ ] **Makefile**: add `make web` (runs `pnpm build` under `server/web`)
+- [x] **Makefile**: add `make web` (runs `pnpm build` under `server/web`)
       and `make web-dev` (Vite dev server proxying `/api` to the Go server).
       Keep the existing iOS `make build|install|run` targets unchanged.
 
 ### Phase 3 — PWA shell + install metadata
 
-- [ ] Scaffold SvelteKit under `server/web/`.
-- [ ] `static/manifest.webmanifest`: `name`, `short_name`, `start_url: "/"`,
+- [x] Scaffold SvelteKit under `server/web/`.
+- [x] `static/manifest.webmanifest`: `name`, `short_name`, `start_url: "/"`,
       `display: "standalone"`, `theme_color`, `background_color`, icons
       (180×180 apple-touch, 192, 512, 512 maskable).
-- [ ] In `app.html`:
+- [x] In `app.html`:
   - `<link rel="manifest" href="/manifest.webmanifest">`
   - `<link rel="apple-touch-icon" href="/apple-touch-icon.png">`
   - `<meta name="apple-mobile-web-app-capable" content="yes">`
