@@ -62,8 +62,12 @@ struct ExpenseRepository {
 
             if let walletSuggestion {
                 try db.execute(
-                    sql: "UPDATE wallet_suggestions SET status = ?, linked_expense_id = ? WHERE id = ?",
-                    arguments: [WalletSuggestionStatus.accepted.rawValue, expense.id, walletSuggestion.id]
+                    sql: """
+                        UPDATE wallet_suggestions
+                        SET status = ?, linked_expense_id = ?, updated_at = ?, client_updated_at = ?, sync_status = ?
+                        WHERE id = ?
+                        """,
+                    arguments: [WalletSuggestionStatus.accepted.rawValue, expense.id, now, now, RecordSyncStatus.pendingPush.rawValue, walletSuggestion.id]
                 )
             }
         }

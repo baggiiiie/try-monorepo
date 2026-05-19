@@ -47,6 +47,9 @@ struct SyncRepository {
             for expense in response.expenses {
                 try upsertExpense(expense, in: db)
             }
+            for suggestion in response.walletSuggestions {
+                try upsertWalletSuggestion(suggestion, in: db)
+            }
         }
     }
 
@@ -149,6 +152,26 @@ struct SyncRepository {
             syncStatus: RecordSyncStatus.synced.rawValue
         )
         try recurringExpense.save(db)
+    }
+
+    private func upsertWalletSuggestion(_ serverSuggestion: PullWalletSuggestion, in db: Database) throws {
+        let suggestion = WalletSuggestion(
+            id: serverSuggestion.id,
+            amount: serverSuggestion.amount,
+            currency: serverSuggestion.currency,
+            merchant: serverSuggestion.merchant,
+            cardName: serverSuggestion.cardName,
+            capturedAt: serverSuggestion.capturedAt,
+            source: serverSuggestion.source,
+            status: serverSuggestion.status,
+            linkedExpenseId: serverSuggestion.linkedExpenseId,
+            createdAt: serverSuggestion.createdAt,
+            updatedAt: serverSuggestion.updatedAt,
+            clientUpdatedAt: serverSuggestion.clientUpdatedAt,
+            serverVersion: serverSuggestion.serverVersion,
+            syncStatus: RecordSyncStatus.synced.rawValue
+        )
+        try suggestion.save(db)
     }
 }
 

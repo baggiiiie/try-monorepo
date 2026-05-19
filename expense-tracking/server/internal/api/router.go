@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"expense-tracker/internal/config"
 	"expense-tracker/internal/service"
@@ -110,6 +111,15 @@ func NewRouter(services RouterServices, syncSecret string) http.Handler {
 
 		r.Get("/api/sync/pull", syncPull(services.Sync))
 		r.Post("/api/sync/push", syncPush(services.Sync))
+	})
+
+	static := webStaticHandler()
+	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
+		if strings.HasPrefix(req.URL.Path, "/api/") || req.URL.Path == "/api" {
+			writeError(w, req, http.StatusNotFound, "not found")
+			return
+		}
+		static.ServeHTTP(w, req)
 	})
 
 	return r

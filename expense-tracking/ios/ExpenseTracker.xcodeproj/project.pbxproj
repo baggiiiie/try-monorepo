@@ -23,7 +23,6 @@
 		263C22C7EB51538395C9BF12 /* ApplePaySetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95AA94A22A682C314EFCBFEC /* ApplePaySetupView.swift */; };
 		275A95592A5FB4AFB0857EA1 /* SyncStatusIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C46433CC7C4D552CEC0EF3C /* SyncStatusIndicator.swift */; };
 		27FEC86CF579BB9753580434 /* ExpenseRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C4AE335C560EA68596D80D3 /* ExpenseRowView.swift */; };
-		3550DDB01E97A08732BFBC90 /* ExpenseTrackerShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86E589227AD0811E892B818F /* ExpenseTrackerShortcuts.swift */; };
 		3EEDD93648D5E0D189D14136 /* DefaultCategories.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BB5B6488ED43C125E99C70 /* DefaultCategories.swift */; };
 		4010A25E506716FF08DFB5C7 /* ExpenseRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB53F47AE75C27D4D352AE4A /* ExpenseRepository.swift */; };
 		44927658A8B11F334254C155 /* CategoryRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2368DCA02E19586778B72E8 /* CategoryRepository.swift */; };
@@ -36,7 +35,6 @@
 		6C1908BE81105BBFC9A92CDE /* CategoryFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A73F90AF6896ECA6F7899BD /* CategoryFormView.swift */; };
 		6DA792F3C26139D40E020726 /* DeleteSwipeAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8EC2ECCE1B377B22FFE4004 /* DeleteSwipeAction.swift */; };
 		7A73343DACE1BE8009D4617F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7BB09075D54A99B83C25DFDB /* Assets.xcassets */; };
-		996FB990588EFE36A32062CB /* ImportTransactionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF17D76270573322DD958E1D /* ImportTransactionIntent.swift */; };
 		9C65AFEC108C23FDBF7F455F /* SyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 022E7AC1A8F36B3995A2CA2E /* SyncService.swift */; };
 		9CD095DA9ABABDCC5C0C69A1 /* RecurringExpense.swift in Sources */ = {isa = PBXBuildFile; fileRef = E49EE88054E2A6EA542F9E89 /* RecurringExpense.swift */; };
 		9F26E72352DD14DC62E1195D /* CurrencyFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0472C45E0D7A3EA1DB74DCBE /* CurrencyFormatter.swift */; };
@@ -79,7 +77,6 @@
 		6C4AE335C560EA68596D80D3 /* ExpenseRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseRowView.swift; sourceTree = "<group>"; };
 		70691FEFE59883E7EBB1524F /* SyncRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncRepository.swift; sourceTree = "<group>"; };
 		7BB09075D54A99B83C25DFDB /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		86E589227AD0811E892B818F /* ExpenseTrackerShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseTrackerShortcuts.swift; sourceTree = "<group>"; };
 		8FD86D6496E15E31CFDDC30E /* RecurringExpensesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringExpensesViewModel.swift; sourceTree = "<group>"; };
 		95AA94A22A682C314EFCBFEC /* ApplePaySetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplePaySetupView.swift; sourceTree = "<group>"; };
 		9C46433CC7C4D552CEC0EF3C /* SyncStatusIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStatusIndicator.swift; sourceTree = "<group>"; };
@@ -99,7 +96,6 @@
 		E2368DCA02E19586778B72E8 /* CategoryRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryRepository.swift; sourceTree = "<group>"; };
 		E49EE88054E2A6EA542F9E89 /* RecurringExpense.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringExpense.swift; sourceTree = "<group>"; };
 		EAF35A88661C2C25280D8DF3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		EF17D76270573322DD958E1D /* ImportTransactionIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportTransactionIntent.swift; sourceTree = "<group>"; };
 		FA1134EE05A23AE3E1FBCF5A /* WalletSuggestion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletSuggestion.swift; sourceTree = "<group>"; };
 		FB3E0A3E21F53A75BFA50A2A /* RecurringExpenseRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringExpenseRepository.swift; sourceTree = "<group>"; };
 		FE59A85B142575E00FCFF21A /* WalletSuggestionRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletSuggestionRepository.swift; sourceTree = "<group>"; };
@@ -227,15 +223,6 @@
 			path = ExpenseFeed;
 			sourceTree = "<group>";
 		};
-		ACD3C9F3AB0F9592FF553777 /* Intents */ = {
-			isa = PBXGroup;
-			children = (
-				86E589227AD0811E892B818F /* ExpenseTrackerShortcuts.swift */,
-				EF17D76270573322DD958E1D /* ImportTransactionIntent.swift */,
-			);
-			path = Intents;
-			sourceTree = "<group>";
-		};
 		B1BD05082CCEC0DA829B9453 /* Views */ = {
 			isa = PBXGroup;
 			children = (
@@ -288,7 +275,6 @@
 				CF2F6AE910D81C2C05B7D56F /* ExpenseTrackerApp.swift */,
 				EAF35A88661C2C25280D8DF3 /* Info.plist */,
 				0826A84D1AE32E6916BD25E8 /* Database */,
-				ACD3C9F3AB0F9592FF553777 /* Intents */,
 				5B8A2E2999790E7C6E6132B9 /* Models */,
 				2550F01959B7629D6F49FEA8 /* Services */,
 				6E8B7866E0DE55AC4F90BCA2 /* Utilities */,
@@ -397,9 +383,7 @@
 				4010A25E506716FF08DFB5C7 /* ExpenseRepository.swift in Sources */,
 				27FEC86CF579BB9753580434 /* ExpenseRowView.swift in Sources */,
 				D8405699FD5BB17FE0A09F96 /* ExpenseTrackerApp.swift in Sources */,
-				3550DDB01E97A08732BFBC90 /* ExpenseTrackerShortcuts.swift in Sources */,
 				F2B4C8140B59AC95606B094B /* HapticManager.swift in Sources */,
-				996FB990588EFE36A32062CB /* ImportTransactionIntent.swift in Sources */,
 				CCE4DC96A8C46B56FD20C0A6 /* Preferences.swift in Sources */,
 				9CD095DA9ABABDCC5C0C69A1 /* RecurringExpense.swift in Sources */,
 				0BC6C16C028E3ACE2201D5F5 /* RecurringExpenseRepository.swift in Sources */,

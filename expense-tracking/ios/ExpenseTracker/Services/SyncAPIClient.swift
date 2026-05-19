@@ -292,6 +292,7 @@ struct PullResponse: Codable {
     let expenses: [PullExpense]
     let categories: [PullCategory]
     let recurringExpenses: [PullRecurringExpense]
+    let walletSuggestions: [PullWalletSuggestion]
     let serverVersion: Int64
 }
 
@@ -338,6 +339,22 @@ struct PullRecurringExpense: Codable {
     let updatedAt: Int64
     let clientUpdatedAt: Int64
     let deletedAt: Int64?
+}
+
+struct PullWalletSuggestion: Codable {
+    let id: String
+    let amount: Int64?
+    let currency: String
+    let merchant: String
+    let cardName: String?
+    let capturedAt: Int64
+    let source: String
+    let status: String
+    let linkedExpenseId: String?
+    let createdAt: Int64
+    let updatedAt: Int64
+    let clientUpdatedAt: Int64
+    let serverVersion: Int64
 }
 
 extension PushExpense {

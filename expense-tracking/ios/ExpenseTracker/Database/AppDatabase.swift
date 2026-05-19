@@ -407,6 +407,29 @@ struct AppDatabase {
             try db.create(index: "idx_recurring_expenses_client_updated_at", on: "recurring_expenses", columns: ["client_updated_at"])
         }
 
+        migrator.registerMigration("v13-wallet-suggestions-sync") { db in
+            try db.drop(table: "wallet_suggestions")
+            try db.create(table: "wallet_suggestions") { t in
+                t.column("id", .text).primaryKey()
+                t.column("amount", .integer)
+                t.column("currency", .text).notNull()
+                t.column("merchant", .text).notNull().defaults(to: "")
+                t.column("card_name", .text)
+                t.column("captured_at", .integer).notNull()
+                t.column("source", .text).notNull()
+                t.column("status", .text).notNull().defaults(to: WalletSuggestionStatus.pending.rawValue)
+                t.column("linked_expense_id", .text)
+                t.column("created_at", .integer).notNull()
+                t.column("updated_at", .integer).notNull()
+                t.column("client_updated_at", .integer).notNull()
+                t.column("server_version", .integer).notNull().defaults(to: 0)
+                t.column("sync_status", .text).notNull().defaults(to: RecordSyncStatus.synced.rawValue)
+            }
+            try db.create(index: "idx_wallet_suggestions_status", on: "wallet_suggestions", columns: ["status"])
+            try db.create(index: "idx_wallet_suggestions_server_version", on: "wallet_suggestions", columns: ["server_version"])
+            try db.create(index: "idx_wallet_suggestions_captured_at", on: "wallet_suggestions", columns: ["captured_at"])
+        }
+
         return migrator
     }
 

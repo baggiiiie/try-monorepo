@@ -1,4 +1,4 @@
-.PHONY: simulator build install run server test docker-build docker-run
+.PHONY: simulator build install run server web web-dev test docker-build docker-run
 
 SIMULATOR_DEVICE = iPhone 17 Pro
 IOS_DIR = ios
@@ -34,6 +34,12 @@ run: install
 # Server targets
 server:
 	@cd $(SERVER_DIR) && go build -o bin/expense ./cmd/expense/ && ./bin/expense
+
+web:
+	@if test -f $(SERVER_DIR)/web/package.json; then cd $(SERVER_DIR)/web && pnpm build; else test -f $(SERVER_DIR)/web/dist/index.html; fi
+
+web-dev:
+	@if test -f $(SERVER_DIR)/web/package.json; then cd $(SERVER_DIR)/web && pnpm dev; else echo "Static web client is in $(SERVER_DIR)/web/dist; run make server and open http://localhost:8080"; fi
 
 # Docker targets
 docker-build:

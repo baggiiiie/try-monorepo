@@ -68,6 +68,7 @@ type PullResponse struct {
 	Expenses          []Expense          `json:"expenses"`
 	Categories        []Category         `json:"categories"`
 	RecurringExpenses []RecurringExpense `json:"recurring_expenses"`
+	WalletSuggestions []WalletSuggestion `json:"wallet_suggestions"`
 	ServerVersion     int64              `json:"server_version"`
 }
 
@@ -110,11 +111,16 @@ func pullResponse(ctx context.Context, q *dbsqlc.Queries, sinceVersion, serverVe
 	if err != nil {
 		return nil, err
 	}
+	walletRows, err := q.ListWalletSuggestionsSinceServerVersion(ctx, sinceVersion)
+	if err != nil {
+		return nil, err
+	}
 
 	resp := &PullResponse{
 		Expenses:          make([]Expense, 0, len(expenses)),
 		Categories:        make([]Category, 0, len(categories)),
 		RecurringExpenses: recurringExpenses,
+		WalletSuggestions: make([]WalletSuggestion, 0, len(walletRows)),
 		ServerVersion:     serverVersion,
 	}
 
@@ -137,6 +143,11 @@ func pullResponse(ctx context.Context, q *dbsqlc.Queries, sinceVersion, serverVe
 		}
 		resp.Categories = append(resp.Categories, categoryFromRow(category))
 		includedCategoryIDs[r.CategoryID] = struct{}{}
+	}
+
+	for _, wr := range walletRows {
+		ws := walletSuggestionFromRow(wr)
+		resp.WalletSuggestions = append(resp.WalletSuggestions, ws)
 	}
 
 	for _, e := range expenses {

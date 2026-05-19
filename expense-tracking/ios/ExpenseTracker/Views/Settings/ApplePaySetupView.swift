@@ -4,31 +4,27 @@ struct ApplePaySetupView: View {
     var body: some View {
         List {
             Section {
-                Text("Automatically capture Apple Pay transactions by setting up a Shortcuts automation. This runs in the background every time you tap to pay.")
+                Text("Capture Apple Pay transactions with a personal Shortcuts automation that posts pending suggestions to your ExpenseTracker server. Review and accept them later in the app.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
-            Section("Setup Steps") {
-                SetupStepRow(number: 1, text: "Open the **Shortcuts** app")
-                SetupStepRow(number: 2, text: "Go to **Automation** → tap **+**")
-                SetupStepRow(number: 3, text: "Select **Transaction** (or **Wallet** on iOS 18+)")
-                SetupStepRow(number: 4, text: "Under \"When I tap\", select the cards you want to track")
-                SetupStepRow(number: 5, text: "Set to **Run Immediately**")
-                SetupStepRow(number: 6, text: "Add action → search for **Import Transaction**")
-                SetupStepRow(number: 7, text: "Tap the **Amount** field → select **Shortcut Input** → choose type **Amount**")
-                SetupStepRow(number: 8, text: "Tap the **Merchant** field → select **Shortcut Input** → choose type **Merchant**")
-                SetupStepRow(number: 9, text: "Tap the **Card** field → select **Shortcut Input** → choose type **Card or Pass**")
-                SetupStepRow(number: 10, text: "Tap the **Name** field → select **Shortcut Input** → choose type **Name**")
-                SetupStepRow(number: 11, text: "Tap **Done**")
+            Section("Shortcut recipe") {
+                SetupStepRow(number: 1, text: "Open **Shortcuts** → **Automation** → **+** → **Transaction**.")
+                SetupStepRow(number: 2, text: "Choose the cards to track and set the automation to **Run Immediately**.")
+                SetupStepRow(number: 3, text: "Add **UUID**. Use that UUID as the dictionary `id` and `Idempotency-Key`.")
+                SetupStepRow(number: 4, text: "Add **Dictionary** with `id`, `merchant`, `amount` in cents, `currency`, `captured_at` as Unix time, optional `card_name`, and `source` = `shortcut`.")
+                SetupStepRow(number: 5, text: "Add **Get Contents of URL** → `POST https://<your-host>/api/wallet-suggestions`.")
+                SetupStepRow(number: 6, text: "Set headers: `Authorization: Bearer <sync-secret>`, `Content-Type: application/json`, and `Idempotency-Key: <id>`.")
+                SetupStepRow(number: 7, text: "On failure, add the JSON payload to Reminders so failed captures are not silent.")
             }
 
             Section("Notes") {
-                Label("The amount may show as $0 for some card issuers — you can fill it in manually when reviewing.", systemImage: "info.circle")
+                Label("The old in-app Import Transaction action has been retired; the server is now the source of truth for suggestions.", systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption)
-                Label("Make sure Wallet has mobile data enabled in Settings → Cellular.", systemImage: "antenna.radiowaves.left.and.right")
+                Label("Suggestions stay pending until you explicitly accept or dismiss them.", systemImage: "checkmark.circle")
                     .font(.caption)
-                Label("Only NFC/contactless taps trigger the automation. In-app purchases may not.", systemImage: "wave.3.right")
+                Label("See docs/design/06-apple-pay-automation.md for the full recipe.", systemImage: "doc.text")
                     .font(.caption)
             }
         }

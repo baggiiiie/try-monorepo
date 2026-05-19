@@ -122,7 +122,7 @@ final class AddEditExpenseViewModel: ObservableObject {
         }
 
         merchant = walletSuggestion.merchant
-        date = AppDateFormatter.date(fromUnixTimestamp: walletSuggestion.date)
+        date = AppDateFormatter.date(fromUnixTimestamp: walletSuggestion.capturedAt)
     }
 
     private func loadCategories() {

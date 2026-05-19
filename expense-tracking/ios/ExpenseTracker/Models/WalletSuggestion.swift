@@ -9,48 +9,39 @@ enum WalletSuggestionStatus: String {
 
 struct WalletSuggestion: Codable, Identifiable, FetchableRecord, PersistableRecord {
     var id: String
-    var financekitTxId: String?
     var amount: Int64?
     var currency: String
     var merchant: String
     var cardName: String?
-    var transactionName: String?
-    var date: Int64
+    var capturedAt: Int64
     var source: String
     var status: String
     var linkedExpenseId: String?
     var createdAt: Int64
+    var updatedAt: Int64
+    var clientUpdatedAt: Int64
+    var serverVersion: Int64
+    var syncStatus: String = RecordSyncStatus.synced.rawValue
 
     static let databaseTableName = "wallet_suggestions"
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case financekitTxId = "financekit_tx_id"
-        case amount
-        case currency
-        case merchant
-        case cardName = "card_name"
-        case transactionName = "transaction_name"
-        case date
-        case source
-        case status
-        case linkedExpenseId = "linked_expense_id"
-        case createdAt = "created_at"
-    }
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
 
     enum Columns {
-        static let id = Column(CodingKeys.id)
-        static let financekitTxId = Column(CodingKeys.financekitTxId)
-        static let amount = Column(CodingKeys.amount)
-        static let currency = Column(CodingKeys.currency)
-        static let merchant = Column(CodingKeys.merchant)
-        static let cardName = Column(CodingKeys.cardName)
-        static let transactionName = Column(CodingKeys.transactionName)
-        static let date = Column(CodingKeys.date)
-        static let source = Column(CodingKeys.source)
-        static let status = Column(CodingKeys.status)
-        static let linkedExpenseId = Column(CodingKeys.linkedExpenseId)
-        static let createdAt = Column(CodingKeys.createdAt)
+        static let id = Column("id")
+        static let amount = Column("amount")
+        static let currency = Column("currency")
+        static let merchant = Column("merchant")
+        static let cardName = Column("card_name")
+        static let capturedAt = Column("captured_at")
+        static let source = Column("source")
+        static let status = Column("status")
+        static let linkedExpenseId = Column("linked_expense_id")
+        static let createdAt = Column("created_at")
+        static let updatedAt = Column("updated_at")
+        static let clientUpdatedAt = Column("client_updated_at")
+        static let serverVersion = Column("server_version")
+        static let syncStatus = Column("sync_status")
     }
 
     var displayAmount: String? {
@@ -59,7 +50,6 @@ struct WalletSuggestion: Codable, Identifiable, FetchableRecord, PersistableReco
     }
 
     var displayDate: Date {
-        AppDateFormatter.date(fromUnixTimestamp: date)
+        AppDateFormatter.date(fromUnixTimestamp: capturedAt)
     }
-
 }
