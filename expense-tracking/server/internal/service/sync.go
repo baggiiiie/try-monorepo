@@ -28,6 +28,7 @@ type PushRequest struct {
 	Expenses          []PushExpense          `json:"expenses"`
 	Categories        []PushCategory         `json:"categories"`
 	RecurringExpenses []PushRecurringExpense `json:"recurring_expenses"`
+	WalletSuggestions []PushWalletSuggestion `json:"wallet_suggestions"`
 }
 
 // PushExpense is the wire form of a client-side expense edit. Per ADR 007,
@@ -55,6 +56,13 @@ type PushCategory struct {
 	DeletedAt       *int64 `json:"deleted_at,omitempty"`
 }
 
+type PushWalletSuggestion struct {
+	ID              string  `json:"id"`
+	Status          string  `json:"status"`
+	LinkedExpenseID *string `json:"linked_expense_id,omitempty"`
+	ClientUpdatedAt int64   `json:"client_updated_at"`
+}
+
 func (p PushCategory) GetClientUpdatedAt() int64 { return p.ClientUpdatedAt }
 func (p PushCategory) GetDeletedAt() *int64      { return p.DeletedAt }
 
@@ -63,6 +71,8 @@ func (p PushExpense) GetDeletedAt() *int64      { return p.DeletedAt }
 
 func (p PushRecurringExpense) GetClientUpdatedAt() int64 { return p.ClientUpdatedAt }
 func (p PushRecurringExpense) GetDeletedAt() *int64      { return p.DeletedAt }
+
+func (p PushWalletSuggestion) GetClientUpdatedAt() int64 { return p.ClientUpdatedAt }
 
 type PullResponse struct {
 	Expenses          []Expense          `json:"expenses"`
@@ -76,6 +86,7 @@ type PushResponse struct {
 	Expenses          []Expense          `json:"expenses"`
 	Categories        []Category         `json:"categories"`
 	RecurringExpenses []RecurringExpense `json:"recurring_expenses"`
+	WalletSuggestions []WalletSuggestion `json:"wallet_suggestions"`
 	ServerVersion     int64              `json:"server_version"`
 }
 
@@ -186,6 +197,7 @@ func (s *SyncService) Push(ctx context.Context, req PushRequest) (*PushResponse,
 		Expenses:          make([]Expense, 0, len(req.Expenses)),
 		Categories:        make([]Category, 0, len(req.Categories)),
 		RecurringExpenses: make([]RecurringExpense, 0, len(req.RecurringExpenses)),
+		WalletSuggestions: make([]WalletSuggestion, 0, len(req.WalletSuggestions)),
 	}
 
 	err := s.tx.WithTx(ctx, func(qtx *dbsqlc.Queries) error {
@@ -241,6 +253,17 @@ func (s *SyncService) Push(ctx context.Context, req PushRequest) (*PushResponse,
 				return fmt.Errorf("pushing expense: %w", err)
 			}
 			resp.Expenses = append(resp.Expenses, *exp)
+		}
+
+		for _, ws := range req.WalletSuggestions {
+			if ws.ID == "" {
+				return fmt.Errorf("wallet suggestion id is required")
+			}
+			suggestion, err := s.pushWalletSuggestion(ctx, qtx, ws, now)
+			if err != nil {
+				return fmt.Errorf("pushing wallet suggestion: %w", err)
+			}
+			resp.WalletSuggestions = append(resp.WalletSuggestions, *suggestion)
 		}
 
 		return nil
@@ -464,6 +487,56 @@ func (s *SyncService) pushRecurringExpense(ctx context.Context, q *dbsqlc.Querie
 	}
 	r := recurringExpenseFromRow(row)
 	return &r, nil
+}
+
+func (s *SyncService) pushWalletSuggestion(ctx context.Context, q *dbsqlc.Queries, input PushWalletSuggestion, now int64) (*WalletSuggestion, error) {
+	existing, err := q.GetWalletSuggestion(ctx, input.ID)
+	if err == sql.ErrNoRows {
+		return nil, ErrWalletSuggestionNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if input.Status != WalletSuggestionStatusAccepted && input.Status != WalletSuggestionStatusDismissed {
+		return nil, fmt.Errorf("wallet suggestion status must be accepted or dismissed")
+	}
+	if input.Status == WalletSuggestionStatusAccepted && input.LinkedExpenseID == nil {
+		return nil, fmt.Errorf("accepted wallet suggestion requires linked_expense_id")
+	}
+	if input.Status == WalletSuggestionStatusDismissed && input.LinkedExpenseID != nil {
+		return nil, fmt.Errorf("dismissed wallet suggestion must not include linked_expense_id")
+	}
+
+	if existing.ClientUpdatedAt > input.ClientUpdatedAt {
+		ws := walletSuggestionFromRow(existing)
+		return &ws, nil
+	}
+
+	if existing.ClientUpdatedAt == input.ClientUpdatedAt &&
+		existing.Status == input.Status &&
+		nullStringPtrEqual(existing.LinkedExpenseID, input.LinkedExpenseID) {
+		ws := walletSuggestionFromRow(existing)
+		return &ws, nil
+	}
+
+	serverVersion, err := nextServerVersion(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	updated, err := q.UpdateWalletSuggestionFromSync(ctx, dbsqlc.UpdateWalletSuggestionFromSyncParams{
+		Status:          input.Status,
+		LinkedExpenseID: nullString(input.LinkedExpenseID),
+		UpdatedAt:       now,
+		ClientUpdatedAt: input.ClientUpdatedAt,
+		ServerVersion:   serverVersion,
+		ID:              input.ID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	ws := walletSuggestionFromRow(updated)
+	return &ws, nil
 }
 
 // recurringExpenseLWWHooks adapts recurring expenses onto LWWMerge.

@@ -46,25 +46,41 @@
     expense form, category CRUD, recurring CRUD, wallet-suggestion review
     (pre-filled confirm or dismiss), settings (paste secret, preferences,
     sync errors with Retry/Discard).
+- Local web/PWA smoke coverage exists in
+  [`tests/e2e/10_web_pwa_smoke.sh`](../tests/e2e/10_web_pwa_smoke.sh):
+  embedded shell + manifest + cache headers, auth cookie exchange, cookie
+  API access, wallet suggestion create/list, REST confirm, and sync-pull
+  visibility of the accepted suggestion plus created expense. It also
+  verifies the deterministic 422 path used by the PWA outbox failed-row
+  state.
+- Auth rotation cookie behavior is covered by
+  [`tests/e2e/11_auth_rotation_cookie.sh`](../tests/e2e/11_auth_rotation_cookie.sh):
+  old PWA cookie rejection after secret rotation and new cookie exchange.
+- Production/device validation steps are captured in
+  [`docs/pwa-validation-runbook.md`](pwa-validation-runbook.md).
+- Cloudflare Tunnel setup is documented in
+  [`docs/cloudflare-tunnel-setup.md`](cloudflare-tunnel-setup.md).
 
-**What is in progress:** nothing.
+**What is in progress:** validation that depends on the user-provisioned
+Cloudflare Tunnel.
 
 **What blocks implementation:**
 - **Phase 0 manual work — user responsibility:** provision Cloudflare
   Tunnel (domain, `cloudflared` daemon on the host, DNS record). Without
   HTTPS reachable at a stable hostname, Phase 3 PWA installability cannot
-  be validated. This is not an agent task.
+  be validated. This is not an agent task; see
+  [`docs/cloudflare-tunnel-setup.md`](cloudflare-tunnel-setup.md).
 
 **Recommended next step for the next agent:**
 
 1. Run the Validation Checklist end-to-end once the Cloudflare Tunnel is up
    (Phase 0 user task) — Lighthouse "Installable" audit, offline cold launch,
-   offline write with outbox drain, auth-rotation 401 flow.
-2. Start **Phase 5 + 6 together** (per Q7 they must ship as a pair): author
-   the Shortcut recipe and document it in the rewritten
-   `docs/design/06-apple-pay-automation.md`, then on the iOS side delete the
-   App Intent files, rewrite `ApplePaySetupView`, and add the GRDB migration
-   that aligns `wallet_suggestions` with the server schema + sync columns.
+   offline write with outbox drain, auth-rotation 401 flow. Use
+   [`docs/pwa-validation-runbook.md`](pwa-validation-runbook.md).
+2. Add the real shareable iCloud Shortcut link to the docs and iOS setup
+   screen once the Shortcut is authored on-device.
+3. Validate Apple Pay end-to-end once a real card/Shortcut automation and
+   tunnel hostname are available.
 
 **Conventions a new agent must follow** (already in root
 [AGENTS.md](../AGENTS.md), but repeated here for handoff clarity):
@@ -355,7 +371,7 @@ status indicator.
 
 ### Phase 5 — Shortcut bridge for Apple Pay
 
-- [ ] Rewrite [`docs/design/06-apple-pay-automation.md`](design/) (or
+- [x] Rewrite [`docs/design/06-apple-pay-automation.md`](design/) (or
       create if missing) to document the Shortcut recipe instead of the
       App Intent.
 - [ ] Authorable Shortcut recipe (shareable via iCloud link):
@@ -370,7 +386,7 @@ status indicator.
      - `Idempotency-Key: <same as id>`
   4. On failure (no network, 5xx): **Add to Reminders** with the JSON
      payload, so nothing is silently lost.
-- [ ] Document the setup walkthrough (will be displayed in the
+- [x] Document the setup walkthrough (will be displayed in the
       rewritten iOS `ApplePaySetupView` — see Phase 6).
 
 ### Phase 6 — iOS rework (forced by Phase 5 + Q7)
@@ -378,27 +394,28 @@ status indicator.
 This is iOS-side work; it ships *with* Phase 5 because the App Intent
 deletion and the Shortcut switch must land together.
 
-- [ ] **Delete**
+- [x] **Delete**
       [`ios/ExpenseTracker/Intents/ImportTransactionIntent.swift`](../ios/ExpenseTracker/Intents/ImportTransactionIntent.swift)
       and
       [`ios/ExpenseTracker/Intents/ExpenseTrackerShortcuts.swift`](../ios/ExpenseTracker/Intents/ExpenseTrackerShortcuts.swift).
-- [ ] **Rewrite**
+- [x] **Rewrite**
       [`ios/ExpenseTracker/Views/Settings/ApplePaySetupView.swift`](../ios/ExpenseTracker/Views/Settings/ApplePaySetupView.swift)
-      to walk through the Shortcut → HTTP setup (with the shareable
-      iCloud link from Phase 5).
-- [ ] **GRDB migration** for `wallet_suggestions`:
+      to walk through the Shortcut → HTTP setup.
+- [ ] Add the shareable iCloud link from Phase 5 to the setup view once
+      the Shortcut is authored on-device.
+- [x] **GRDB migration** for `wallet_suggestions`:
   - Drop the existing local-only table.
   - Recreate aligned with the server schema (drop `financekit_tx_id`,
     `transaction_name`; keep `card_name`).
   - Add the sync columns (`server_version`, `client_updated_at`).
-- [ ] Wire `wallet_suggestions` into iOS sync push/pull
+- [x] Wire `wallet_suggestions` into iOS sync push/pull
       ([SyncService.swift](../ios/ExpenseTracker/Services/SyncService.swift)
       and friends).
-- [ ] Update `WalletSuggestionRepository` to add an `accept` operation
+- [x] Update `WalletSuggestionRepository` to add an `accept` operation
       (it currently only has `fetchPending` / `dismiss`), since accept
       now mutates the suggestion's `status` and `linked_expense_id`
       (was previously implicit via expense creation).
-- [ ] Document the one-time data loss in release notes: "wallet
+- [x] Document the one-time data loss in release notes: "wallet
       suggestions captured before vX.Y are cleared on update; re-capture
       via Apple Pay if needed."
 
@@ -413,21 +430,32 @@ deletion and the Shortcut switch must land together.
 - [ ] **Offline write**: airplane mode → create expense → row appears
       optimistically with "queued" badge → restore network → outbox
       drains → badge clears → reload PWA → row is server-confirmed.
+- [x] **Local web/PWA smoke**: production shell serves with install metadata,
+      cache headers are correct, auth exchange issues the PWA cookie, cookie
+      API access works, and wallet suggestions create/list through REST.
 - [ ] **Apple Pay end-to-end**: tap a test card → Shortcut fires → server
       returns 2xx → suggestion visible in PWA review screen (next REST
       fetch) AND iOS suggestions screen (next sync-pull).
-- [ ] **Confirm round-trip**: accept a suggestion in PWA → expense
-      appears in PWA list → iOS sync-pull picks up both the suggestion
-      status change and the new expense.
+- [x] **Confirm round-trip API path**: REST confirm creates the expense,
+      accepts the suggestion, and sync-pull includes both the accepted
+      suggestion and the new expense.
+- [ ] **Confirm round-trip device UI**: accept a suggestion in PWA → expense
+      appears in PWA list → iOS sync-pull shows both the suggestion status
+      change and the new expense.
+- [x] **Sync-error API path**: creating an expense with a deleted category
+      returns a clean 422 so the web outbox can classify the row as failed.
 - [ ] **Sync-error UX**: forge a 4xx (e.g., create expense with deleted
       category) → outbox row marked `failed` → "Sync errors (1)" appears
       in header → Settings shows the failed row with Retry / Discard.
-- [ ] **Auth rotation**: rotate secret on server → next PWA request 401s
-      → user is bounced to Settings → re-paste → cookie exchanged → flow
-      resumes. Same for iOS Keychain.
+- [x] **Auth rotation API path**: rotate secret on server → old PWA cookie
+      and old bearer are rejected → new secret exchange issues a new cookie
+      → cookie and bearer API access resume.
+- [ ] **Auth rotation device UI**: rotate secret on server → next PWA
+      request 401s → user is bounced to Settings → re-paste → cookie
+      exchanged → flow resumes. Same for iOS Keychain.
 - [ ] **Persistence after 7 days**: installed PWA storage survives 7 days
       of no use (confirms eviction-free behavior of installed PWAs).
-- [ ] iOS app retains all functionality; `make build install run` still
+- [x] iOS app retains all functionality; `make build install run` still
       produces a working iOS app.
 
 ## Decisions Log

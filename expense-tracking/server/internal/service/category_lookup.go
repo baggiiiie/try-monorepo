@@ -23,3 +23,11 @@ func resolveActiveCategoryIDByName(ctx context.Context, q *dbsqlc.Queries, name 
 		return "", fmt.Errorf("category %q is ambiguous; found %d active categories with that name, use category_id instead", name, len(categories))
 	}
 }
+
+func validateActiveCategoryID(ctx context.Context, q *dbsqlc.Queries, id string) error {
+	_, err := q.GetCategoryByID(ctx, id)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("category %q not found", id)
+	}
+	return err
+}

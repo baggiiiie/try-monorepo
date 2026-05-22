@@ -209,3 +209,52 @@ func (q *Queries) ListWalletSuggestionsSinceServerVersion(ctx context.Context, s
 	}
 	return items, nil
 }
+
+const updateWalletSuggestionFromSync = `-- name: UpdateWalletSuggestionFromSync :one
+UPDATE wallet_suggestions
+SET status = ?1,
+    linked_expense_id = ?2,
+    updated_at = ?3,
+    client_updated_at = ?4,
+    server_version = ?5
+WHERE id = ?6
+RETURNING id, amount, currency, merchant, card_name, captured_at, source, status,
+          linked_expense_id, created_at, updated_at, client_updated_at, server_version
+`
+
+type UpdateWalletSuggestionFromSyncParams struct {
+	Status          string         `json:"status"`
+	LinkedExpenseID sql.NullString `json:"linked_expense_id"`
+	UpdatedAt       int64          `json:"updated_at"`
+	ClientUpdatedAt int64          `json:"client_updated_at"`
+	ServerVersion   int64          `json:"server_version"`
+	ID              string         `json:"id"`
+}
+
+func (q *Queries) UpdateWalletSuggestionFromSync(ctx context.Context, arg UpdateWalletSuggestionFromSyncParams) (WalletSuggestion, error) {
+	row := q.db.QueryRowContext(ctx, updateWalletSuggestionFromSync,
+		arg.Status,
+		arg.LinkedExpenseID,
+		arg.UpdatedAt,
+		arg.ClientUpdatedAt,
+		arg.ServerVersion,
+		arg.ID,
+	)
+	var i WalletSuggestion
+	err := row.Scan(
+		&i.ID,
+		&i.Amount,
+		&i.Currency,
+		&i.Merchant,
+		&i.CardName,
+		&i.CapturedAt,
+		&i.Source,
+		&i.Status,
+		&i.LinkedExpenseID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ClientUpdatedAt,
+		&i.ServerVersion,
+	)
+	return i, err
+}

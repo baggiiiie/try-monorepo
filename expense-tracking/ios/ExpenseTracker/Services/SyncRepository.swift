@@ -18,7 +18,15 @@ struct SyncRepository {
             let recurringExpenses = try RecurringExpense
                 .filter(RecurringExpense.Columns.syncStatus == RecordSyncStatus.pendingPush.rawValue)
                 .fetchAll(db)
-            return PendingPushChanges(expenses: expenses, categories: categories, recurringExpenses: recurringExpenses)
+            let walletSuggestions = try WalletSuggestion
+                .filter(WalletSuggestion.Columns.syncStatus == RecordSyncStatus.pendingPush.rawValue)
+                .fetchAll(db)
+            return PendingPushChanges(
+                expenses: expenses,
+                categories: categories,
+                recurringExpenses: recurringExpenses,
+                walletSuggestions: walletSuggestions
+            )
         }
     }
 
@@ -32,6 +40,9 @@ struct SyncRepository {
             }
             for expense in response.expenses {
                 try markExpenseSynced(expense, in: db)
+            }
+            for suggestion in response.walletSuggestions {
+                try markWalletSuggestionSynced(suggestion, in: db)
             }
         }
     }
@@ -91,6 +102,25 @@ struct SyncRepository {
                 serverRecurringExpense.clientUpdatedAt,
                 RecordSyncStatus.synced.rawValue,
                 serverRecurringExpense.id,
+            ]
+        )
+    }
+
+    private func markWalletSuggestionSynced(_ serverSuggestion: PullWalletSuggestion, in db: Database) throws {
+        try db.execute(
+            sql: """
+                UPDATE wallet_suggestions
+                SET status = ?, linked_expense_id = ?, updated_at = ?, client_updated_at = ?, server_version = ?, sync_status = ?
+                WHERE id = ?
+                """,
+            arguments: [
+                serverSuggestion.status,
+                serverSuggestion.linkedExpenseId,
+                serverSuggestion.updatedAt,
+                serverSuggestion.clientUpdatedAt,
+                serverSuggestion.serverVersion,
+                RecordSyncStatus.synced.rawValue,
+                serverSuggestion.id,
             ]
         )
     }
@@ -181,16 +211,18 @@ struct PendingPushChanges {
     let expenses: [Expense]
     let categories: [Category]
     let recurringExpenses: [RecurringExpense]
+    let walletSuggestions: [WalletSuggestion]
 
     var hasChanges: Bool {
-        !expenses.isEmpty || !categories.isEmpty || !recurringExpenses.isEmpty
+        !expenses.isEmpty || !categories.isEmpty || !recurringExpenses.isEmpty || !walletSuggestions.isEmpty
     }
 
     var request: PushRequest {
         PushRequest(
             expenses: expenses.map(PushExpense.init),
             categories: categories.map(PushCategory.init),
-            recurringExpenses: recurringExpenses.map(PushRecurringExpense.init)
+            recurringExpenses: recurringExpenses.map(PushRecurringExpense.init),
+            walletSuggestions: walletSuggestions.map(PushWalletSuggestion.init)
         )
     }
 }
