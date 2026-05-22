@@ -18,6 +18,14 @@ worker.addEventListener('activate', (event) => {
 	);
 });
 
+// User-consented update flow: the page tells us when to take over so we never
+// reload mid-edit (the outbox would survive it, but it's still rude).
+worker.addEventListener('message', (event) => {
+	if ((event.data as { type?: string } | null)?.type === 'SKIP_WAITING') {
+		void worker.skipWaiting();
+	}
+});
+
 async function networkFirst(request: Request, timeoutMs = 3000): Promise<Response> {
 	const cache = await caches.open(cacheName);
 	let timeout: ReturnType<typeof setTimeout> | undefined;

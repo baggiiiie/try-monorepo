@@ -6,7 +6,7 @@
 
 ## Status & Handoff (read me first)
 
-**Last updated:** 2026-05-19
+**Last updated:** 2026-05-22
 
 **What is done:**
 - Plan fully grilled and locked (see Decisions Log at the end of this doc —
@@ -28,9 +28,24 @@
 - Phase 2 server static plumbing is implemented: `server/web/dist` is embedded
   and served with SPA fallback and cache headers; `make web` / `make web-dev`
   exist.
-- Phase 3 is started: SvelteKit is scaffolded under `server/web/`, builds to
-  `server/web/dist`, includes install metadata/icons, and has a service worker
-  with shell pre-cache plus network-first GET caching.
+- Phase 3 PWA shell is complete: SvelteKit scaffolded under `server/web/`,
+  builds to `server/web/dist`, includes install metadata/icons, service worker
+  does shell pre-cache + network-first GET caching, manual SW registration
+  with an "Update available — Reload" banner (user-consented `SKIP_WAITING`),
+  and a one-time iOS Safari "Add to Home Screen" instruction sheet.
+- Phase 4 v1 features are implemented:
+  - HTTP client wrapper ([api.ts](../server/web/src/lib/api.ts)) with same-origin
+    fetch, cookie credential, 401 → `/settings?reauth=1` redirect, and
+    network/5xx failure → outbox handoff.
+  - Dexie outbox ([outbox.ts](../server/web/src/lib/outbox.ts)) with per-`targetKey`
+    FIFO, the documented backoff schedule, 4xx → failed, 5xx/network → retry,
+    drain triggers on online/focus/visibilitychange + periodic kick.
+  - Layout with bottom tab navigation and a header sync-status pill
+    ([SyncStatusPill.svelte](../server/web/src/lib/SyncStatusPill.svelte)).
+  - Screens: expense feed (day-grouped, cursor pagination), add/edit
+    expense form, category CRUD, recurring CRUD, wallet-suggestion review
+    (pre-filled confirm or dismiss), settings (paste secret, preferences,
+    sync errors with Retry/Discard).
 
 **What is in progress:** nothing.
 
@@ -42,11 +57,14 @@
 
 **Recommended next step for the next agent:**
 
-1. Finish the Phase 3 update flow: when a new service worker is detected, post
-   a message to the page and show a dismissable "Update available — reload"
-   banner. Do not add auto-`skipWaiting()`.
-2. Add the one-time iOS Safari "Add to Home Screen" instruction sheet.
-3. Start Phase 4 feature screens after those PWA shell details are in place.
+1. Run the Validation Checklist end-to-end once the Cloudflare Tunnel is up
+   (Phase 0 user task) — Lighthouse "Installable" audit, offline cold launch,
+   offline write with outbox drain, auth-rotation 401 flow.
+2. Start **Phase 5 + 6 together** (per Q7 they must ship as a pair): author
+   the Shortcut recipe and document it in the rewritten
+   `docs/design/06-apple-pay-automation.md`, then on the iOS side delete the
+   App Intent files, rewrite `ApplePaySetupView`, and add the GRDB migration
+   that aligns `wallet_suggestions` with the server schema + sync columns.
 
 **Conventions a new agent must follow** (already in root
 [AGENTS.md](../AGENTS.md), but repeated here for handoff clarity):
@@ -270,18 +288,21 @@ All endpoints sit behind the existing shared-secret middleware (header
   - `<meta name="mobile-web-app-capable" content="yes">`
   - `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`
   - `<meta name="apple-mobile-web-app-title" content="Expenses">`
-- [ ] **Service worker** (`src/service-worker.ts`):
+- [x] **Service worker** (`src/service-worker.ts`):
   - Pre-cache the app shell on install.
   - Runtime cache for `GET /api/*`: **network-first**, 3-second timeout,
     fall back to cache on failure. Update cache with each successful
     response.
   - Navigations: network-first, fall back to cached `index.html`.
-  - Update flow: when a new SW is detected, post a message to the page →
-    page shows a dismissable "Update available — reload" banner. **No
-    `skipWaiting()` without user consent** (an auto-reload mid-edit is
-    rude even with the outbox).
-- [ ] First-run hint: detect iOS Safari + not standalone → show a one-time
-      "Add to Home Screen" instruction sheet.
+  - Update flow: SvelteKit auto-registration is disabled
+    (`kit.serviceWorker.register = false`); `src/lib/sw-client.ts` registers
+    the worker, watches `updatefound`, and exposes an `updateAvailable` store.
+    `src/lib/UpdateBanner.svelte` renders a dismissable
+    "Update available — Reload" pill that posts `SKIP_WAITING` only on user
+    click and reloads on `controllerchange`. **No auto-`skipWaiting()`.**
+- [x] First-run hint: `src/lib/IosInstallHint.svelte` detects iOS / iPadOS
+      Safari that is not in standalone display-mode and shows a one-time
+      "Add to Home Screen" sheet (dismissal persisted in `localStorage`).
 
 ### Phase 4 — PWA features
 
@@ -291,38 +312,43 @@ status indicator.
 
 **Not in v1:** category reorder, reports.
 
-- [ ] **HTTP client wrapper** that handles:
-  - Same-origin fetches (no configurable base URL — see Q11b).
-  - Cookie credential is implicit (browser attaches `et_session`).
-  - On `401`: redirect to Settings with "paste your secret again."
-  - On network failure for a write: hand off to outbox.
-- [ ] **Outbox** (IndexedDB store via Dexie):
-  - Record shape: `{id, method, url, body, headers, target_key, status,
-    attempts, last_error, created_at}` (generic HTTP-request shape).
-  - **Per-record FIFO**: writes targeting the same `target_key`
+- [x] **HTTP client wrapper** ([api.ts](../server/web/src/lib/api.ts)):
+  - Same-origin fetches.
+  - Cookie credential implicit (`credentials: 'same-origin'`).
+  - On `401`: marks auth unauthenticated and routes to
+    `/settings?reauth=1`.
+  - On network failure or 5xx/408/429 for a write: handed off to the
+    outbox; the call returns `{ kind: 'queued' }`.
+- [x] **Outbox** ([outbox.ts](../server/web/src/lib/outbox.ts), Dexie):
+  - Record shape: `{id, method, url, body, targetKey, status, attempts,
+    lastError, nextAttemptAt, createdAt}` — generic HTTP-request shape.
+  - **Per-`targetKey` FIFO**: writes targeting the same key
     (e.g. `expense:<uuid>`) replay in order; different keys proceed in
     parallel.
-  - Replay triggers: app focus, `online` event, `visibilitychange`,
-    on app launch.
-  - **4xx**: mark `failed`, surface in "Sync errors (N)" UI; do not retry
-    automatically. User retries (after editing) or discards.
-  - **5xx / network**: exponential backoff (1s, 5s, 30s, 5m, 30m, cap).
+  - Replay triggers: app launch, `online`, `focus`, `visibilitychange`,
+    plus a 30 s periodic kick.
+  - **4xx (except 408/429)**: mark `failed`, surface in "Sync errors (N)"
+    UI; no automatic retry.
+  - **5xx / network / 408 / 429**: exponential backoff
+    (1 s, 5 s, 30 s, 5 m, 30 m, cap).
   - Every write payload includes `client_updated_at` so the server's LWW
     ([lww.go](../server/internal/service/lww.go)) works correctly.
-- [ ] **Screens** (port from `iOS Views/`):
-  - Expense feed (grouped by day, infinite scroll with cursor pagination).
-  - Add / edit expense form.
-  - Category list + add/edit + delete (no reorder).
-  - Recurring expenses list + add/edit + delete.
-  - Wallet suggestions review (list pending → tap → pre-filled expense
-    form → confirm via `POST /:id/confirm`; or dismiss).
-  - Settings — see Phase 4 Settings spec below.
-  - Sync status indicator (header pill): "Synced" / "Offline" / "Syncing"
-    / "Sync errors (N)".
-- [ ] **Settings screen contents:**
-  - Paste sync secret → calls `POST /api/auth/exchange` → cookie set.
+- [x] **Screens** (ported under `server/web/src/routes/`):
+  - `/` — expense feed (day-grouped, cursor "Load older" pagination).
+  - `/expenses/new`, `/expenses/[id]` — add/edit form
+    ([ExpenseForm.svelte](../server/web/src/lib/ExpenseForm.svelte)).
+  - `/categories` — list + inline add/edit + delete (no reorder).
+  - `/recurring` — list + inline add/edit + delete.
+  - `/suggestions` — pending list → tap → pre-filled confirm form
+    posting to `POST /:id/confirm`, or dismiss.
+  - `/settings` — see spec below.
+  - Header sync-status pill
+    ([SyncStatusPill.svelte](../server/web/src/lib/SyncStatusPill.svelte)):
+    "Synced" / "Offline" / "Syncing (N)" / "Sync errors (N)".
+- [x] **Settings screen contents:**
+  - Paste sync secret → `exchangeSecret()` calls `POST /api/auth/exchange`.
   - Currency, timezone, date format → `/api/preferences`.
-  - "Sync errors (N)" → list of failed outbox rows with **Retry** /
+  - "Sync errors (N)" — list of failed outbox rows with **Retry** /
     **Discard** per row.
   - **No** server URL field (hardcoded same-origin).
   - **No** "sign out" / "clear local data" in v1.

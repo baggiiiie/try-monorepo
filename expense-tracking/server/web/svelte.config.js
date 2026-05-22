@@ -12,7 +12,13 @@ const config = {
 			assets: 'dist',
 			fallback: 'index.html',
 			precompress: false
-		})
+		}),
+		// We register the service worker manually so we can detect updates and
+		// surface a "reload" banner instead of taking control mid-edit. See
+		// src/lib/sw-client.ts.
+		serviceWorker: {
+			register: false
+		}
 	}
 };
 
