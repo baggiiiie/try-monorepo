@@ -36,6 +36,17 @@ SET status = 'dismissed',
     client_updated_at = sqlc.arg(client_updated_at)
 WHERE id = sqlc.arg(id) AND status = 'pending';
 
+-- name: UpdateWalletSuggestionFromSync :one
+UPDATE wallet_suggestions
+SET status = sqlc.arg(status),
+    linked_expense_id = sqlc.arg(linked_expense_id),
+    updated_at = sqlc.arg(updated_at),
+    client_updated_at = sqlc.arg(client_updated_at),
+    server_version = sqlc.arg(server_version)
+WHERE id = sqlc.arg(id)
+RETURNING id, amount, currency, merchant, card_name, captured_at, source, status,
+          linked_expense_id, created_at, updated_at, client_updated_at, server_version;
+
 -- name: ListWalletSuggestionsSinceServerVersion :many
 SELECT id, amount, currency, merchant, card_name, captured_at, source, status,
        linked_expense_id, created_at, updated_at, client_updated_at, server_version

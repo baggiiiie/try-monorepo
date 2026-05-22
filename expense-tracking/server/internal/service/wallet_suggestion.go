@@ -16,6 +16,12 @@ var (
 	ErrWalletSuggestionNotPending = errors.New("wallet suggestion is not pending")
 )
 
+const (
+	WalletSuggestionStatusPending   = "pending"
+	WalletSuggestionStatusAccepted  = "accepted"
+	WalletSuggestionStatusDismissed = "dismissed"
+)
+
 type WalletSuggestionService struct {
 	queries  *dbsqlc.Queries
 	store    *repository.Store
@@ -82,7 +88,7 @@ func (s *WalletSuggestionService) Create(ctx context.Context, in WalletSuggestio
 
 func (s *WalletSuggestionService) List(ctx context.Context, status string) ([]WalletSuggestion, error) {
 	if status == "" {
-		status = "pending"
+		status = WalletSuggestionStatusPending
 	}
 	rows, err := s.queries.ListWalletSuggestionsByStatus(ctx, status)
 	if err != nil {
@@ -126,7 +132,7 @@ func (s *WalletSuggestionService) Confirm(ctx context.Context, id string, expens
 			}
 			return err
 		}
-		if pending.Status != "pending" {
+		if pending.Status != WalletSuggestionStatusPending {
 			return ErrWalletSuggestionNotPending
 		}
 
@@ -190,4 +196,11 @@ func toStringPtr(v sql.NullString) *string {
 		return nil
 	}
 	return &v.String
+}
+
+func nullStringPtrEqual(existing sql.NullString, incoming *string) bool {
+	if incoming == nil {
+		return !existing.Valid
+	}
+	return existing.Valid && existing.String == *incoming
 }

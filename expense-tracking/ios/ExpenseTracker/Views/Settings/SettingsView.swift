@@ -140,7 +140,7 @@ struct SettingsView: View {
 
             Section("Apple Pay Automation") {
                 NavigationLink {
-                    ApplePaySetupView()
+                    ApplePaySetupView(serverURL: trimmedServerURL)
                 } label: {
                     HStack {
                         Image(systemName: "creditcard")

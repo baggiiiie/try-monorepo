@@ -81,6 +81,9 @@ func (s *ExpenseService) CreateWithQueries(ctx context.Context, q *dbsqlc.Querie
 	if categoryID == "" {
 		return nil, fmt.Errorf("category is required")
 	}
+	if err := validateActiveCategoryID(ctx, q, categoryID); err != nil {
+		return nil, err
+	}
 
 	currency := input.Currency
 	if currency == "" {
@@ -219,6 +222,7 @@ func (s *ExpenseService) Update(ctx context.Context, id string, input ExpenseInp
 		currency = input.Currency
 	}
 	categoryID := existing.CategoryID
+	categoryChanged := false
 	if input.Category != "" {
 		resolvedCategoryID, err := resolveActiveCategoryIDByName(ctx, s.queries, input.Category)
 		if err != nil {
@@ -228,8 +232,15 @@ func (s *ExpenseService) Update(ctx context.Context, id string, input ExpenseInp
 			return nil, err
 		}
 		categoryID = resolvedCategoryID
+		categoryChanged = true
 	} else if input.CategoryID != "" {
 		categoryID = input.CategoryID
+		categoryChanged = true
+	}
+	if categoryChanged {
+		if err := validateActiveCategoryID(ctx, s.queries, categoryID); err != nil {
+			return nil, err
+		}
 	}
 	description := existing.Description
 	if input.Description != "" {

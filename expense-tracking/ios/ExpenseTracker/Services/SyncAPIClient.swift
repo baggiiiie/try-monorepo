@@ -240,6 +240,7 @@ struct PushRequest: Codable {
     let expenses: [PushExpense]
     let categories: [PushCategory]
     let recurringExpenses: [PushRecurringExpense]
+    let walletSuggestions: [PushWalletSuggestion]
 }
 
 struct PushExpense: Codable {
@@ -281,10 +282,18 @@ struct PushRecurringExpense: Codable {
     let deletedAt: Int64?
 }
 
+struct PushWalletSuggestion: Codable {
+    let id: String
+    let status: String
+    let linkedExpenseId: String?
+    let clientUpdatedAt: Int64
+}
+
 struct PushResponse: Codable {
     let expenses: [PullExpense]
     let categories: [PullCategory]
     let recurringExpenses: [PullRecurringExpense]
+    let walletSuggestions: [PullWalletSuggestion]
     let serverVersion: Int64
 }
 
@@ -404,6 +413,17 @@ extension PushRecurringExpense {
             lastRunDate: recurringExpense.lastRunDate,
             clientUpdatedAt: recurringExpense.clientUpdatedAt,
             deletedAt: recurringExpense.deletedAt
+        )
+    }
+}
+
+extension PushWalletSuggestion {
+    init(_ suggestion: WalletSuggestion) {
+        self.init(
+            id: suggestion.id,
+            status: suggestion.status,
+            linkedExpenseId: suggestion.linkedExpenseId,
+            clientUpdatedAt: suggestion.clientUpdatedAt
         )
     }
 }

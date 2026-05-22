@@ -121,6 +121,9 @@ func (s *RecurringService) CreateWithQueries(ctx context.Context, q *dbsqlc.Quer
 	if categoryID == "" {
 		return nil, fmt.Errorf("category is required")
 	}
+	if err := validateActiveCategoryID(ctx, q, categoryID); err != nil {
+		return nil, err
+	}
 
 	now := time.Now().Unix()
 	id := uuid.New().String()
@@ -195,8 +198,10 @@ func (s *RecurringService) Update(ctx context.Context, id string, input Recurrin
 		currency = input.Currency
 	}
 	categoryID := existing.CategoryID
+	categoryChanged := false
 	if input.CategoryID != "" {
 		categoryID = input.CategoryID
+		categoryChanged = true
 	} else if input.Category != "" {
 		resolved, err := resolveActiveCategoryIDByName(ctx, s.queries, input.Category)
 		if err != nil {
@@ -206,6 +211,12 @@ func (s *RecurringService) Update(ctx context.Context, id string, input Recurrin
 			return nil, err
 		}
 		categoryID = resolved
+		categoryChanged = true
+	}
+	if categoryChanged {
+		if err := validateActiveCategoryID(ctx, s.queries, categoryID); err != nil {
+			return nil, err
+		}
 	}
 	description := existing.Description
 	if input.Description != "" {

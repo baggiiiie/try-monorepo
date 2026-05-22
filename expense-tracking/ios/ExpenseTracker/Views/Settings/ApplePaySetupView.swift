@@ -1,6 +1,15 @@
 import SwiftUI
 
 struct ApplePaySetupView: View {
+    let serverURL: String
+
+    private var walletSuggestionURL: String {
+        guard !serverURL.isEmpty else {
+            return "https://<your-host>/api/wallet-suggestions"
+        }
+        return serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/wallet-suggestions"
+    }
+
     var body: some View {
         List {
             Section {
@@ -14,7 +23,7 @@ struct ApplePaySetupView: View {
                 SetupStepRow(number: 2, text: "Choose the cards to track and set the automation to **Run Immediately**.")
                 SetupStepRow(number: 3, text: "Add **UUID**. Use that UUID as the dictionary `id` and `Idempotency-Key`.")
                 SetupStepRow(number: 4, text: "Add **Dictionary** with `id`, `merchant`, `amount` in cents, `currency`, `captured_at` as Unix time, optional `card_name`, and `source` = `shortcut`.")
-                SetupStepRow(number: 5, text: "Add **Get Contents of URL** → `POST https://<your-host>/api/wallet-suggestions`.")
+                SetupStepRow(number: 5, text: LocalizedStringKey("Add **Get Contents of URL** → `POST \(walletSuggestionURL)`."))
                 SetupStepRow(number: 6, text: "Set headers: `Authorization: Bearer <sync-secret>`, `Content-Type: application/json`, and `Idempotency-Key: <id>`.")
                 SetupStepRow(number: 7, text: "On failure, add the JSON payload to Reminders so failed captures are not silent.")
             }
