@@ -13,4 +13,4 @@ export all_proxy="$ALL_PROXY"
 #  ~/.mitmproxy/mitmproxy-ca-cert.pem is trusted as a root in System.keychain.)
 export NODE_EXTRA_CA_CERTS="${NODE_EXTRA_CA_CERTS:-$HOME/.mitmproxy/mitmproxy-ca-cert.pem}"
 
-exec /Applications/Cursor.app/Contents/MacOS/Cursor "$@"
+exec agent --output-format json --print "$@"
