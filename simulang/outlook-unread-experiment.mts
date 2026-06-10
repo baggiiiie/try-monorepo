@@ -4,43 +4,38 @@
 // The idea is not to be perfect; it is to fail at the step whose
 // postcondition is violated, dump diagnostics, and let the agent patch it.
 
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
 import {
   AccessibilityNode,
-  App,
   Clipboard,
   Direction,
   FocusPolicy,
   Key,
   KeyboardController,
-  Screen,
-  System,
   TraversalOrder,
   Visibility,
-  Window,
-  screenshotFull,
 } from '@simular-ai/simulang-js'
+import {
+  createRunDir,
+  createStepRunner,
+  findApp,
+  latestWindowForPid,
+  sleep,
+} from './workflow-utils.mts'
 
 const LIMIT = Number(process.env.LIMIT ?? 10)
 const QUERY = process.env.OUTLOOK_SEARCH_QUERY ?? 'isread:no'
-const RUN_DIR = join(process.cwd(), '.runs', `outlook-${new Date().toISOString().replace(/[:.]/g, '-')}`)
+const RUN_DIR = createRunDir('outlook')
 const OUT = join(RUN_DIR, 'emails.json')
 
-mkdirSync(RUN_DIR, { recursive: true })
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const keyboard = new KeyboardController()
 const clipboard = new Clipboard()
-let stepIndex = 0
 let outlookPid = 0
-
-function slug(s) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-}
+const step = createStepRunner(RUN_DIR, () => ({ pid: outlookPid, latestWindow: latestOutlookWindow }))
 
 function chord(modifiers, key) {
   for (const m of modifiers) keyboard.key(m, Direction.Press)
@@ -53,69 +48,10 @@ function cmd(key) {
 }
 
 function latestOutlookWindow() {
-  const windows = Window.allForPid(outlookPid)
-  if (!windows.length) throw new Error(`No visible Outlook windows for pid ${outlookPid}`)
-
   // Important: do not rank windows by calling snapshot() here. Outlook can be
   // temporarily busy after a search, and a full AX snapshot can block for a
   // long time. Pick a plausible visible/titled window cheaply instead.
-  return windows.find((w) => /outlook|inbox|mail/i.test(w.title))
-    ?? windows.find((w) => w.title.trim())
-    ?? windows[0]
-}
-
-function dumpDiagnostics(label, err) {
-  const dir = join(RUN_DIR, label)
-  mkdirSync(dir, { recursive: true })
-
-  writeFileSync(join(dir, 'error.txt'), err?.stack ?? String(err))
-  writeFileSync(
-    join(dir, 'windows.json'),
-    JSON.stringify(Window.all().map((w) => ({ pid: w.pid, title: w.title })), null, 2),
-  )
-
-  try {
-    screenshotFull(true, Screen.mainScreen()).save(join(dir, 'screen.png'))
-  } catch (e) {
-    writeFileSync(join(dir, 'screen-error.txt'), String(e))
-  }
-
-  // Avoid full AX snapshots in failure diagnostics by default. Outlook's full
-  // tree can block for a long time, which makes a useful fail-fast script look
-  // stuck. Enable explicitly when debugging AX structure:
-  //   DIAG_AX=1 simulang run outlook-unread-experiment.mts
-  if (process.env.DIAG_AX === '1') {
-    try {
-      writeFileSync(join(dir, 'focused.ax.txt'), AccessibilityNode.fromFocusedApplication().snapshot())
-    } catch (e) {
-      writeFileSync(join(dir, 'focused-ax-error.txt'), String(e))
-    }
-
-    if (outlookPid) {
-      try {
-        writeFileSync(join(dir, 'outlook-window.ax.txt'), latestOutlookWindow().snapshot())
-      } catch (e) {
-        writeFileSync(join(dir, 'outlook-window-ax-error.txt'), String(e))
-      }
-    }
-  }
-
-  console.error(`Diagnostics saved to ${dir}`)
-}
-
-async function step(name, action, verify) {
-  const id = `${String(++stepIndex).padStart(2, '0')}-${slug(name)}`
-  console.log(`\n▶ ${id}`)
-  try {
-    const result = await action()
-    if (verify) await verify(result)
-    console.log(`✓ ${id}`)
-    return result
-  } catch (err) {
-    console.error(`✗ ${id}: ${err?.message ?? err}`)
-    dumpDiagnostics(id, err)
-    throw err
-  }
+  return latestWindowForPid(outlookPid, /outlook|inbox|mail/i)
 }
 
 function allText(node, depth = 0) {
@@ -252,7 +188,7 @@ async function askApproval(triage) {
 const instance = await step(
   'open and focus Outlook',
   async () => {
-    const app = App.exists('Microsoft Outlook') ? App.exactName('Microsoft Outlook') : System.fuzzySearch('Outlook')
+    const app = findApp(['Microsoft Outlook'], 'Outlook')
     const inst = app.open(null, FocusPolicy.Steal, Visibility.Show, true)
     await sleep(2500)
     inst.focus()

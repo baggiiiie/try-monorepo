@@ -3,95 +3,35 @@
 // Opens Microsoft Teams, finds the "Calendar" button in the Teams UI,
 // and presses it.
 
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   AccessibilityNode,
-  App,
   FocusPolicy,
-  Screen,
-  System,
   TraversalOrder,
   Visibility,
   Window,
-  screenshotFull,
 } from '@simular-ai/simulang-js'
+import {
+  createRunDir,
+  createStepRunner,
+  findApp,
+  latestWindowForPid,
+  nodeText,
+  safeNodeInfo,
+  sleep,
+} from './workflow-utils.mts'
 
-const RUN_DIR = join(process.cwd(), '.runs', `teams-calendar-${new Date().toISOString().replace(/[:.]/g, '-')}`)
-mkdirSync(RUN_DIR, { recursive: true })
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const RUN_DIR = createRunDir('teams-calendar')
 let teamsPid = 0
-let stepIndex = 0
-
-function slug(s) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-}
+const step = createStepRunner(RUN_DIR, () => ({ pid: teamsPid, latestWindow: latestTeamsWindow }))
 
 function teamsApp() {
-  for (const name of ['Microsoft Teams', 'Microsoft Teams classic', 'Microsoft Teams (work or school)']) {
-    if (App.exists(name)) return App.exactName(name)
-  }
-  return System.fuzzySearch('Teams')
+  return findApp(['Microsoft Teams', 'Microsoft Teams classic', 'Microsoft Teams (work or school)'], 'Teams')
 }
 
 function latestTeamsWindow() {
-  const windows = Window.allForPid(teamsPid)
-  if (!windows.length) throw new Error(`No visible Teams windows for pid ${teamsPid}`)
-
-  return windows.find((w) => /teams|calendar|chat|activity/i.test(w.title))
-    ?? windows.find((w) => w.title.trim())
-    ?? windows[0]
-}
-
-function dumpDiagnostics(label, err) {
-  const dir = join(RUN_DIR, label)
-  mkdirSync(dir, { recursive: true })
-
-  writeFileSync(join(dir, 'error.txt'), err?.stack ?? String(err))
-  writeFileSync(
-    join(dir, 'windows.json'),
-    JSON.stringify(Window.all().map((w) => ({ pid: w.pid, title: w.title })), null, 2),
-  )
-
-  try {
-    screenshotFull(true, Screen.mainScreen()).save(join(dir, 'screen.png'))
-  } catch (e) {
-    writeFileSync(join(dir, 'screen-error.txt'), String(e))
-  }
-
-  console.error(`Diagnostics saved to ${dir}`)
-}
-
-async function step(name, action, verify) {
-  const id = `${String(++stepIndex).padStart(2, '0')}-${slug(name)}`
-  console.log(`\n▶ ${id}`)
-  try {
-    const result = await action()
-    if (verify) await verify(result)
-    console.log(`✓ ${id}`)
-    return result
-  } catch (err) {
-    console.error(`✗ ${id}: ${err?.message ?? err}`)
-    dumpDiagnostics(id, err)
-    throw err
-  }
-}
-
-function safeNodeInfo(node) {
-  const info = {}
-  for (const key of ['role', 'className', 'localizedControlType', 'name', 'value', 'description', 'helpText', 'overallDescription', 'isEnabled']) {
-    try { info[key] = node[key] } catch { info[key] = null }
-  }
-  try { info.boundingBox = node.boundingBox() } catch { info.boundingBox = null }
-  try { info.actions = node.supportedActions() } catch { info.actions = [] }
-  return info
-}
-
-function nodeText(info) {
-  return [info.name, info.value, info.description, info.helpText, info.overallDescription]
-    .filter(Boolean)
-    .join(' ')
+  return latestWindowForPid(teamsPid, /teams|calendar|chat|activity/i)
 }
 
 function collectVerificationSignals() {
