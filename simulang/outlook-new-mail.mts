@@ -18,6 +18,7 @@ import {
 const RUN_DIR = join(process.cwd(), '.runs', `outlook-new-mail-${new Date().toISOString().replace(/[:.]/g, '-')}`)
 mkdirSync(RUN_DIR, { recursive: true })
 
+const STEAL_FOCUS = process.env.STEAL_FOCUS === '1'
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 let outlookPid = 0
 let stepIndex = 0
@@ -70,12 +71,12 @@ async function step(name, action, verify) {
 }
 
 const instance = await step(
-  'open and focus Outlook',
+  STEAL_FOCUS ? 'open and focus Outlook' : 'open Outlook without stealing focus',
   async () => {
     const app = App.exists('Microsoft Outlook') ? App.exactName('Microsoft Outlook') : System.fuzzySearch('Outlook')
-    const inst = app.open(null, FocusPolicy.Steal, Visibility.Show, true)
+    const inst = app.open(null, STEAL_FOCUS ? FocusPolicy.Steal : FocusPolicy.DoNotSteal, Visibility.Show, true)
     await sleep(2500)
-    inst.focus()
+    if (STEAL_FOCUS) inst.focus()
     inst.enableAccessibility()
     outlookPid = inst.pid
     await sleep(1000)
@@ -114,7 +115,7 @@ await step(
 
     if (!button) throw new Error('Could not find the New Mail button')
 
-    try { button.focus() } catch {}
+    if (STEAL_FOCUS) try { button.focus() } catch {}
     await sleep(150)
     button.activate()
     await sleep(1500)

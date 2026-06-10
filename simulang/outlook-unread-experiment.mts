@@ -29,6 +29,7 @@ import {
 
 const LIMIT = Number(process.env.LIMIT ?? 10)
 const QUERY = process.env.OUTLOOK_SEARCH_QUERY ?? 'isread:no'
+const STEAL_FOCUS = process.env.STEAL_FOCUS === '1'
 const RUN_DIR = createRunDir('outlook')
 const OUT = join(RUN_DIR, 'emails.json')
 
@@ -186,12 +187,12 @@ async function askApproval(triage) {
 }
 
 const instance = await step(
-  'open and focus Outlook',
+  STEAL_FOCUS ? 'open and focus Outlook' : 'open Outlook without stealing focus',
   async () => {
     const app = findApp(['Microsoft Outlook'], 'Outlook')
-    const inst = app.open(null, FocusPolicy.Steal, Visibility.Show, true)
+    const inst = app.open(null, STEAL_FOCUS ? FocusPolicy.Steal : FocusPolicy.DoNotSteal, Visibility.Show, true)
     await sleep(2500)
-    inst.focus()
+    if (STEAL_FOCUS) inst.focus()
     inst.enableAccessibility()
     outlookPid = inst.pid
     await sleep(1000)
@@ -215,14 +216,17 @@ await step(
       0.04,
     )
 
-    const result = { usedSearchNode: Boolean(search), searchEcho: '', usedFallback: false }
+    const result = { usedSearchNode: Boolean(search), searchEcho: '', usedFallback: false, submittedWithReturn: false, stealFocus: STEAL_FOCUS }
 
     if (search) {
-      search.focus()
-      await sleep(200)
+      if (STEAL_FOCUS) {
+        search.focus()
+        await sleep(200)
+      }
       try {
         search.setValue(QUERY)
-      } catch {
+      } catch (err) {
+        if (!STEAL_FOCUS) throw new Error(`AX setValue failed and clipboard fallback requires STEAL_FOCUS=1: ${err?.message ?? err}`)
         clipboard.pasteText(QUERY)
       }
 
@@ -232,6 +236,7 @@ await step(
         result.searchEcho = [search.name, search.value, search.description].filter(Boolean).join(' | ')
       } catch {}
     } else {
+      if (!STEAL_FOCUS) throw new Error('No AX search node found; keyboard fallback requires STEAL_FOCUS=1')
       result.usedFallback = true
       // Fallback shortcut for Outlook on macOS.
       chord([Key.Meta, Key.Option], Key.F)
@@ -240,8 +245,13 @@ await step(
       clipboard.pasteText(QUERY)
     }
 
+    if (STEAL_FOCUS) {
+      keyboard.key(Key.Return, Direction.Click)
+      result.submittedWithReturn = true
+    } else {
+      console.log('set search value without stealing focus; relying on Outlook live search/update')
+    }
     writeFileSync(join(RUN_DIR, 'search-step.json'), JSON.stringify(result, null, 2))
-    keyboard.key(Key.Return, Direction.Click)
     await sleep(3000)
     console.log('submitted search; skipping full AX snapshot in this step')
     return result
