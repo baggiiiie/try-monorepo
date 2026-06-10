@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import {
   AccessibilityNode,
   App,
+  Direction,
   Screen,
   System,
   Window,
@@ -105,4 +106,69 @@ export function nodeText(info) {
   return [info.name, info.value, info.description, info.helpText, info.overallDescription]
     .filter(Boolean)
     .join(' ')
+}
+
+export function chord(keyboard, modifiers, key) {
+  for (const modifier of modifiers) keyboard.key(modifier, Direction.Press)
+  keyboard.key(key, Direction.Click)
+  for (const modifier of modifiers.slice().reverse()) keyboard.key(modifier, Direction.Release)
+}
+
+function errorDetails(err) {
+  return {
+    message: err?.message ?? String(err),
+    stack: err?.stack ?? String(err),
+  }
+}
+
+export async function runStrategies({ app, goal, runDir, strategies, verify, suggestedNextSteps = [] }) {
+  const attempts = []
+
+  for (const strategy of strategies) {
+    console.log(`Trying strategy: ${strategy.name}`)
+    try {
+      const action = await strategy.run()
+      const verification = await verify({ strategy: strategy.name, action })
+      const attempt = { strategy: strategy.name, actionOk: true, action, verification }
+      attempts.push(attempt)
+
+      if (verification?.ok) {
+        const result = {
+          ok: true,
+          app,
+          goal,
+          strategy: strategy.name,
+          phase: 'verify',
+          artifactsDir: runDir,
+          attempts,
+          verification,
+        }
+        writeFileSync(join(runDir, 'result.json'), JSON.stringify(result, null, 2))
+        return result
+      }
+
+      console.warn(`Strategy ${strategy.name} did not satisfy verifier: ${verification?.reason ?? 'unknown reason'}`)
+    } catch (err) {
+      attempts.push({ strategy: strategy.name, actionOk: false, error: errorDetails(err) })
+      console.warn(`Strategy ${strategy.name} failed: ${err?.message ?? err}`)
+    }
+  }
+
+  const lastAttempt = attempts.at(-1)
+  const result = {
+    ok: false,
+    app,
+    goal,
+    phase: lastAttempt?.actionOk === false ? 'action' : 'verify',
+    reason: lastAttempt?.verification?.reason ?? lastAttempt?.error?.message ?? 'all_strategies_failed',
+    strategiesTried: attempts.map((attempt) => attempt.strategy),
+    artifactsDir: runDir,
+    attempts,
+    suggestedNextSteps,
+  }
+  writeFileSync(join(runDir, 'result.json'), JSON.stringify(result, null, 2))
+
+  const err = new Error(`${goal} failed after ${attempts.length} strategies: ${result.reason}`)
+  err.result = result
+  throw err
 }

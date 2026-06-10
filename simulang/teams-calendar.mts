@@ -8,22 +8,28 @@ import { join } from 'node:path'
 import {
   AccessibilityNode,
   FocusPolicy,
+  Key,
+  KeyboardController,
   TraversalOrder,
   Visibility,
   Window,
 } from '@simular-ai/simulang-js'
 import {
+  chord,
   createRunDir,
   createStepRunner,
   findApp,
   latestWindowForPid,
   nodeText,
+  runStrategies,
   safeNodeInfo,
   sleep,
 } from './workflow-utils.mts'
 
 const RUN_DIR = createRunDir('teams-calendar')
+const STEAL_FOCUS = process.env.STEAL_FOCUS === '1'
 let teamsPid = 0
+const keyboard = new KeyboardController()
 const step = createStepRunner(RUN_DIR, () => ({ pid: teamsPid, latestWindow: latestTeamsWindow }))
 
 function teamsApp() {
@@ -92,7 +98,7 @@ function collectVerificationSignals() {
   }
 }
 
-async function verifyCalendarNavSelected() {
+async function verifyCalendarNavSelected(strategy) {
   const attempts = []
   const deadline = Date.now() + 8000
 
@@ -101,31 +107,75 @@ async function verifyCalendarNavSelected() {
     attempts.push(signals)
 
     if (signals.inferredCalendarNavSelected) {
-      writeFileSync(join(RUN_DIR, 'calendar-verification.json'), JSON.stringify({ attempts }, null, 2))
-      const reason = signals.explicitSelectedNav ? 'explicit selected/current text on nav item' : 'Calendar nav item + Calendar page/route signals'
+      const reason = signals.explicitSelectedNav ? 'explicit_selected_nav' : 'calendar_nav_plus_page_signals'
+      const result = { ok: true, reason, strategy, signals, attempts }
+      writeFileSync(join(RUN_DIR, 'calendar-verification.json'), JSON.stringify(result, null, 2))
       console.log(`Calendar verification passed via ${reason}.`)
-      return
+      return result
     }
 
     await sleep(500)
   }
 
-  writeFileSync(join(RUN_DIR, 'calendar-verification.json'), JSON.stringify({ attempts }, null, 2))
   const last = attempts.at(-1)
-  throw new Error(
-    `Clicked Calendar, but could not verify selected Calendar nav state. `
-    + `navFound=${last?.calendarNavFound}, title=${JSON.stringify(last?.titles)}, `
-    + `pageSignals=${last?.calendarPageSignalCount}`,
+  const reason = !last?.calendarNavFound
+    ? 'calendar_nav_not_found'
+    : !last?.calendarPageVisible
+      ? 'calendar_nav_found_but_page_signals_missing'
+      : 'verification_timeout'
+  const result = { ok: false, reason, strategy, signals: last, attempts }
+  writeFileSync(join(RUN_DIR, 'calendar-verification.json'), JSON.stringify(result, null, 2))
+  return result
+}
+
+async function clickCalendarByAxSearch() {
+  const w = latestTeamsWindow()
+  const candidates = w.scoredSearch(
+    TraversalOrder.BreadthFirst,
+    4000,
+    true,
+    'Calendar button meetings schedule Teams left rail',
+    0.04,
   )
+
+  const candidateDescriptions = candidates.slice(0, 12).map((node, index) => ({
+    index,
+    ...safeNodeInfo(node),
+  }))
+  writeFileSync(join(RUN_DIR, 'calendar-candidates.json'), JSON.stringify(candidateDescriptions, null, 2))
+
+  const calendar = candidates.find((node) => {
+    const info = safeNodeInfo(node)
+    const text = nodeText(info)
+    const box = info.boundingBox
+    return /\bCalendar\s*\(⌘\s*4\)/i.test(text) && box && box.left <= 120 && box.right <= 140
+  })
+
+  if (!calendar) throw new Error('calendar_nav_button_not_found')
+
+  const selectedCandidate = safeNodeInfo(calendar)
+  if (STEAL_FOCUS) try { calendar.focus() } catch {}
+  await sleep(150)
+  calendar.activate()
+  await sleep(2000)
+  return { candidateCount: candidates.length, selectedCandidate }
+}
+
+async function pressTeamsCalendarShortcut() {
+  if (!STEAL_FOCUS) throw new Error('cmd_4_shortcut_requires_STEAL_FOCUS')
+  latestTeamsWindow()
+  chord(keyboard, [Key.Meta], Key.Num4)
+  await sleep(2500)
+  return { shortcut: 'Cmd+4' }
 }
 
 const instance = await step(
-  'open and focus Teams',
+  STEAL_FOCUS ? 'open and focus Teams' : 'open Teams without stealing focus',
   async () => {
     const app = teamsApp()
-    const inst = app.open(null, FocusPolicy.Steal, Visibility.Show, true)
+    const inst = app.open(null, STEAL_FOCUS ? FocusPolicy.Steal : FocusPolicy.DoNotSteal, Visibility.Show, true)
     await sleep(3500)
-    inst.focus()
+    if (STEAL_FOCUS) inst.focus()
     inst.enableAccessibility()
     teamsPid = inst.pid
     await sleep(1500)
@@ -138,40 +188,29 @@ const instance = await step(
 )
 
 await step(
-  'click Calendar button',
-  async () => {
-    const w = latestTeamsWindow()
-    const candidates = w.scoredSearch(
-      TraversalOrder.BreadthFirst,
-      4000,
-      true,
-      'Calendar button meetings schedule Teams left rail',
-      0.04,
-    )
-
-    const candidateDescriptions = candidates.slice(0, 12).map((node, index) => ({
-      index,
-      ...safeNodeInfo(node),
-    }))
-    writeFileSync(join(RUN_DIR, 'calendar-candidates.json'), JSON.stringify(candidateDescriptions, null, 2))
-
-    const calendar = candidates.find((node) => {
-      const text = [node.name, node.value, node.description].filter(Boolean).join(' ')
-      return /\bcalendar\b/i.test(text)
-    }) ?? candidates[0]
-
-    if (!calendar) throw new Error('Could not find the Calendar button')
-
-    try { calendar.focus() } catch {}
-    await sleep(150)
-    calendar.activate()
-    await sleep(2000)
-    return calendar
-  },
-  async () => {
+  'navigate to Calendar',
+  async () => runStrategies({
+    app: 'Microsoft Teams',
+    goal: 'open_calendar',
+    runDir: RUN_DIR,
+    strategies: [
+      { name: 'already-on-calendar', run: async () => ({ noop: true }) },
+      { name: 'ax-search-click-calendar-nav', run: clickCalendarByAxSearch },
+      { name: 'cmd-4-calendar-shortcut', run: pressTeamsCalendarShortcut },
+    ],
+    verify: ({ strategy }) => verifyCalendarNavSelected(strategy),
+    suggestedNextSteps: [
+      'inspect result.json and calendar-verification.json',
+      'inspect calendar-candidates.json for renamed Calendar/Schedule/Meetings nav items',
+      'inspect screen.png if diagnostics were captured',
+      'update or add a strategy if Teams changed its left-rail navigation',
+      'rerun with STEAL_FOCUS=1 only if the keyboard shortcut fallback is needed',
+    ],
+  }),
+  async (result) => {
     const titles = Window.allForPid(teamsPid).map((w) => w.title)
     writeFileSync(join(RUN_DIR, 'windows-after-click.json'), JSON.stringify(titles, null, 2))
-    await verifyCalendarNavSelected()
+    if (!result.ok) throw new Error(result.reason ?? 'open_calendar_failed')
   },
 )
 
