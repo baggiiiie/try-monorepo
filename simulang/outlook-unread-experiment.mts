@@ -11,11 +11,14 @@ import { createInterface } from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
 import {
   AccessibilityNode,
+  Button,
   Clipboard,
+  Coordinate,
   Direction,
   FocusPolicy,
   Key,
   KeyboardController,
+  MouseController,
   TraversalOrder,
   Visibility,
 } from '@simular-ai/simulang-js'
@@ -39,6 +42,7 @@ const RUN_DIR = createRunDir('outlook')
 const OUT = join(RUN_DIR, 'emails.json')
 
 const keyboard = new KeyboardController()
+const mouse = new MouseController()
 const clipboard = new Clipboard()
 let outlookPid = 0
 const step = createStepRunner(RUN_DIR, () => ({ pid: outlookPid, latestWindow: latestOutlookWindow }))
@@ -263,27 +267,52 @@ function writeArchiveProposal(emails, triage) {
   return targets
 }
 
+function clickEmailRow(email) {
+  try {
+    email.node.activate()
+    return { method: 'AX activate' }
+  } catch (err) {
+    if (!POLICY.stealFocus) throw err
+    const box = email.bounds
+    const x = Math.round((box.left + box.right) / 2)
+    const y = Math.round((box.top + box.bottom) / 2)
+    mouse.moveMouse(x, y, Coordinate.Abs)
+    mouse.button(Button.Left, Direction.Click)
+    return { method: 'mouse click', x, y, activateError: err?.message ?? String(err) }
+  }
+}
+
 function findArchiveButton() {
-  const w = latestOutlookWindow()
-  const candidates = w.scoredSearch(
-    TraversalOrder.BreadthFirst,
-    2500,
-    true,
-    'Archive button move selected email message to archive',
-    0.04,
-  )
+  const root = AccessibilityNode.fromPid(outlookPid)
+  const matches = []
+  let found = null
+  let visited = 0
 
-  const candidateDescriptions = candidates.slice(0, 12).map((node, index) => ({ index, ...safeNodeInfo(node) }))
-  writeFileSync(join(RUN_DIR, 'archive-button-candidates.json'), JSON.stringify(candidateDescriptions, null, 2))
+  function walk(node, depth = 0) {
+    if (found || visited++ > 8000 || depth > 18) return
 
-  return candidates.find((node) => {
-    const info = safeNodeInfo(node)
+    let info
+    try { info = safeNodeInfo(node) } catch { return }
     const text = nodeText(info)
     const box = info.boundingBox
-    return /\barchive\b/i.test(text)
-      && /button/i.test([info.localizedControlType, info.overallDescription].filter(Boolean).join(' '))
-      && (!box || box.top < 260)
-  })
+    const isButton = /button/i.test([info.localizedControlType, info.overallDescription].filter(Boolean).join(' '))
+    const isArchive = /\barchive\b/i.test(text)
+    const isToolbarish = !box || box.top < 280
+
+    if (isArchive || /move|delete|toolbar/i.test(text)) matches.push({ depth, ...info })
+    if (isArchive && isButton && isToolbarish) {
+      found = node
+      return
+    }
+
+    let children = []
+    try { children = node.children() } catch {}
+    for (const child of children) walk(child, depth + 1)
+  }
+
+  walk(root)
+  writeFileSync(join(RUN_DIR, 'archive-button-candidates.json'), JSON.stringify(matches.slice(0, 30), null, 2))
+  return found
 }
 
 function findEmailBySignature(signature) {
@@ -311,8 +340,8 @@ async function archiveApprovedEmails(emails, triage, approval) {
 
     try {
       const currentEmail = findEmailBySignature(target.signature) ?? target.email
-      currentEmail.node.activate()
-      await sleep(800)
+      const selection = clickEmailRow(currentEmail)
+      await sleep(1200)
 
       const archiveButton = findArchiveButton()
       if (!archiveButton) throw new Error('archive_button_not_found')
@@ -320,6 +349,7 @@ async function archiveApprovedEmails(emails, triage, approval) {
       archiveButton.activate()
       await sleep(1500)
       result.archived++
+      result.lastSelection = selection
 
       const remaining = collectEmailCandidates()
       const stillPresent = remaining.some((email) => emailSignature(email.raw) === target.signature)
