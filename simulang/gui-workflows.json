@@ -12,14 +12,24 @@
       "resultFile": ".runs/teams-calendar-*/result.json"
     },
     {
-      "name": "outlook-unread-experiment",
-      "script": "outlook-unread-experiment.mts",
-      "goal": "Collect unread Outlook email candidates and optionally triage them",
+      "name": "outlook-collect-unread",
+      "script": "outlook-collect-unread.mts",
+      "goal": "Collect unread Outlook email candidates for Pi to triage",
       "app": "Microsoft Outlook",
       "riskLevel": "observe-only",
       "defaultMode": "explore",
       "requiresFocusByDefault": false,
-      "resultFile": ".runs/outlook-*/emails.json"
+      "resultFile": ".runs/outlook-collect-unread-*/emails.json"
+    },
+    {
+      "name": "outlook-archive-approved",
+      "script": "outlook-archive-approved.mts",
+      "goal": "Archive explicitly approved Outlook email targets",
+      "app": "Microsoft Outlook",
+      "riskLevel": "state-changing",
+      "defaultMode": "execute",
+      "requiresFocusByDefault": true,
+      "resultFile": ".runs/outlook-archive-approved-*/result.json"
     },
     {
       "name": "outlook-new-mail",

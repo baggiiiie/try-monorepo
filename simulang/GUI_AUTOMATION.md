@@ -16,10 +16,13 @@ A coding agent should be able to:
 ## Files
 
 - `.pi/skills/gui-automation/SKILL.md` — Pi skill describing the exploration, safety, verifier, and repair loop.
+- `.pi/skills/outlook-email-triage/SKILL.md` — app/task skill where Pi owns Outlook triage reasoning and approval.
 - `workflow-utils.mts` — shared harness helpers for run dirs, diagnostics, strategies, safety policies, and proposals.
 - `gui-workflows.json` — small registry of current reusable workflows.
 - `teams-calendar.mts` — resilient Teams Calendar navigation workflow.
-- `outlook-unread-experiment.mts` — Outlook unread-email extraction workflow.
+- `outlook-collect-unread.mts` — observe-only Outlook unread-email extraction helper.
+- `outlook-archive-approved.mts` — state-changing helper that archives only explicit approved-actions targets.
+- `outlook-unread-experiment.mts` — compatibility entrypoint that runs the collect helper.
 - `outlook-new-mail.mts` — Outlook new-mail compose workflow.
 
 ## Runtime knobs
