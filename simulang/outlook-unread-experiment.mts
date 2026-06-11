@@ -92,25 +92,35 @@ function collectEmailCandidates() {
   const rows = []
   const seen = new Set()
 
-  function walk(node, depth = 0) {
+  function walk(node, depth = 0, inMessageList = false) {
     let box
     try { box = node.boundingBox() } catch { box = { left: 0, top: 0, right: 0, bottom: 0 } }
+
+    let info
+    try { info = safeNodeInfo(node) } catch { info = {} }
+    const nodeSummary = nodeText(info)
+    const nowInMessageList = inMessageList || /\bmessage list\b/i.test(nodeSummary)
+    const actions = info.actions ?? []
 
     const text = [...new Set(allText(node))].join(' | ').replace(/\s+/g, ' ').trim()
     const h = box.bottom - box.top
     const w = box.right - box.left
 
-    if (w > 250 && h >= 18 && h <= 180 && looksLikeMessageRow(text)) {
-      const sig = text.toLowerCase().replace(/\W+/g, ' ').slice(0, 180)
+    // Only collect actionable cells/items inside Outlook's Message List.
+    // Earlier versions also collected reading-pane header fragments such as
+    // "Message Header Details" and "Recipients", which led the archive step
+    // to try to archive non-message nodes.
+    if (nowInMessageList && actions.includes('AXPress') && w > 250 && h >= 18 && h <= 180 && looksLikeMessageRow(text)) {
+      const sig = emailSignature(text)
       if (!seen.has(sig)) {
         seen.add(sig)
-        rows.push({ raw: text, bounds: box, source: 'simulang', node })
+        rows.push({ raw: text, bounds: box, source: 'simulang-message-list', node })
       }
     }
 
     // Outlook's message list can be deeper than the sidebar. Keep this bounded
     // so failed experiments still return quickly.
-    if (depth < 14) for (const child of node.children()) walk(child, depth + 1)
+    if (depth < 16) for (const child of node.children()) walk(child, depth + 1, nowInMessageList)
   }
 
   walk(root)
