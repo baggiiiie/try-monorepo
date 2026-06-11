@@ -1,6 +1,14 @@
 # Approved Actions Format
 
-The archive helper reads `APPROVED_ACTIONS_FILE` and executes only actions with `action: "archive_email"`.
+Usually you do not need to write this file manually. Prefer:
+
+```bash
+EXECUTE=1 STEAL_FOCUS=1 SOURCE_EMAILS_FILE=.runs/outlook-collect-unread-.../emails.json APPROVED_INDEXES=5,6 simulang run outlook-archive-approved.mts
+```
+
+The helper reads `emails.json`, extracts the approved indexes, and writes `approved-actions.generated.json` in its run directory.
+
+For custom plans, the archive helper can also read `APPROVED_ACTIONS_FILE` and executes only actions with `action: "archive_email"`.
 
 Required shape:
 

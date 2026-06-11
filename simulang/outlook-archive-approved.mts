@@ -1,9 +1,13 @@
-// Run: EXECUTE=1 STEAL_FOCUS=1 APPROVED_ACTIONS_FILE=.runs/.../approved-actions.json simulang run outlook-archive-approved.mts
+// Run with an approved-actions file:
+//   EXECUTE=1 STEAL_FOCUS=1 APPROVED_ACTIONS_FILE=.runs/.../approved-actions.json simulang run outlook-archive-approved.mts
+//
+// Or let this helper build the approved-actions plan from collector output:
+//   EXECUTE=1 STEAL_FOCUS=1 SOURCE_EMAILS_FILE=.runs/.../emails.json APPROVED_INDEXES=5,6 simulang run outlook-archive-approved.mts
 //
 // State-changing helper for Pi skills: archive exactly the approved Outlook
-// messages described by APPROVED_ACTIONS_FILE. This script does not decide what
-// should be archived; it only executes an explicit approval file and verifies
-// that each target disappears from the unread message list.
+// messages. This script does not decide what should be archived; it only
+// executes explicit approved targets and verifies that each target disappears
+// from the unread message list.
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -30,6 +34,8 @@ import {
 } from './workflow-utils.mts'
 
 const APPROVED_ACTIONS_FILE = process.env.APPROVED_ACTIONS_FILE
+const SOURCE_EMAILS_FILE = process.env.SOURCE_EMAILS_FILE
+const APPROVED_INDEXES = process.env.APPROVED_INDEXES
 const POLICY = createSafetyPolicy()
 const RUN_DIR = createRunDir('outlook-archive-approved')
 
@@ -94,10 +100,15 @@ function collectEmailCandidates(limit = 100) {
   return rows.sort((a, b) => a.bounds.top - b.bounds.top).slice(0, limit)
 }
 
-function loadApprovedActions() {
-  if (!APPROVED_ACTIONS_FILE) throw new Error('APPROVED_ACTIONS_FILE is required')
-  const path = resolve(APPROVED_ACTIONS_FILE)
-  const doc = JSON.parse(readFileSync(path, 'utf8'))
+function parseApprovedIndexes(value) {
+  if (!value) return []
+  return value
+    .split(',')
+    .map((x) => Number(x.trim()))
+    .filter((x) => Number.isInteger(x) && x > 0)
+}
+
+function normalizeArchiveActions(doc, path) {
   const actions = doc.actions ?? []
   const archiveActions = actions
     .filter((action) => action.action === 'archive_email')
@@ -116,6 +127,49 @@ function loadApprovedActions() {
 
   if (!archiveActions.length) throw new Error(`No archive_email actions found in ${path}`)
   return { path, doc, actions: archiveActions }
+}
+
+function buildApprovedActionsFromIndexes() {
+  if (!SOURCE_EMAILS_FILE) throw new Error('SOURCE_EMAILS_FILE is required when APPROVED_ACTIONS_FILE is not set')
+  const approvedIndexes = parseApprovedIndexes(APPROVED_INDEXES)
+  if (!approvedIndexes.length) throw new Error('APPROVED_INDEXES is required when APPROVED_ACTIONS_FILE is not set')
+
+  const sourcePath = resolve(SOURCE_EMAILS_FILE)
+  const source = JSON.parse(readFileSync(sourcePath, 'utf8'))
+  const byIndex = new Map((source.emails ?? []).map((email) => [email.index, email]))
+  const missing = approvedIndexes.filter((index) => !byIndex.has(index))
+  if (missing.length) throw new Error(`Approved indexes not found in SOURCE_EMAILS_FILE: ${missing.join(', ')}`)
+
+  const doc = {
+    approvedBy: 'user',
+    approvedAt: new Date().toISOString(),
+    sourceEmailsFile: sourcePath,
+    approvedIndexes,
+    actions: approvedIndexes.map((index) => {
+      const email = byIndex.get(index)
+      return {
+        action: 'archive_email',
+        reason: `User approved archiving email #${index}.`,
+        target: {
+          index,
+          signature: email.signature ?? emailSignature(email.raw),
+          raw: email.raw,
+        },
+      }
+    }),
+  }
+
+  const generatedPath = join(RUN_DIR, 'approved-actions.generated.json')
+  writeFileSync(generatedPath, JSON.stringify(doc, null, 2))
+  return normalizeArchiveActions(doc, generatedPath)
+}
+
+function loadApprovedActions() {
+  if (!APPROVED_ACTIONS_FILE) return buildApprovedActionsFromIndexes()
+
+  const path = resolve(APPROVED_ACTIONS_FILE)
+  const doc = JSON.parse(readFileSync(path, 'utf8'))
+  return normalizeArchiveActions(doc, path)
 }
 
 function findEmailBySignature(signature) {

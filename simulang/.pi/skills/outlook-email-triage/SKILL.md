@@ -70,46 +70,23 @@ Approve archiving #... ?
 
 Do not archive until the user approves specific indexes or says to archive all `archive_now` items.
 
-## Step 4: write approved actions
+## Step 4: archive approved targets
 
-After approval, write an approved-actions JSON file. Use exact `raw` and `signature` from `emails.json`.
+Run only after explicit approval. Prefer passing the collector output and the approved indexes directly:
 
-Example:
-
-```json
-{
-  "approvedBy": "user",
-  "approvedAt": "2026-06-11T00:00:00.000Z",
-  "sourceEmailsFile": ".runs/outlook-collect-unread-.../emails.json",
-  "actions": [
-    {
-      "action": "archive_email",
-      "reason": "Automated GitHub PR merged notification; no action needed.",
-      "target": {
-        "index": 3,
-        "signature": "...",
-        "raw": "..."
-      }
-    }
-  ]
-}
+```bash
+EXECUTE=1 STEAL_FOCUS=1 SOURCE_EMAILS_FILE=.runs/outlook-collect-unread-.../emails.json APPROVED_INDEXES=5,6 simulang run outlook-archive-approved.mts
 ```
 
-Save it near the collection run, for example:
+The archive helper will generate its own `approved-actions.generated.json` artifact from `emails.json`, so you do not need glue scripts.
 
-```text
-.runs/outlook-collect-unread-.../approved-actions.json
-```
-
-See `references/approved-actions.md` for details.
-
-## Step 5: archive approved targets
-
-Run only after explicit approval:
+If you need a custom approval plan, you may still write an approved-actions JSON file and run:
 
 ```bash
 EXECUTE=1 STEAL_FOCUS=1 APPROVED_ACTIONS_FILE=.runs/outlook-collect-unread-.../approved-actions.json simulang run outlook-archive-approved.mts
 ```
+
+See `references/approved-actions.md` for the optional file format.
 
 Then read the archive helper's latest:
 
