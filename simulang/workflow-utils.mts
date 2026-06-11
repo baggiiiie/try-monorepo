@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   AccessibilityNode,
@@ -11,6 +11,47 @@ import {
 } from '@simular-ai/simulang-js'
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+export const RISK_LEVELS = {
+  ObserveOnly: 'observe-only',
+  ReversibleNavigation: 'reversible-navigation',
+  StateChanging: 'state-changing',
+  Destructive: 'destructive',
+  ExternallyVisible: 'externally-visible',
+  ProductionImpacting: 'production-impacting',
+}
+
+export function createSafetyPolicy(overrides = {}) {
+  const mode = overrides.mode ?? process.env.GUI_AUTOMATION_MODE ?? (process.env.EXECUTE === '1' ? 'execute' : 'explore')
+  return {
+    mode,
+    stealFocus: overrides.stealFocus ?? process.env.STEAL_FOCUS === '1',
+    allowStateChanging: overrides.allowStateChanging ?? (mode === 'execute' || process.env.ALLOW_STATE_CHANGING === '1'),
+    allowDestructive: overrides.allowDestructive ?? process.env.ALLOW_DESTRUCTIVE === '1',
+    allowExternalSend: overrides.allowExternalSend ?? process.env.ALLOW_EXTERNAL_SEND === '1',
+    allowProductionChanges: overrides.allowProductionChanges ?? process.env.ALLOW_PRODUCTION_CHANGES === '1',
+    maxMutations: overrides.maxMutations ?? Number(process.env.MAX_MUTATIONS ?? 0),
+  }
+}
+
+export function isRiskAllowed(riskLevel, policy) {
+  if (riskLevel === RISK_LEVELS.ObserveOnly) return true
+  if (riskLevel === RISK_LEVELS.ReversibleNavigation) return true
+  if (riskLevel === RISK_LEVELS.StateChanging) return policy.mode === 'execute' && policy.allowStateChanging
+  if (riskLevel === RISK_LEVELS.Destructive) return policy.mode === 'execute' && policy.allowDestructive
+  if (riskLevel === RISK_LEVELS.ExternallyVisible) return policy.mode === 'execute' && policy.allowExternalSend
+  if (riskLevel === RISK_LEVELS.ProductionImpacting) return policy.mode === 'execute' && policy.allowProductionChanges
+  return false
+}
+
+export function writeJson(path, value) {
+  writeFileSync(path, JSON.stringify(value, null, 2))
+}
+
+export function readJson(path, fallback) {
+  if (!existsSync(path)) return fallback
+  return JSON.parse(readFileSync(path, 'utf8'))
+}
 
 export function createRunDir(prefix) {
   const runDir = join(process.cwd(), '.runs', `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}`)
@@ -114,6 +155,49 @@ export function chord(keyboard, modifiers, key) {
   for (const modifier of modifiers.slice().reverse()) keyboard.key(modifier, Direction.Release)
 }
 
+export function recordProposedAction(runDir, proposal) {
+  const path = join(runDir, 'proposed-actions.json')
+  const existing = readJson(path, null)
+  const doc = existing ?? {
+    proposalId: new Date().toISOString().replace(/[:.]/g, '-'),
+    mode: proposal.mode ?? 'dry_run',
+    actions: [],
+  }
+  doc.actions.push({
+    recordedAt: new Date().toISOString(),
+    ...proposal,
+  })
+  writeJson(path, doc)
+  return doc
+}
+
+export function guardGuiAction(runDir, policy, action) {
+  const riskLevel = action.riskLevel ?? RISK_LEVELS.StateChanging
+  if (isRiskAllowed(riskLevel, policy)) return { allowed: true, riskLevel, policy }
+
+  const proposal = recordProposedAction(runDir, {
+    mode: policy.mode === 'execute' ? 'blocked' : 'dry_run',
+    ...action,
+    riskLevel,
+    blockedByPolicy: policy,
+  })
+  return {
+    allowed: false,
+    riskLevel,
+    policy,
+    proposal,
+    reason: `blocked_${riskLevel}_action_in_${policy.mode}_mode`,
+  }
+}
+
+export function assertGuiActionAllowed(runDir, policy, action) {
+  const result = guardGuiAction(runDir, policy, action)
+  if (result.allowed) return result
+  const err = new Error(result.reason)
+  err.guard = result
+  throw err
+}
+
 function errorDetails(err) {
   return {
     message: err?.message ?? String(err),
@@ -121,7 +205,7 @@ function errorDetails(err) {
   }
 }
 
-export async function runStrategies({ app, goal, runDir, strategies, verify, suggestedNextSteps = [] }) {
+export async function runStrategies({ app, goal, runDir, strategies, verify, suggestedNextSteps = [], policy = createSafetyPolicy(), riskLevel = RISK_LEVELS.ObserveOnly }) {
   const attempts = []
 
   for (const strategy of strategies) {
@@ -137,6 +221,8 @@ export async function runStrategies({ app, goal, runDir, strategies, verify, sug
           ok: true,
           app,
           goal,
+          mode: policy.mode,
+          riskLevel,
           strategy: strategy.name,
           phase: 'verify',
           artifactsDir: runDir,
@@ -159,6 +245,8 @@ export async function runStrategies({ app, goal, runDir, strategies, verify, sug
     ok: false,
     app,
     goal,
+    mode: policy.mode,
+    riskLevel,
     phase: lastAttempt?.actionOk === false ? 'action' : 'verify',
     reason: lastAttempt?.verification?.reason ?? lastAttempt?.error?.message ?? 'all_strategies_failed',
     strategiesTried: attempts.map((attempt) => attempt.strategy),

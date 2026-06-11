@@ -20,7 +20,9 @@ import {
   Visibility,
 } from '@simular-ai/simulang-js'
 import {
+  RISK_LEVELS,
   createRunDir,
+  createSafetyPolicy,
   createStepRunner,
   findApp,
   latestWindowForPid,
@@ -29,7 +31,7 @@ import {
 
 const LIMIT = Number(process.env.LIMIT ?? 10)
 const QUERY = process.env.OUTLOOK_SEARCH_QUERY ?? 'isread:no'
-const STEAL_FOCUS = process.env.STEAL_FOCUS === '1'
+const POLICY = createSafetyPolicy()
 const RUN_DIR = createRunDir('outlook')
 const OUT = join(RUN_DIR, 'emails.json')
 
@@ -187,12 +189,12 @@ async function askApproval(triage) {
 }
 
 const instance = await step(
-  STEAL_FOCUS ? 'open and focus Outlook' : 'open Outlook without stealing focus',
+  POLICY.stealFocus ? 'open and focus Outlook' : 'open Outlook without stealing focus',
   async () => {
     const app = findApp(['Microsoft Outlook'], 'Outlook')
-    const inst = app.open(null, STEAL_FOCUS ? FocusPolicy.Steal : FocusPolicy.DoNotSteal, Visibility.Show, true)
+    const inst = app.open(null, POLICY.stealFocus ? FocusPolicy.Steal : FocusPolicy.DoNotSteal, Visibility.Show, true)
     await sleep(2500)
-    if (STEAL_FOCUS) inst.focus()
+    if (POLICY.stealFocus) inst.focus()
     inst.enableAccessibility()
     outlookPid = inst.pid
     await sleep(1000)
@@ -216,17 +218,17 @@ await step(
       0.04,
     )
 
-    const result = { usedSearchNode: Boolean(search), searchEcho: '', usedFallback: false, submittedWithReturn: false, stealFocus: STEAL_FOCUS }
+    const result = { usedSearchNode: Boolean(search), searchEcho: '', usedFallback: false, submittedWithReturn: false, stealFocus: POLICY.stealFocus }
 
     if (search) {
-      if (STEAL_FOCUS) {
+      if (POLICY.stealFocus) {
         search.focus()
         await sleep(200)
       }
       try {
         search.setValue(QUERY)
       } catch (err) {
-        if (!STEAL_FOCUS) throw new Error(`AX setValue failed and clipboard fallback requires STEAL_FOCUS=1: ${err?.message ?? err}`)
+        if (!POLICY.stealFocus) throw new Error(`AX setValue failed and clipboard fallback requires STEAL_FOCUS=1: ${err?.message ?? err}`)
         clipboard.pasteText(QUERY)
       }
 
@@ -236,7 +238,7 @@ await step(
         result.searchEcho = [search.name, search.value, search.description].filter(Boolean).join(' | ')
       } catch {}
     } else {
-      if (!STEAL_FOCUS) throw new Error('No AX search node found; keyboard fallback requires STEAL_FOCUS=1')
+      if (!POLICY.stealFocus) throw new Error('No AX search node found; keyboard fallback requires STEAL_FOCUS=1')
       result.usedFallback = true
       // Fallback shortcut for Outlook on macOS.
       chord([Key.Meta, Key.Option], Key.F)
@@ -245,7 +247,7 @@ await step(
       clipboard.pasteText(QUERY)
     }
 
-    if (STEAL_FOCUS) {
+    if (POLICY.stealFocus) {
       keyboard.key(Key.Return, Direction.Click)
       result.submittedWithReturn = true
     } else {
@@ -276,6 +278,21 @@ const emails = await step(
 )
 
 writeFileSync(OUT, JSON.stringify({ query: QUERY, limit: LIMIT, count: emails.length, emails }, null, 2))
+writeFileSync(join(RUN_DIR, 'result.json'), JSON.stringify({
+  ok: true,
+  app: 'Microsoft Outlook',
+  goal: 'collect_unread_email_candidates',
+  mode: POLICY.mode,
+  riskLevel: RISK_LEVELS.ObserveOnly,
+  phase: 'verify',
+  artifactsDir: RUN_DIR,
+  outputs: { emails: OUT },
+  verification: {
+    ok: true,
+    reason: 'candidate_rows_found',
+    signals: { query: QUERY, limit: LIMIT, count: emails.length },
+  },
+}, null, 2))
 console.log(`\nWrote ${emails.length} candidates → ${OUT}`)
 for (const [i, email] of emails.entries()) console.log(`\n#${i + 1}\n${email.raw}`)
 

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "workflows": [
+    {
+      "name": "teams-calendar",
+      "script": "teams-calendar.mts",
+      "goal": "Open Microsoft Teams Calendar",
+      "app": "Microsoft Teams",
+      "riskLevel": "reversible-navigation",
+      "defaultMode": "explore",
+      "requiresFocusByDefault": false,
+      "resultFile": ".runs/teams-calendar-*/result.json"
+    },
+    {
+      "name": "outlook-unread-experiment",
+      "script": "outlook-unread-experiment.mts",
+      "goal": "Collect unread Outlook email candidates and optionally triage them",
+      "app": "Microsoft Outlook",
+      "riskLevel": "observe-only",
+      "defaultMode": "explore",
+      "requiresFocusByDefault": false,
+      "resultFile": ".runs/outlook-*/emails.json"
+    },
+    {
+      "name": "outlook-new-mail",
+      "script": "outlook-new-mail.mts",
+      "goal": "Open a new Outlook mail compose window",
+      "app": "Microsoft Outlook",
+      "riskLevel": "reversible-navigation",
+      "defaultMode": "explore",
+      "requiresFocusByDefault": false,
+      "resultFile": ".runs/outlook-new-mail-*/windows-after-click.json"
+    }
+  ]
+}

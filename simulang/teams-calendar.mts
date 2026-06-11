@@ -15,8 +15,10 @@ import {
   Window,
 } from '@simular-ai/simulang-js'
 import {
+  RISK_LEVELS,
   chord,
   createRunDir,
+  createSafetyPolicy,
   createStepRunner,
   findApp,
   latestWindowForPid,
@@ -27,7 +29,7 @@ import {
 } from './workflow-utils.mts'
 
 const RUN_DIR = createRunDir('teams-calendar')
-const STEAL_FOCUS = process.env.STEAL_FOCUS === '1'
+const POLICY = createSafetyPolicy()
 let teamsPid = 0
 const keyboard = new KeyboardController()
 const step = createStepRunner(RUN_DIR, () => ({ pid: teamsPid, latestWindow: latestTeamsWindow }))
@@ -154,7 +156,7 @@ async function clickCalendarByAxSearch() {
   if (!calendar) throw new Error('calendar_nav_button_not_found')
 
   const selectedCandidate = safeNodeInfo(calendar)
-  if (STEAL_FOCUS) try { calendar.focus() } catch {}
+  if (POLICY.stealFocus) try { calendar.focus() } catch {}
   await sleep(150)
   calendar.activate()
   await sleep(2000)
@@ -162,7 +164,7 @@ async function clickCalendarByAxSearch() {
 }
 
 async function pressTeamsCalendarShortcut() {
-  if (!STEAL_FOCUS) throw new Error('cmd_4_shortcut_requires_STEAL_FOCUS')
+  if (!POLICY.stealFocus) throw new Error('cmd_4_shortcut_requires_STEAL_FOCUS')
   latestTeamsWindow()
   chord(keyboard, [Key.Meta], Key.Num4)
   await sleep(2500)
@@ -170,12 +172,12 @@ async function pressTeamsCalendarShortcut() {
 }
 
 const instance = await step(
-  STEAL_FOCUS ? 'open and focus Teams' : 'open Teams without stealing focus',
+  POLICY.stealFocus ? 'open and focus Teams' : 'open Teams without stealing focus',
   async () => {
     const app = teamsApp()
-    const inst = app.open(null, STEAL_FOCUS ? FocusPolicy.Steal : FocusPolicy.DoNotSteal, Visibility.Show, true)
+    const inst = app.open(null, POLICY.stealFocus ? FocusPolicy.Steal : FocusPolicy.DoNotSteal, Visibility.Show, true)
     await sleep(3500)
-    if (STEAL_FOCUS) inst.focus()
+    if (POLICY.stealFocus) inst.focus()
     inst.enableAccessibility()
     teamsPid = inst.pid
     await sleep(1500)
@@ -193,6 +195,8 @@ await step(
     app: 'Microsoft Teams',
     goal: 'open_calendar',
     runDir: RUN_DIR,
+    policy: POLICY,
+    riskLevel: RISK_LEVELS.ReversibleNavigation,
     strategies: [
       { name: 'already-on-calendar', run: async () => ({ noop: true }) },
       { name: 'ax-search-click-calendar-nav', run: clickCalendarByAxSearch },
