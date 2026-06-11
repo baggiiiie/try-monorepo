@@ -26,6 +26,9 @@ import {
   createStepRunner,
   findApp,
   latestWindowForPid,
+  nodeText,
+  recordProposedAction,
+  safeNodeInfo,
   sleep,
 } from './workflow-utils.mts'
 
@@ -72,6 +75,14 @@ function looksLikeMessageRow(text) {
   return /@|\bunread\b|\b(today|yesterday|mon|tue|wed|thu|fri|sat|sun)\b|\b\d{1,2}:\d{2}/i.test(text)
 }
 
+function emailSignature(raw) {
+  return raw.toLowerCase().replace(/\W+/g, ' ').slice(0, 180)
+}
+
+function emailForJson(email) {
+  return { raw: email.raw, bounds: email.bounds, source: email.source }
+}
+
 function collectEmailCandidates() {
   const root = AccessibilityNode.fromPid(outlookPid)
   const rows = []
@@ -89,7 +100,7 @@ function collectEmailCandidates() {
       const sig = text.toLowerCase().replace(/\W+/g, ' ').slice(0, 180)
       if (!seen.has(sig)) {
         seen.add(sig)
-        rows.push({ raw: text, bounds: box, source: 'simulang' })
+        rows.push({ raw: text, bounds: box, source: 'simulang', node })
       }
     }
 
@@ -177,15 +188,151 @@ function printTriageList(triage) {
 async function askApproval(triage) {
   const archiveItems = triage.archive_now ?? []
   if (!archiveItems.length) return { approved: false, note: 'No archive_now items to approve.' }
-  if (!input.isTTY) return { approved: false, note: 'No TTY available for approval.' }
+
+  if (process.env.APPROVED_ARCHIVE_INDEXES) {
+    const approvedIndexes = process.env.APPROVED_ARCHIVE_INDEXES
+      .split(',')
+      .map((x) => Number(x.trim()))
+      .filter((x) => Number.isInteger(x) && x > 0)
+    return { approved: approvedIndexes.length > 0, approvedIndexes, source: 'APPROVED_ARCHIVE_INDEXES' }
+  }
+
+  if (process.env.APPROVE_ARCHIVE === '1') {
+    return { approved: true, approvedIndexes: archiveItems.map((x) => x.index), source: 'APPROVE_ARCHIVE' }
+  }
+
+  if (!input.isTTY) return { approved: false, note: 'No TTY available for approval; wrote proposal but will not archive. To approve explicitly, rerun with APPROVED_ARCHIVE_INDEXES=1,3 or APPROVE_ARCHIVE=1.' }
 
   const rl = createInterface({ input, output })
   try {
-    const answer = await rl.question(`\nApprove archive_now list (${archiveItems.map((x) => `#${x.index}`).join(', ')})? This records approval only; it does not archive yet. [y/N] `)
+    const answer = await rl.question(`\nApprove archiving archive_now list (${archiveItems.map((x) => `#${x.index}`).join(', ')})? This will move approved emails out of the unread list. [y/N] `)
     return { approved: /^y(es)?$/i.test(answer.trim()), approvedIndexes: archiveItems.map((x) => x.index) }
   } finally {
     rl.close()
   }
+}
+
+function buildArchiveTargets(emails, triage, approvedIndexes = null) {
+  const byIndex = new Map(emails.map((email, i) => [i + 1, email]))
+  const archiveItems = triage.archive_now ?? []
+  const allowed = approvedIndexes ? new Set(approvedIndexes) : null
+
+  return archiveItems
+    .filter((item) => !allowed || allowed.has(item.index))
+    .map((item) => {
+      const email = byIndex.get(item.index)
+      if (!email) return null
+      return {
+        index: item.index,
+        reason: item.reason,
+        signature: emailSignature(email.raw),
+        email,
+      }
+    })
+    .filter(Boolean)
+}
+
+function writeArchiveProposal(emails, triage) {
+  const targets = buildArchiveTargets(emails, triage)
+  if (!targets.length) {
+    writeFileSync(join(RUN_DIR, 'proposed-actions.json'), JSON.stringify({
+      proposalId: new Date().toISOString().replace(/[:.]/g, '-'),
+      mode: 'dry_run',
+      actions: [],
+      note: 'No archive_now targets proposed.',
+    }, null, 2))
+    return targets
+  }
+
+  for (const target of targets) {
+    recordProposedAction(RUN_DIR, {
+      action: 'archive_email',
+      riskLevel: RISK_LEVELS.StateChanging,
+      target: {
+        index: target.index,
+        raw: target.email.raw,
+        bounds: target.email.bounds,
+      },
+      evidence: {
+        triageReason: target.reason,
+        signature: target.signature,
+      },
+      reason: 'Pi classified this unread email as archive_now.',
+    })
+  }
+  return targets
+}
+
+function findArchiveButton() {
+  const w = latestOutlookWindow()
+  const candidates = w.scoredSearch(
+    TraversalOrder.BreadthFirst,
+    2500,
+    true,
+    'Archive button move selected email message to archive',
+    0.04,
+  )
+
+  const candidateDescriptions = candidates.slice(0, 12).map((node, index) => ({ index, ...safeNodeInfo(node) }))
+  writeFileSync(join(RUN_DIR, 'archive-button-candidates.json'), JSON.stringify(candidateDescriptions, null, 2))
+
+  return candidates.find((node) => {
+    const info = safeNodeInfo(node)
+    const text = nodeText(info)
+    const box = info.boundingBox
+    return /\barchive\b/i.test(text)
+      && /button/i.test([info.localizedControlType, info.overallDescription].filter(Boolean).join(' '))
+      && (!box || box.top < 260)
+  })
+}
+
+function findEmailBySignature(signature) {
+  return collectEmailCandidates().find((email) => emailSignature(email.raw) === signature)
+}
+
+async function archiveApprovedEmails(emails, triage, approval) {
+  const proposalTargets = buildArchiveTargets(emails, triage)
+  if (!proposalTargets.length) {
+    const result = { approved: false, attempted: 0, archived: 0, note: 'No archive_now targets.' }
+    writeFileSync(join(RUN_DIR, 'archive-result.json'), JSON.stringify(result, null, 2))
+    return result
+  }
+  if (!approval.approved) {
+    const result = { approved: false, attempted: 0, archived: 0, proposed: proposalTargets.length, note: approval.note ?? 'Archive not approved.' }
+    writeFileSync(join(RUN_DIR, 'archive-result.json'), JSON.stringify(result, null, 2))
+    return result
+  }
+
+  const targets = buildArchiveTargets(emails, triage, approval.approvedIndexes)
+  const result = { approved: true, attempted: targets.length, archived: 0, verifiedGone: 0, failures: [] }
+
+  for (const target of targets.slice().sort((a, b) => b.index - a.index)) {
+    console.log(`Archiving approved email #${target.index}: ${target.reason}`)
+
+    try {
+      const currentEmail = findEmailBySignature(target.signature) ?? target.email
+      currentEmail.node.activate()
+      await sleep(800)
+
+      const archiveButton = findArchiveButton()
+      if (!archiveButton) throw new Error('archive_button_not_found')
+
+      archiveButton.activate()
+      await sleep(1500)
+      result.archived++
+
+      const remaining = collectEmailCandidates()
+      const stillPresent = remaining.some((email) => emailSignature(email.raw) === target.signature)
+      if (stillPresent) throw new Error('archive_verification_failed_email_still_visible')
+      result.verifiedGone++
+    } catch (err) {
+      result.failures.push({ index: target.index, error: err?.message ?? String(err), raw: target.email.raw })
+    }
+  }
+
+  writeFileSync(join(RUN_DIR, 'archive-result.json'), JSON.stringify(result, null, 2))
+  if (result.failures.length) throw new Error(`Failed to archive ${result.failures.length}/${targets.length} approved emails`)
+  return result
 }
 
 const instance = await step(
@@ -277,7 +424,7 @@ const emails = await step(
   },
 )
 
-writeFileSync(OUT, JSON.stringify({ query: QUERY, limit: LIMIT, count: emails.length, emails }, null, 2))
+writeFileSync(OUT, JSON.stringify({ query: QUERY, limit: LIMIT, count: emails.length, emails: emails.map(emailForJson) }, null, 2))
 writeFileSync(join(RUN_DIR, 'result.json'), JSON.stringify({
   ok: true,
   app: 'Microsoft Outlook',
@@ -301,10 +448,52 @@ if (process.env.TRIAGE_WITH_PI !== '0') {
     console.log('\nAsking pi to triage these emails…')
     const triage = askPiToTriageEmails(emails)
     printTriageList(triage)
+    writeArchiveProposal(emails, triage)
+    console.log(`\nArchive proposal saved → ${join(RUN_DIR, 'proposed-actions.json')}`)
+
     const approval = await askApproval(triage)
     writeFileSync(join(RUN_DIR, 'approval.json'), JSON.stringify(approval, null, 2))
     console.log(`\nApproval saved → ${join(RUN_DIR, 'approval.json')}`)
     if (approval.note) console.log(approval.note)
+
+    const archiveResult = await step(
+      'archive approved emails',
+      async () => archiveApprovedEmails(emails, triage, approval),
+      async (result) => {
+        if (approval.approved && result.archived !== result.attempted) {
+          throw new Error(`Archived ${result.archived}/${result.attempted} approved emails`)
+        }
+      },
+    )
+
+    writeFileSync(join(RUN_DIR, 'result.json'), JSON.stringify({
+      ok: true,
+      app: 'Microsoft Outlook',
+      goal: 'triage_unread_emails_and_archive_approved',
+      mode: approval.approved ? 'execute-with-user-approval' : POLICY.mode,
+      riskLevel: approval.approved ? RISK_LEVELS.StateChanging : RISK_LEVELS.ObserveOnly,
+      phase: 'complete',
+      artifactsDir: RUN_DIR,
+      outputs: {
+        emails: OUT,
+        triage: join(RUN_DIR, 'pi-triage.json'),
+        proposal: join(RUN_DIR, 'proposed-actions.json'),
+        approval: join(RUN_DIR, 'approval.json'),
+        archiveResult: join(RUN_DIR, 'archive-result.json'),
+      },
+      verification: {
+        ok: true,
+        reason: approval.approved ? 'approved_archive_attempted' : 'triage_completed_without_archive_approval',
+        signals: {
+          candidateCount: emails.length,
+          archiveNowCount: triage.archive_now?.length ?? 0,
+          needsAttentionCount: triage.needs_attention?.length ?? 0,
+          unsureCount: triage.unsure?.length ?? 0,
+          approval,
+          archiveResult,
+        },
+      },
+    }, null, 2))
   } catch (err) {
     writeFileSync(join(RUN_DIR, 'pi-triage-error.txt'), err?.stack ?? String(err))
     console.error(`\nPi triage failed; details saved → ${join(RUN_DIR, 'pi-triage-error.txt')}`)
