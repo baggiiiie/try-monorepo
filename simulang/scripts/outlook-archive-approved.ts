@@ -146,7 +146,7 @@ function buildApprovedActionsFromIndexes() {
         sourceEmailsFile: sourcePath,
         approvedIndexes,
         actions: approvedIndexes.map((index) => {
-            const email = byIndex.get(index)
+            const email: any = byIndex.get(index)
             return {
                 action: 'archive_email',
                 reason: `User approved archiving email #${index}.`,

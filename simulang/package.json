@@ -1,0 +1,12 @@
+{
+  "name": "simulang",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@simular-ai/simulang-js": "6.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "typescript": "^6.0.3"
+  }
+}

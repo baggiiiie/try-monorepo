@@ -21,7 +21,7 @@ export const RISK_LEVELS = {
   ProductionImpacting: 'production-impacting',
 }
 
-export function createSafetyPolicy(overrides = {}) {
+export function createSafetyPolicy(overrides: any = {}) {
   const mode = overrides.mode ?? process.env.GUI_AUTOMATION_MODE ?? (process.env.EXECUTE === '1' ? 'execute' : 'explore')
   return {
     mode,
@@ -79,7 +79,7 @@ export function latestWindowForPid(pid, titleHint) {
     ?? windows[0]
 }
 
-export function dumpDiagnostics(label, err, { runDir, pid = 0, latestWindow = null } = {}) {
+export function dumpDiagnostics(label, err, { runDir, pid = 0, latestWindow = null }: { runDir?: string; pid?: number; latestWindow?: any } = {}) {
   const dir = join(runDir, label)
   mkdirSync(dir, { recursive: true })
 
@@ -134,7 +134,7 @@ export function createStepRunner(runDir, contextFactory = () => ({})) {
 }
 
 export function safeNodeInfo(node) {
-  const info = {}
+  const info: any = {}
   for (const key of ['role', 'className', 'localizedControlType', 'name', 'value', 'description', 'helpText', 'overallDescription', 'isEnabled']) {
     try { info[key] = node[key] } catch { info[key] = null }
   }
@@ -193,7 +193,7 @@ export function guardGuiAction(runDir, policy, action) {
 export function assertGuiActionAllowed(runDir, policy, action) {
   const result = guardGuiAction(runDir, policy, action)
   if (result.allowed) return result
-  const err = new Error(result.reason)
+  const err: any = new Error(result.reason)
   err.guard = result
   throw err
 }
@@ -256,7 +256,7 @@ export async function runStrategies({ app, goal, runDir, strategies, verify, sug
   }
   writeFileSync(join(runDir, 'result.json'), JSON.stringify(result, null, 2))
 
-  const err = new Error(`${goal} failed after ${attempts.length} strategies: ${result.reason}`)
+  const err: any = new Error(`${goal} failed after ${attempts.length} strategies: ${result.reason}`)
   err.result = result
   throw err
 }
