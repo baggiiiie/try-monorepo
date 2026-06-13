@@ -14,7 +14,7 @@ const PARAMS = Type.Object({
   code: Type.Optional(Type.String({ description: 'For mode=run: TypeScript body. gui, sim, input, and params are in scope; use return to produce the result.' })),
   action: Type.Optional(Type.Any({ description: 'For mode=step: one structured action, e.g. {type:"press", query:"Calendar"}' })),
   actions: Type.Optional(Type.Array(Type.Any(), { description: 'For mode=batch: structured actions to execute in order.' })),
-  target: Type.Optional(Type.Any({ description: 'Optional target, e.g. {pid:123}, {titleIncludes:"Outlook"}, {titleRegex:"Teams"}' })),
+  target: Type.Optional(Type.Any({ description: 'Optional target, e.g. {pid:123}, {titleRegex:"Outlook|Teams"}' })),
 
   options: Type.Optional(Type.Any({ description: 'Mode-specific options. For batch, use {observe:"afterEach"|"final"|false, stopOnFailure:true}.' })),
   safety: Type.Optional(Type.Any({ description: 'Safety overrides: {allowDestructive, allowExternal, allowProduction, allowCoordinates, stealFocus}' })),

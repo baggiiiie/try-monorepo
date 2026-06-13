@@ -259,7 +259,7 @@ export function createGui({ runDir, params = {} } = {}) {
 
   function resolveWindow(target = undefined) {
     target = target || params.target || {}
-    const hasTargetSelector = Boolean(target.pid || target.titleRegex || target.titleIncludes || currentPid)
+    const hasTargetSelector = Boolean(target.pid || target.titleRegex || currentPid)
     if (!hasTargetSelector) return null
     let windows = []
     if (target.pid || currentPid) windows = Window.allForPid(target.pid || currentPid)
@@ -270,11 +270,6 @@ export function createGui({ runDir, params = {} } = {}) {
       const re = new RegExp(target.titleRegex, target.titleRegexFlags || 'i')
       windows = windows.filter((w) => re.test(w.title))
     }
-    if (target.titleIncludes) {
-      const needle = String(target.titleIncludes).toLowerCase()
-      windows = windows.filter((w) => String(w.title).toLowerCase().includes(needle))
-    }
-
     // Some apps have window titles that do not include the app name after openApp()
     // (e.g. Outlook: "Inbox • account" rather than "Outlook"). If a previous
     // openApp established currentPid, prefer that process' visible window instead
@@ -301,9 +296,6 @@ export function createGui({ runDir, params = {} } = {}) {
 
   async function observe(options = {}) {
     options = normalizeOptions(options)
-    if (Object.prototype.hasOwnProperty.call(options, 'query')) {
-      throw new Error('gui.observe() no longer accepts query. Use gui.find({ text, target }) to locate elements, or observe({ target }) for app/window state.')
-    }
     const id = `${String(++stepIndex).padStart(2, '0')}-observe`
     const windows = windowsSummary()
     const win = resolveWindow(options.target)

@@ -1,45 +1,25 @@
 {
-  "version": 1,
-  "workflows": [
-    {
-      "name": "teams-calendar",
-      "script": "teams-calendar.mts",
-      "goal": "Open Microsoft Teams Calendar",
-      "app": "Microsoft Teams",
-      "riskLevel": "reversible-navigation",
-      "defaultMode": "explore",
-      "requiresFocusByDefault": false,
-      "resultFile": ".runs/teams-calendar-*/result.json"
-    },
-    {
-      "name": "outlook-collect-unread",
-      "script": "outlook-collect-unread.mts",
-      "goal": "Collect unread Outlook email candidates for Pi to triage",
-      "app": "Microsoft Outlook",
-      "riskLevel": "observe-only",
-      "defaultMode": "explore",
-      "requiresFocusByDefault": false,
-      "resultFile": ".runs/outlook-collect-unread-*/emails.json"
-    },
-    {
-      "name": "outlook-archive-approved",
-      "script": "outlook-archive-approved.mts",
-      "goal": "Archive explicitly approved Outlook email targets",
-      "app": "Microsoft Outlook",
-      "riskLevel": "state-changing",
-      "defaultMode": "execute",
-      "requiresFocusByDefault": true,
-      "resultFile": ".runs/outlook-archive-approved-*/result.json"
-    },
-    {
-      "name": "outlook-new-mail",
-      "script": "outlook-new-mail.mts",
-      "goal": "Open a new Outlook mail compose window",
-      "app": "Microsoft Outlook",
-      "riskLevel": "reversible-navigation",
-      "defaultMode": "explore",
-      "requiresFocusByDefault": false,
-      "resultFile": ".runs/outlook-new-mail-*/windows-after-click.json"
-    }
-  ]
+    "version": 1,
+    "workflows": [
+        {
+            "name": "outlook-collect-unread",
+            "script": "outlook-collect-unread.mts",
+            "goal": "Collect unread Outlook email candidates for Pi to triage",
+            "app": "Microsoft Outlook",
+            "riskLevel": "observe-only",
+            "defaultMode": "explore",
+            "requiresFocusByDefault": false,
+            "resultFile": ".runs/outlook-collect-unread-*/emails.json"
+        },
+        {
+            "name": "outlook-archive-approved",
+            "script": "outlook-archive-approved.mts",
+            "goal": "Archive explicitly approved Outlook email targets",
+            "app": "Microsoft Outlook",
+            "riskLevel": "state-changing",
+            "defaultMode": "execute",
+            "requiresFocusByDefault": true,
+            "resultFile": ".runs/outlook-archive-approved-*/result.json"
+        }
+    ]
 }
