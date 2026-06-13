@@ -15,7 +15,7 @@ const PARAMS = Type.Object({
   action: Type.Optional(Type.Any({ description: 'For mode=step: one structured action, e.g. {type:"press", query:"Calendar"}' })),
   actions: Type.Optional(Type.Array(Type.Any(), { description: 'For mode=batch: structured actions to execute in order.' })),
   target: Type.Optional(Type.Any({ description: 'Optional target, e.g. {pid:123}, {titleIncludes:"Outlook"}, {titleRegex:"Teams"}' })),
-  query: Type.Optional(Type.String({ description: 'For observe/find-like observations: concept text to score AX candidates against.' })),
+
   options: Type.Optional(Type.Any({ description: 'Mode-specific options. For batch, use {observe:"afterEach"|"final"|false, stopOnFailure:true}.' })),
   safety: Type.Optional(Type.Any({ description: 'Safety overrides: {allowDestructive, allowExternal, allowProduction, allowCoordinates, stealFocus}' })),
   stealFocus: Type.Optional(Type.Boolean({ description: 'Allow focus-stealing actions for this run. Defaults false unless STEAL_FOCUS=1.' })),
@@ -56,7 +56,7 @@ function buildScript(params: any, runDir: string, runtimePath: string) {
 `try {\n` +
 `  let value\n` +
 `  if (params.mode === 'observe') {\n` +
-`    value = await gui.observe({ ...(params.options || {}), target: params.target, query: params.query })\n` +
+`    value = await gui.observe({ ...(params.options || {}), target: params.target })\n` +
 `  } else if (params.mode === 'step') {\n` +
 `    value = await gui.step(params.action, params.options || {})\n` +
 `  } else if (params.mode === 'batch') {\n` +
@@ -110,9 +110,9 @@ export default function simulangExtension(pi: ExtensionAPI) {
       'Use simulang when the user asks Pi to inspect, navigate, or automate a desktop GUI.',
       'Prefer simulang mode=step for one action that should immediately return fresh GUI state, instead of separate observe/action/observe turns.',
       'Use simulang mode=batch for short low-risk GUI navigation sequences; set options.observe="afterEach" while debugging and omit it for faster final-state feedback.',
-      'Use simulang mode=run for adaptive GUI automation. The TypeScript body has gui, sim, input, and params in scope; call gui.observe(), gui.act(), gui.batch(), gui.find(), gui.verify(), gui.screenshot(), gui.sleep(), and return a compact result.',
+      'Use simulang mode=run for adaptive GUI automation. The TypeScript body has gui, sim, input, and params in scope; use gui.observe({target}) for app/window state, gui.find({target,text}) for semantic UI lookup, gui.activate(), gui.act(), gui.batch(), gui.verify(), gui.screenshot(), gui.sleep(), and return a compact result.',
       'In simulang mode=run, do not write import statements; use the provided sim namespace for raw @simular-ai/simulang-js APIs when necessary.',
-      'Simulang defaults to no focus stealing and blocks destructive/external/production actions unless explicit safety overrides are provided.',
+      'Simulang defaults to no focus stealing and blocks destructive/external/production actions unless explicit safety overrides are provided. Use action type activateWindow with explicit stealFocus/safety.stealFocus to raise a target window.',
       'After a successful exploratory simulang run, use the trace/result artifacts under .runs/ to manually condense the workflow into a reusable script if the task is routine.',
     ],
     parameters: PARAMS,

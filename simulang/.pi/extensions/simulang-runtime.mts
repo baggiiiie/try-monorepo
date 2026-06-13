@@ -17,6 +17,7 @@ const {
   TraversalOrder,
   Visibility,
   Window,
+  screenshotCropped,
   screenshotFull,
 } = sim
 
@@ -92,8 +93,8 @@ function safeInstanceInfo(inst) {
   try {
     return {
       pid: inst.pid,
-      hasFocus: safeCall(() => inst.hasFocus()),
-      hasAccessibility: safeCall(() => inst.hasAccessibility()),
+      hasFocus: safeCall(() => inst.hasFocus?.() ?? inst.isFocused?.()),
+      hasAccessibility: safeCall(() => inst.hasAccessibility?.() ?? inst.isAccessible?.()),
     }
   } catch (error) {
     return { error: String(error) }
@@ -244,12 +245,27 @@ export function createGui({ runDir, params = {} } = {}) {
     return Window.all().slice(0, DEFAULT_MAX_WINDOWS).map(safeWindowInfo)
   }
 
+  function normalizeOptions(options = {}) {
+    return options && typeof options === 'object' ? options : {}
+  }
+
+  function inferAppNameFromWindowTitle(title = '') {
+    const raw = String(title || '').trim()
+    if (!raw) return null
+    const splitPieces = raw.split(/\s+[@—–-]\s+|\s+@\s+|[:|]/g).map((s) => String(s || '').trim()).filter(Boolean)
+    const candidates = [...splitPieces, raw.split(/\s+/)[0], raw].filter(Boolean)
+    return candidates[0] || null
+  }
+
   function resolveWindow(target = undefined) {
     target = target || params.target || {}
+    const hasTargetSelector = Boolean(target.pid || target.titleRegex || target.titleIncludes || currentPid)
+    if (!hasTargetSelector) return null
     let windows = []
     if (target.pid || currentPid) windows = Window.allForPid(target.pid || currentPid)
     else windows = Window.all()
 
+    const pidScopedWindows = windows.slice()
     if (target.titleRegex) {
       const re = new RegExp(target.titleRegex, target.titleRegexFlags || 'i')
       windows = windows.filter((w) => re.test(w.title))
@@ -257,6 +273,14 @@ export function createGui({ runDir, params = {} } = {}) {
     if (target.titleIncludes) {
       const needle = String(target.titleIncludes).toLowerCase()
       windows = windows.filter((w) => String(w.title).toLowerCase().includes(needle))
+    }
+
+    // Some apps have window titles that do not include the app name after openApp()
+    // (e.g. Outlook: "Inbox • account" rather than "Outlook"). If a previous
+    // openApp established currentPid, prefer that process' visible window instead
+    // of falling back to the focused app or failing target resolution entirely.
+    if (!windows.length && currentPid && pidScopedWindows.length) {
+      return pidScopedWindows.find((w) => w.title?.trim()) || pidScopedWindows[0]
     }
     if (!windows.length) return null
     return windows.find((w) => w.title?.trim()) || windows[0]
@@ -276,6 +300,10 @@ export function createGui({ runDir, params = {} } = {}) {
   }
 
   async function observe(options = {}) {
+    options = normalizeOptions(options)
+    if (Object.prototype.hasOwnProperty.call(options, 'query')) {
+      throw new Error('gui.observe() no longer accepts query. Use gui.find({ text, target }) to locate elements, or observe({ target }) for app/window state.')
+    }
     const id = `${String(++stepIndex).padStart(2, '0')}-observe`
     const windows = windowsSummary()
     const win = resolveWindow(options.target)
@@ -283,24 +311,30 @@ export function createGui({ runDir, params = {} } = {}) {
     let snapshotPath = null
     let targetWindow = win ? safeWindowInfo(win) : null
 
-    try {
-      const full = win ? win.snapshot() : AccessibilityNode.fromFocusedApplication().snapshot()
-      snapshotPath = artifactPath(`${id}-snapshot.txt`)
-      writeFileSync(snapshotPath, full)
-      const compact = firstLines(full, options.maxSnapshotLines ?? DEFAULT_MAX_SNAPSHOT_LINES)
-      snapshot = { ...compact, path: snapshotPath }
-    } catch (error) {
-      snapshot = { error: safeError(error) }
+    if (options.ax !== false && options.snapshot !== false) {
+      try {
+        const full = win ? win.snapshot() : AccessibilityNode.fromFocusedApplication().snapshot()
+        snapshotPath = artifactPath(`${id}-snapshot.txt`)
+        writeFileSync(snapshotPath, full)
+        const compact = firstLines(full, options.maxSnapshotLines ?? DEFAULT_MAX_SNAPSHOT_LINES)
+        snapshot = { ...compact, path: snapshotPath }
+      } catch (error) {
+        snapshot = { error: safeError(error) }
+      }
+    } else {
+      snapshot = { skipped: true, reason: options.ax === false ? 'ax-disabled' : 'snapshot-disabled' }
     }
 
-    let candidates = []
-    if (options.query) {
+    const candidates = []
+
+    const diagnostics = observeDiagnostics({ snapshot, candidates, targetWindow })
+    let screenshotResult = null
+    const wantsVisualFallback = options.fallback === 'visual' || options.fallback === 'screenshot' || (options.fallback === 'auto' && diagnostics.axDepth === 'shallow')
+    if (options.screenshot || wantsVisualFallback) {
       try {
-        const found = searchNodes(options.query, options)
-        candidates = found.nodes.slice(0, options.maxCandidates ?? DEFAULT_MAX_CANDIDATES).map((node, index) => safeNodeInfo(node, { index }))
-        writeArtifact(`${id}-candidates.json`, { query: options.query, source: found.source, window: found.window, candidates })
+        screenshotResult = await screenshot({ target: options.target ?? params.target, path: `${id}-screen.png`, full: options.fullScreenshot }, id)
       } catch (error) {
-        candidates = [{ error: safeError(error) }]
+        screenshotResult = { error: safeError(error) }
       }
     }
 
@@ -312,18 +346,37 @@ export function createGui({ runDir, params = {} } = {}) {
       windows,
       snapshot,
       candidates,
-      summary: summarizeObservation({ targetWindow, snapshot, candidates, windows }),
+      diagnostics,
+      screenshot: screenshotResult,
+      summary: summarizeObservation({ targetWindow, snapshot, candidates, windows, diagnostics, screenshot: screenshotResult }),
     }
     record('observe', { options, observation })
     writeArtifact(`${id}.json`, observation)
     return observation
   }
 
+  function observeDiagnostics(observation) {
+    const text = observation.snapshot?.text || ''
+    const lines = text.split('\n').filter((line) => line.trim())
+    const hasOnlyTopWindow = lines.length <= 1 || (lines.length <= 2 && lines.every((line) => /^\s*-\s*window\b/i.test(line.trim())))
+    const candidateCount = observation.candidates?.filter((c) => !c.error).length ?? 0
+    if (observation.targetWindow && hasOnlyTopWindow && candidateCount <= 1) {
+      return {
+        axDepth: 'shallow',
+        reason: 'Target exposes only a top-level accessibility window; custom-rendered content may require screenshot/visual inspection.',
+        suggestedFallback: 'screenshot',
+      }
+    }
+    return { axDepth: 'normal' }
+  }
+
   function summarizeObservation(observation) {
     const title = observation.targetWindow?.title ? `window=${JSON.stringify(observation.targetWindow.title)}` : 'window=focused app/unknown'
     const snapshot = observation.snapshot?.text ? observation.snapshot.text.split('\n').slice(0, 12).join('\n') : JSON.stringify(observation.snapshot)
     const candidates = observation.candidates?.length ? `\nCandidates: ${observation.candidates.slice(0, 5).map((c) => `${c.index ?? '?'}:${nodeText(c).slice(0, 80)}`).join(' | ')}` : ''
-    return `${title}\n${snapshot || ''}${candidates}`.trim()
+    const diagnostics = observation.diagnostics?.axDepth === 'shallow' ? `\nDiagnostics: AX tree is shallow; suggested fallback=${observation.diagnostics.suggestedFallback}` : ''
+    const screenshotInfo = observation.screenshot?.path ? `\nScreenshot: ${relative(process.cwd(), observation.screenshot.path) || observation.screenshot.path}` : ''
+    return `${title}\n${snapshot || ''}${candidates}${diagnostics}${screenshotInfo}`.trim()
   }
 
   async function act(action = {}, options = {}) {
@@ -342,6 +395,7 @@ export function createGui({ runDir, params = {} } = {}) {
       const type = action.type || action.kind
       let result
       if (type === 'openApp') result = await openApp(action)
+      else if (type === 'activateWindow' || type === 'raiseWindow' || type === 'focusWindow') result = await activateWindow(action)
       else if (type === 'press' || type === 'activate' || type === 'clickAx') result = await press(action, id)
       else if (type === 'setValue') result = await setValue(action, id)
       else if (type === 'type' || type === 'typeText') result = await typeText(action)
@@ -375,6 +429,48 @@ export function createGui({ runDir, params = {} } = {}) {
     if (action.enableAccessibility !== false) safeCall(() => inst.enableAccessibility())
     await sleep(action.waitMs ?? 1500)
     return { app: appName, instance: safeInstanceInfo(inst), windows: Window.allForPid(currentPid).map(safeWindowInfo) }
+  }
+
+  async function activateWindow(action = {}) {
+    const mayStealFocus = action.stealFocus ?? safety.stealFocus
+    if (!mayStealFocus) {
+      throw new Error('activateWindow requires explicit focus permission: set action.stealFocus=true, tool stealFocus=true, or safety.stealFocus=true.')
+    }
+
+    const target = action.target || params.target || {}
+    const win = resolveWindow(target)
+    const appName = action.app || action.name || target.app || (win ? inferAppNameFromWindowTitle(win.title) : null)
+    let appOpenError = null
+    if (appName) {
+      try {
+        const app = App.exists(appName) ? App.exactName(appName) : System.fuzzySearch(appName)
+        const instance = app.open(action.url ?? null, FocusPolicy.Steal, Visibility.Show, action.waitForLoadComplete ?? true)
+        currentPid = instance.pid || win?.pid || currentPid
+        if (action.enableAccessibility !== false) safeCall(() => instance.enableAccessibility())
+        await sleep(action.waitMs ?? 800)
+        return {
+          app: appName,
+          targetWindow: win ? safeWindowInfo(win) : null,
+          instance: safeInstanceInfo(instance),
+          windows: Window.allForPid(currentPid).map(safeWindowInfo),
+        }
+      } catch (error) {
+        appOpenError = safeError(error)
+      }
+    }
+
+    if (!win) throw new Error(`activateWindow requires a resolvable target window or app/name${appOpenError ? `; app open failed: ${appOpenError.message}` : ''}`)
+
+    const nodeResult = safeCall(() => {
+      const nodes = win.scoredSearch(TraversalOrder.BreadthFirst, 50, false, win.title || 'window', 0)
+      const node = nodes[0]
+      if (!node) return { focused: false, reason: 'No window AX node found' }
+      node.focus()
+      return { focused: true, selected: safeNodeInfo(node, { index: 0 }) }
+    }, { focused: false, reason: 'Window AX focus failed' })
+    currentPid = win.pid
+    await sleep(action.waitMs ?? 800)
+    return { targetWindow: safeWindowInfo(win), via: 'accessibility-focus', appOpenError, ...nodeResult, windows: Window.allForPid(currentPid).map(safeWindowInfo) }
   }
 
   async function press(action, id) {
@@ -433,10 +529,41 @@ export function createGui({ runDir, params = {} } = {}) {
     return { waitedMs: ms }
   }
 
-  async function screenshot(action, id) {
+  function windowBoundingBox(win) {
+    if (!win) return null
+    const query = win.title || 'window'
+    return safeCall(() => {
+      const nodes = win.scoredSearch(TraversalOrder.BreadthFirst, 80, false, query, 0)
+      const exact = nodes.find((node) => safeCall(() => node.name, '') === win.title) || nodes[0]
+      return exact ? safeBox(exact) : null
+    }, null)
+  }
+
+  async function screenshot(action = {}, id = `${String(++stepIndex).padStart(2, '0')}-screenshot`) {
+    action = normalizeOptions(action)
     const path = artifactPath(action.path || `${id}-screen.png`)
-    screenshotFull(action.hideCursor ?? true, Screen.mainScreen()).save(path)
-    return { path }
+    const hasTarget = action.target !== undefined ? action.target !== null : Boolean(params.target)
+    const target = action.target === null ? null : (action.target || params.target)
+    const win = action.full === true || !hasTarget ? null : resolveWindow(target)
+    const box = win ? windowBoundingBox(win) : null
+    let shot
+    let captureKind = 'full-screen'
+    if (box && Number.isFinite(box.left) && Number.isFinite(box.top) && Number.isFinite(box.right) && Number.isFinite(box.bottom) && box.right > box.left && box.bottom > box.top) {
+      shot = screenshotCropped(Math.max(0, Math.floor(box.left)), Math.max(0, Math.floor(box.top)), Math.ceil(box.right - box.left), Math.ceil(box.bottom - box.top), action.hideCursor ?? true)
+      captureKind = 'window-crop'
+    } else {
+      shot = screenshotFull(action.hideCursor ?? true, Screen.mainScreen())
+    }
+    if (action.shrinkTo) {
+      const [w, h] = Array.isArray(action.shrinkTo) ? action.shrinkTo : [action.shrinkTo.width, action.shrinkTo.height]
+      if (w && h) shot.shrink(w, h)
+    }
+    if (action.compress) shot.compress(action.compress)
+    shot.save(path)
+    const dimensions = safeCall(() => shot.dimensions, undefined)
+    const result = { path, dimensions, captureKind, targetWindow: win ? safeWindowInfo(win) : null, boundingBox: box }
+    record('screenshot', result)
+    return result
   }
 
   async function scroll(action) {
@@ -457,7 +584,7 @@ export function createGui({ runDir, params = {} } = {}) {
 
   async function step(action, options = {}) {
     const actionResult = await act(action, options)
-    const observation = options.observeAfter === false ? null : await observe(options.observe || {})
+    const observation = options.observeAfter === false ? null : await observe(normalizeOptions(options.observe || {}))
     return { ok: actionResult.ok, action: actionResult, observation }
   }
 
@@ -474,11 +601,15 @@ export function createGui({ runDir, params = {} } = {}) {
     return { ok: results.every((r) => r.action.ok), results, observation: finalObservation }
   }
 
-  async function find(query, options = {}) {
-    const found = searchNodes(query, options)
+  async function find(input, options = {}) {
+    const spec = typeof input === 'object' && input !== null ? { ...input } : { text: input }
+    options = { ...options, ...spec }
+    const text = spec.text || spec.query || spec.name || spec.label
+    if (!text) throw new Error('gui.find() requires { text }')
+    const found = searchNodes(text, options)
     const candidates = found.nodes.slice(0, options.maxCandidates ?? DEFAULT_MAX_CANDIDATES).map((node, index) => safeNodeInfo(node, { index }))
-    record('find', { query, options, source: found.source, window: found.window, candidates })
-    return { ok: true, query, source: found.source, window: found.window, candidates }
+    record('find', { text, options, source: found.source, window: found.window, candidates })
+    return { ok: true, text, source: found.source, window: found.window, candidates }
   }
 
   async function verify(description, predicateOrOptions = {}) {
@@ -524,6 +655,8 @@ export function createGui({ runDir, params = {} } = {}) {
     record,
     trace: () => trace,
     observe,
+    activate: activateWindow,
+    activateWindow,
     act,
     step,
     batch,

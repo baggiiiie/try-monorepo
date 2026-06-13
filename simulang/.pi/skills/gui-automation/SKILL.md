@@ -40,6 +40,9 @@ During exploration, prefer `observe-only` and `reversible-navigation`. If an act
 - Do not steal focus by default. Use `FocusPolicy.DoNotSteal` and avoid `focus()`, keyboard, and mouse fallbacks unless `STEAL_FOCUS=1` is explicitly needed.
 - Do not execute destructive or externally visible actions by default.
 - Prefer AX reads/actions over coordinates.
+- Treat `gui.observe({ target })` as app/window state only; do not pass semantic queries to observe.
+- Use `gui.find({ target, text: "..." })` for locating semantic UI elements.
+- After `openApp()`, prefer targeting by the returned PID (`{ pid: opened.result.instance.pid }`) rather than matching the app name in the window title.
 - Use coordinates only as a last resort and always verify afterward.
 - Keep exploration artifacts under `.runs/<workflow>-<timestamp>/`.
 
