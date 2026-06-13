@@ -18,7 +18,7 @@ A coding agent should be able to:
 - `.pi/extensions/simulang.ts` — project-local Pi extension registering the single `simulang` GUI automation tool.
 - `.pi/extensions/simulang-runtime.mts` — runtime helper used by generated `simulang run` scripts.
 - `SIMULANG_PI_EXTENSION.md` — usage notes for the new one-tool Pi integration.
-- `.pi/skills/gui-automation/SKILL.md` — Pi skill describing the exploration, safety, verifier, and repair loop.
+- `.pi/skills/gui-automation/SKILL.md` — Pi skill describing the exploration, verifier, and repair loop.
 - `.pi/skills/outlook-email-triage/SKILL.md` — app/task skill where Pi owns Outlook triage reasoning and approval.
 - `workflow-utils.mts` — legacy/shared harness helpers from the early demos; useful reference material, not a required long-term API.
 - `gui-workflows.json` — small registry of current reusable workflows.
@@ -30,25 +30,8 @@ A coding agent should be able to:
 
 ## Runtime knobs
 
-- `GUI_AUTOMATION_MODE=explore|dry_run|execute` controls the default safety mode for the legacy workflows.
 - `STEAL_FOCUS=1` permits focus-stealing strategies such as app focus and keyboard shortcuts.
 - `DIAG_AX=1` enables heavier accessibility snapshots on failure in the legacy workflows.
-- `ALLOW_STATE_CHANGING=1`, `ALLOW_DESTRUCTIVE=1`, `ALLOW_EXTERNAL_SEND=1`, and `ALLOW_PRODUCTION_CHANGES=1` opt into higher-risk execution categories in the legacy workflows.
-- The new `simulang` helper allows local state-changing actions by default, but still blocks destructive, externally visible, and production-impacting actions unless explicitly overridden.
-- `ALLOW_COORDINATES=1` lets the new `simulang` helper execute coordinate clicks; AX actions are preferred.
-
-## Safety model
-
-Before each meaningful GUI action, classify its consequence:
-
-- `observe-only`
-- `reversible-navigation`
-- `state-changing`
-- `destructive`
-- `externally-visible`
-- `production-impacting`
-
-Exploration should prefer observe-only and reversible navigation. Risky actions should produce `proposed-actions.json` in dry-run/proposal mode instead of executing.
 
 ## Workflow contract
 

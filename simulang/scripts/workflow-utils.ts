@@ -10,67 +10,37 @@ import {
   screenshotFull,
 } from '@simular-ai/simulang-js'
 
-export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
-export const RISK_LEVELS = {
-  ObserveOnly: 'observe-only',
-  ReversibleNavigation: 'reversible-navigation',
-  StateChanging: 'state-changing',
-  Destructive: 'destructive',
-  ExternallyVisible: 'externally-visible',
-  ProductionImpacting: 'production-impacting',
-}
+export const STEAL_FOCUS = process.env.STEAL_FOCUS === '1'
 
-export function createSafetyPolicy(overrides: any = {}) {
-  const mode = overrides.mode ?? process.env.GUI_AUTOMATION_MODE ?? (process.env.EXECUTE === '1' ? 'execute' : 'explore')
-  return {
-    mode,
-    stealFocus: overrides.stealFocus ?? process.env.STEAL_FOCUS === '1',
-    allowStateChanging: overrides.allowStateChanging ?? (mode === 'execute' || process.env.ALLOW_STATE_CHANGING === '1'),
-    allowDestructive: overrides.allowDestructive ?? process.env.ALLOW_DESTRUCTIVE === '1',
-    allowExternalSend: overrides.allowExternalSend ?? process.env.ALLOW_EXTERNAL_SEND === '1',
-    allowProductionChanges: overrides.allowProductionChanges ?? process.env.ALLOW_PRODUCTION_CHANGES === '1',
-    maxMutations: overrides.maxMutations ?? Number(process.env.MAX_MUTATIONS ?? 0),
-  }
-}
-
-export function isRiskAllowed(riskLevel, policy) {
-  if (riskLevel === RISK_LEVELS.ObserveOnly) return true
-  if (riskLevel === RISK_LEVELS.ReversibleNavigation) return true
-  if (riskLevel === RISK_LEVELS.StateChanging) return policy.mode === 'execute' && policy.allowStateChanging
-  if (riskLevel === RISK_LEVELS.Destructive) return policy.mode === 'execute' && policy.allowDestructive
-  if (riskLevel === RISK_LEVELS.ExternallyVisible) return policy.mode === 'execute' && policy.allowExternalSend
-  if (riskLevel === RISK_LEVELS.ProductionImpacting) return policy.mode === 'execute' && policy.allowProductionChanges
-  return false
-}
-
-export function writeJson(path, value) {
+export function writeJson(path: string, value: unknown) {
   writeFileSync(path, JSON.stringify(value, null, 2))
 }
 
-export function readJson(path, fallback) {
+export function readJson<T>(path: string, fallback: T): T {
   if (!existsSync(path)) return fallback
-  return JSON.parse(readFileSync(path, 'utf8'))
+  return JSON.parse(readFileSync(path, 'utf8')) as T
 }
 
-export function createRunDir(prefix) {
+export function createRunDir(prefix: string) {
   const runDir = join(process.cwd(), '.runs', `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}`)
   mkdirSync(runDir, { recursive: true })
   return runDir
 }
 
-export function slug(s) {
+export function slug(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
-export function findApp(exactNames, fuzzyName) {
+export function findApp(exactNames: string[], fuzzyName: string) {
   for (const name of exactNames) {
     if (App.exists(name)) return App.exactName(name)
   }
   return System.fuzzySearch(fuzzyName)
 }
 
-export function latestWindowForPid(pid, titleHint) {
+export function latestWindowForPid(pid: number, titleHint: RegExp) {
   const windows = Window.allForPid(pid)
   if (!windows.length) throw new Error(`No visible windows for pid ${pid}`)
 
@@ -79,11 +49,25 @@ export function latestWindowForPid(pid, titleHint) {
     ?? windows[0]
 }
 
-export function dumpDiagnostics(label, err, { runDir, pid = 0, latestWindow = null }: { runDir?: string; pid?: number; latestWindow?: any } = {}) {
-  const dir = join(runDir, label)
+type DiagnosticContext = {
+  runDir?: string
+  pid?: number
+  latestWindow?: (() => { snapshot(): string }) | null
+}
+
+function errorMessage(err: unknown) {
+  return err instanceof Error ? err.message : String(err)
+}
+
+function errorStack(err: unknown) {
+  return err instanceof Error ? (err.stack ?? err.message) : String(err)
+}
+
+export function dumpDiagnostics(label: string, err: unknown, { runDir, pid = 0, latestWindow = null }: DiagnosticContext = {}) {
+  const dir = join(runDir ?? join(process.cwd(), '.runs', 'diagnostics'), label)
   mkdirSync(dir, { recursive: true })
 
-  writeFileSync(join(dir, 'error.txt'), err?.stack ?? String(err))
+  writeFileSync(join(dir, 'error.txt'), errorStack(err))
   writeFileSync(
     join(dir, 'windows.json'),
     JSON.stringify(Window.all().map((w) => ({ pid: w.pid, title: w.title })), null, 2),
@@ -114,10 +98,10 @@ export function dumpDiagnostics(label, err, { runDir, pid = 0, latestWindow = nu
   console.error(`Diagnostics saved to ${dir}`)
 }
 
-export function createStepRunner(runDir, contextFactory = () => ({})) {
+export function createStepRunner(runDir: string, contextFactory: () => DiagnosticContext = () => ({})) {
   let stepIndex = 0
 
-  return async function step(name, action, verify) {
+  return async function step<T>(name: string, action: () => T | Promise<T>, verify?: (result: T) => void | Promise<void>): Promise<T> {
     const id = `${String(++stepIndex).padStart(2, '0')}-${slug(name)}`
     console.log(`\n▶ ${id}`)
     try {
@@ -126,14 +110,14 @@ export function createStepRunner(runDir, contextFactory = () => ({})) {
       console.log(`✓ ${id}`)
       return result
     } catch (err) {
-      console.error(`✗ ${id}: ${err?.message ?? err}`)
+      console.error(`✗ ${id}: ${errorMessage(err)}`)
       dumpDiagnostics(id, err, { runDir, ...contextFactory() })
       throw err
     }
   }
 }
 
-export function safeNodeInfo(node) {
+export function safeNodeInfo(node: any) {
   const info: any = {}
   for (const key of ['role', 'className', 'localizedControlType', 'name', 'value', 'description', 'helpText', 'overallDescription', 'isEnabled']) {
     try { info[key] = node[key] } catch { info[key] = null }
@@ -143,70 +127,27 @@ export function safeNodeInfo(node) {
   return info
 }
 
-export function nodeText(info) {
+export function nodeText(info: any) {
   return [info.name, info.value, info.description, info.helpText, info.overallDescription]
     .filter(Boolean)
     .join(' ')
 }
 
-export function chord(keyboard, modifiers, key) {
+export function chord(keyboard: any, modifiers: any[], key: any) {
   for (const modifier of modifiers) keyboard.key(modifier, Direction.Press)
   keyboard.key(key, Direction.Click)
   for (const modifier of modifiers.slice().reverse()) keyboard.key(modifier, Direction.Release)
 }
 
-export function recordProposedAction(runDir, proposal) {
-  const path = join(runDir, 'proposed-actions.json')
-  const existing = readJson(path, null)
-  const doc = existing ?? {
-    proposalId: new Date().toISOString().replace(/[:.]/g, '-'),
-    mode: proposal.mode ?? 'dry_run',
-    actions: [],
-  }
-  doc.actions.push({
-    recordedAt: new Date().toISOString(),
-    ...proposal,
-  })
-  writeJson(path, doc)
-  return doc
-}
-
-export function guardGuiAction(runDir, policy, action) {
-  const riskLevel = action.riskLevel ?? RISK_LEVELS.StateChanging
-  if (isRiskAllowed(riskLevel, policy)) return { allowed: true, riskLevel, policy }
-
-  const proposal = recordProposedAction(runDir, {
-    mode: policy.mode === 'execute' ? 'blocked' : 'dry_run',
-    ...action,
-    riskLevel,
-    blockedByPolicy: policy,
-  })
+function errorDetails(err: unknown) {
   return {
-    allowed: false,
-    riskLevel,
-    policy,
-    proposal,
-    reason: `blocked_${riskLevel}_action_in_${policy.mode}_mode`,
+    message: errorMessage(err),
+    stack: errorStack(err),
   }
 }
 
-export function assertGuiActionAllowed(runDir, policy, action) {
-  const result = guardGuiAction(runDir, policy, action)
-  if (result.allowed) return result
-  const err: any = new Error(result.reason)
-  err.guard = result
-  throw err
-}
-
-function errorDetails(err) {
-  return {
-    message: err?.message ?? String(err),
-    stack: err?.stack ?? String(err),
-  }
-}
-
-export async function runStrategies({ app, goal, runDir, strategies, verify, suggestedNextSteps = [], policy = createSafetyPolicy(), riskLevel = RISK_LEVELS.ObserveOnly }) {
-  const attempts = []
+export async function runStrategies({ app, goal, runDir, strategies, verify, suggestedNextSteps = [] }: any) {
+  const attempts: any[] = []
 
   for (const strategy of strategies) {
     console.log(`Trying strategy: ${strategy.name}`)
@@ -221,8 +162,6 @@ export async function runStrategies({ app, goal, runDir, strategies, verify, sug
           ok: true,
           app,
           goal,
-          mode: policy.mode,
-          riskLevel,
           strategy: strategy.name,
           phase: 'verify',
           artifactsDir: runDir,
@@ -236,7 +175,7 @@ export async function runStrategies({ app, goal, runDir, strategies, verify, sug
       console.warn(`Strategy ${strategy.name} did not satisfy verifier: ${verification?.reason ?? 'unknown reason'}`)
     } catch (err) {
       attempts.push({ strategy: strategy.name, actionOk: false, error: errorDetails(err) })
-      console.warn(`Strategy ${strategy.name} failed: ${err?.message ?? err}`)
+      console.warn(`Strategy ${strategy.name} failed: ${errorMessage(err)}`)
     }
   }
 
@@ -245,8 +184,6 @@ export async function runStrategies({ app, goal, runDir, strategies, verify, sug
     ok: false,
     app,
     goal,
-    mode: policy.mode,
-    riskLevel,
     phase: lastAttempt?.actionOk === false ? 'action' : 'verify',
     reason: lastAttempt?.verification?.reason ?? lastAttempt?.error?.message ?? 'all_strategies_failed',
     strategiesTried: attempts.map((attempt) => attempt.strategy),

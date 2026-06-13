@@ -17,8 +17,7 @@ const PARAMS = Type.Object({
   target: Type.Optional(Type.Any({ description: 'Optional target, e.g. {pid:123}, {titleRegex:"Outlook|Teams"}' })),
 
   options: Type.Optional(Type.Any({ description: 'Mode-specific options. For batch, use {observe:"afterEach"|"final"|false, stopOnFailure:true}.' })),
-  safety: Type.Optional(Type.Any({ description: 'Safety overrides: {allowDestructive, allowExternal, allowProduction, allowCoordinates, stealFocus}' })),
-  stealFocus: Type.Optional(Type.Boolean({ description: 'Allow focus-stealing actions for this run. Defaults false unless STEAL_FOCUS=1.' })),
+  stealFocus: Type.Optional(Type.Boolean({ description: 'Steal focus for this run. Defaults false unless STEAL_FOCUS=1.' })),
   timeoutMs: Type.Optional(Type.Number({ description: 'Execution timeout in milliseconds. Default 120000.' })),
 })
 
@@ -104,15 +103,15 @@ export default function simulangExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: 'simulang',
     label: 'Simulang',
-    description: 'Navigate and automate desktop GUIs with Simulang. One tool supports observe, act-and-observe, safe batches, and code-first mini automations.',
+    description: 'Navigate and automate desktop GUIs with Simulang. One tool supports observe, act-and-observe, batches, and code-first mini automations.',
     promptSnippet: 'Use simulang for GUI observation/navigation/automation. It can observe, step, batch, or run a TypeScript body with gui helpers.',
     promptGuidelines: [
       'Use simulang when the user asks Pi to inspect, navigate, or automate a desktop GUI.',
       'Prefer simulang mode=step for one action that should immediately return fresh GUI state, instead of separate observe/action/observe turns.',
-      'Use simulang mode=batch for short low-risk GUI navigation sequences; set options.observe="afterEach" while debugging and omit it for faster final-state feedback.',
+      'Use simulang mode=batch for short GUI navigation sequences; set options.observe="afterEach" while debugging and omit it for faster final-state feedback.',
       'Use simulang mode=run for adaptive GUI automation. The TypeScript body has gui, sim, input, and params in scope; use gui.observe({target}) for app/window state, gui.find({target,text}) for semantic UI lookup, gui.activate(), gui.act(), gui.batch(), gui.verify(), gui.screenshot(), gui.sleep(), and return a compact result.',
       'In simulang mode=run, do not write import statements; use the provided sim namespace for raw @simular-ai/simulang-js APIs when necessary.',
-      'Simulang defaults to no focus stealing and blocks destructive/external/production actions unless explicit safety overrides are provided. Use action type activateWindow with explicit stealFocus/safety.stealFocus to raise a target window.',
+      'Simulang defaults to no focus stealing. Set stealFocus=true (or STEAL_FOCUS=1) to allow focus-stealing actions, e.g. action type activateWindow to raise a target window.',
       'After a successful exploratory simulang run, use the trace/result artifacts under .runs/ to manually condense the workflow into a reusable script if the task is routine.',
     ],
     parameters: PARAMS,

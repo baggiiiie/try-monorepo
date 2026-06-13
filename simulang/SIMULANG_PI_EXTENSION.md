@@ -39,8 +39,7 @@ Activate a target window, then observe with screenshot fallback for shallow AX t
   "target": { "titleIncludes": "Telegram" },
   "action": { "type": "activateWindow" },
   "options": { "observe": { "fallback": "auto" } },
-  "stealFocus": true,
-  "safety": { "stealFocus": true }
+  "stealFocus": true
 }
 ```
 
@@ -108,18 +107,12 @@ Title matching (`{ titleIncludes: '...' }`) is still useful before opening an ap
 
 Advanced debugging overrides such as `ax: false` or `snapshot: false` may be used manually, but they are not part of the normal Pi-facing interface.
 
-## Safety defaults
+## Focus
 
-By default, the helper avoids focus stealing and blocks destructive, externally visible, and production-impacting actions. Local state-changing actions such as typing/searching are allowed because they are needed for fast GUI navigation. Override higher-risk categories only explicitly:
+By default, the helper avoids focus stealing. Set `stealFocus: true` (or `STEAL_FOCUS=1`) to allow focus-stealing actions such as `activateWindow`:
 
 ```json
 {
-  "safety": {
-    "allowDestructive": true,
-    "allowExternal": true,
-    "allowProduction": true,
-    "allowCoordinates": true,
-    "stealFocus": true
-  }
+  "stealFocus": true
 }
 ```

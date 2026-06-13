@@ -17,9 +17,8 @@ import {
     Visibility,
 } from '@simular-ai/simulang-js'
 import {
-    RISK_LEVELS,
+    STEAL_FOCUS,
     createRunDir,
-    createSafetyPolicy,
     createStepRunner,
     findApp,
     latestWindowForPid,
@@ -30,7 +29,6 @@ import {
 
 const LIMIT = Number(process.env.LIMIT ?? 10)
 const QUERY = process.env.OUTLOOK_SEARCH_QUERY ?? 'isread:no'
-const POLICY = createSafetyPolicy()
 const RUN_DIR = createRunDir('outlook-collect-unread')
 const OUT = join(RUN_DIR, 'emails.json')
 
@@ -39,13 +37,13 @@ const clipboard = new Clipboard()
 let outlookPid = 0
 const step = createStepRunner(RUN_DIR, () => ({ pid: outlookPid, latestWindow: latestOutlookWindow }))
 
-function chord(modifiers, key) {
+function chord(modifiers: any[], key: any) {
     for (const m of modifiers) keyboard.key(m, Direction.Press)
     keyboard.key(key, Direction.Click)
     for (const m of modifiers.slice().reverse()) keyboard.key(m, Direction.Release)
 }
 
-function cmd(key) {
+function cmd(key: any) {
     chord([Key.Meta], key)
 }
 
@@ -53,7 +51,7 @@ function latestOutlookWindow() {
     return latestWindowForPid(outlookPid, /outlook|inbox|mail|search/i)
 }
 
-function allText(node, depth = 0) {
+function allText(node: any, depth = 0): string[] {
     const parts = [node.name, node.value, node.description]
         .map((x) => (x ?? '').trim())
         .filter(Boolean)
@@ -62,17 +60,17 @@ function allText(node, depth = 0) {
     return parts
 }
 
-function looksLikeMessageRow(text) {
+function looksLikeMessageRow(text: string) {
     if (text.length < 25 || text.length > 900) return false
     if (/\b(new mail|reply all|forward|archive|delete|settings|calendar|people)\b/i.test(text)) return false
     return /@|\bunread\b|\b(today|yesterday|mon|tue|wed|thu|fri|sat|sun)\b|\b\d{1,2}:\d{2}/i.test(text)
 }
 
-function emailSignature(raw) {
+function emailSignature(raw: string) {
     return raw.toLowerCase().replace(/\W+/g, ' ').slice(0, 180)
 }
 
-function emailForJson(email, index) {
+function emailForJson(email: any, index: number) {
     return {
         index: index + 1,
         raw: email.raw,
@@ -84,10 +82,10 @@ function emailForJson(email, index) {
 
 function collectEmailCandidates() {
     const root = AccessibilityNode.fromPid(outlookPid)
-    const rows = []
-    const seen = new Set()
+    const rows: any[] = []
+    const seen = new Set<string>()
 
-    function walk(node, depth = 0, inMessageList = false) {
+    function walk(node: any, depth = 0, inMessageList = false) {
         let box
         try { box = node.boundingBox() } catch { box = { left: 0, top: 0, right: 0, bottom: 0 } }
 
@@ -117,12 +115,12 @@ function collectEmailCandidates() {
 }
 
 const instance = await step(
-    POLICY.stealFocus ? 'open and focus Outlook' : 'open Outlook without stealing focus',
+    STEAL_FOCUS ? 'open and focus Outlook' : 'open Outlook without stealing focus',
     async () => {
         const app = findApp(['Microsoft Outlook'], 'Outlook')
-        const inst = app.open(null, POLICY.stealFocus ? FocusPolicy.Steal : FocusPolicy.DoNotSteal, Visibility.Show, true)
+        const inst = app.open(null, STEAL_FOCUS ? FocusPolicy.Steal : FocusPolicy.DoNotSteal, Visibility.Show, true)
         await sleep(2500)
-        if (POLICY.stealFocus) inst.focus()
+        if (STEAL_FOCUS) inst.focus()
         inst.enableAccessibility()
         outlookPid = inst.pid
         await sleep(1000)
@@ -146,22 +144,22 @@ await step(
             0.04,
         )
 
-        const result = { usedSearchNode: Boolean(search), searchEcho: '', usedFallback: false, submittedWithReturn: false, stealFocus: POLICY.stealFocus }
+        const result = { usedSearchNode: Boolean(search), searchEcho: '', usedFallback: false, submittedWithReturn: false, stealFocus: STEAL_FOCUS }
 
         if (search) {
-            if (POLICY.stealFocus) {
+            if (STEAL_FOCUS) {
                 search.focus()
                 await sleep(200)
             }
             try {
                 search.setValue(QUERY)
             } catch (err) {
-                if (!POLICY.stealFocus) throw new Error(`AX setValue failed and clipboard fallback requires STEAL_FOCUS=1: ${err?.message ?? err}`)
+                if (!STEAL_FOCUS) throw new Error(`AX setValue failed and clipboard fallback requires STEAL_FOCUS=1: ${err instanceof Error ? err.message : String(err)}`)
                 clipboard.pasteText(QUERY)
             }
             try { result.searchEcho = [search.name, search.value, search.description].filter(Boolean).join(' | ') } catch { }
         } else {
-            if (!POLICY.stealFocus) throw new Error('No AX search node found; keyboard fallback requires STEAL_FOCUS=1')
+            if (!STEAL_FOCUS) throw new Error('No AX search node found; keyboard fallback requires STEAL_FOCUS=1')
             result.usedFallback = true
             chord([Key.Meta, Key.Option], Key.F)
             await sleep(400)
@@ -169,7 +167,7 @@ await step(
             clipboard.pasteText(QUERY)
         }
 
-        if (POLICY.stealFocus) {
+        if (STEAL_FOCUS) {
             keyboard.key(Key.Return, Direction.Click)
             result.submittedWithReturn = true
         } else {
@@ -200,8 +198,6 @@ writeFileSync(join(RUN_DIR, 'result.json'), JSON.stringify({
     ok: true,
     app: 'Microsoft Outlook',
     goal: 'collect_unread_email_candidates',
-    mode: POLICY.mode,
-    riskLevel: RISK_LEVELS.ObserveOnly,
     phase: 'verify',
     artifactsDir: RUN_DIR,
     outputs: { emails: OUT },

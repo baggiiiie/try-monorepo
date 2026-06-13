@@ -21,10 +21,8 @@ import {
     Visibility,
 } from '@simular-ai/simulang-js'
 import {
-    RISK_LEVELS,
-    assertGuiActionAllowed,
+    STEAL_FOCUS,
     createRunDir,
-    createSafetyPolicy,
     createStepRunner,
     findApp,
     latestWindowForPid,
@@ -36,7 +34,6 @@ import {
 const APPROVED_ACTIONS_FILE = process.env.APPROVED_ACTIONS_FILE
 const SOURCE_EMAILS_FILE = process.env.SOURCE_EMAILS_FILE
 const APPROVED_INDEXES = process.env.APPROVED_INDEXES
-const POLICY = createSafetyPolicy()
 const RUN_DIR = createRunDir('outlook-archive-approved')
 
 const mouse = new MouseController()
@@ -47,7 +44,7 @@ function latestOutlookWindow() {
     return latestWindowForPid(outlookPid, /outlook|inbox|mail|search/i)
 }
 
-function allText(node, depth = 0) {
+function allText(node: any, depth = 0): string[] {
     const parts = [node.name, node.value, node.description]
         .map((x) => (x ?? '').trim())
         .filter(Boolean)
@@ -56,22 +53,22 @@ function allText(node, depth = 0) {
     return parts
 }
 
-function looksLikeMessageRow(text) {
+function looksLikeMessageRow(text: string) {
     if (text.length < 25 || text.length > 900) return false
     if (/\b(new mail|reply all|forward|archive|delete|settings|calendar|people)\b/i.test(text)) return false
     return /@|\bunread\b|\b(today|yesterday|mon|tue|wed|thu|fri|sat|sun)\b|\b\d{1,2}:\d{2}/i.test(text)
 }
 
-function emailSignature(raw) {
+function emailSignature(raw: string) {
     return raw.toLowerCase().replace(/\W+/g, ' ').slice(0, 180)
 }
 
 function collectEmailCandidates(limit = 100) {
     const root = AccessibilityNode.fromPid(outlookPid)
-    const rows = []
-    const seen = new Set()
+    const rows: any[] = []
+    const seen = new Set<string>()
 
-    function walk(node, depth = 0, inMessageList = false) {
+    function walk(node: any, depth = 0, inMessageList = false) {
         let box
         try { box = node.boundingBox() } catch { box = { left: 0, top: 0, right: 0, bottom: 0 } }
 
@@ -100,7 +97,7 @@ function collectEmailCandidates(limit = 100) {
     return rows.sort((a, b) => a.bounds.top - b.bounds.top).slice(0, limit)
 }
 
-function parseApprovedIndexes(value) {
+function parseApprovedIndexes(value?: string) {
     if (!value) return []
     return value
         .split(',')
@@ -108,7 +105,7 @@ function parseApprovedIndexes(value) {
         .filter((x) => Number.isInteger(x) && x > 0)
 }
 
-function normalizeArchiveActions(doc, path) {
+function normalizeArchiveActions(doc: any, path: string) {
     const actions = doc.actions ?? []
     const archiveActions = actions
         .filter((action) => action.action === 'archive_email')
@@ -136,7 +133,7 @@ function buildApprovedActionsFromIndexes() {
 
     const sourcePath = resolve(SOURCE_EMAILS_FILE)
     const source = JSON.parse(readFileSync(sourcePath, 'utf8'))
-    const byIndex = new Map((source.emails ?? []).map((email) => [email.index, email]))
+    const byIndex = new Map<number, any>((source.emails ?? []).map((email: any) => [email.index, email]))
     const missing = approvedIndexes.filter((index) => !byIndex.has(index))
     if (missing.length) throw new Error(`Approved indexes not found in SOURCE_EMAILS_FILE: ${missing.join(', ')}`)
 
@@ -172,34 +169,34 @@ function loadApprovedActions() {
     return normalizeArchiveActions(doc, path)
 }
 
-function findEmailBySignature(signature) {
+function findEmailBySignature(signature: string) {
     const rows = collectEmailCandidates()
     return rows.find((email) => email.signature === signature)
         ?? rows.find((email) => email.raw.toLowerCase().includes(signature.slice(0, 80)))
 }
 
-function clickEmailRow(email) {
+function clickEmailRow(email: any) {
     try {
         email.node.activate()
         return { method: 'AX activate' }
     } catch (err) {
-        if (!POLICY.stealFocus) throw err
+        if (!STEAL_FOCUS) throw err
         const box = email.bounds
         const x = Math.round((box.left + box.right) / 2)
         const y = Math.round((box.top + box.bottom) / 2)
         mouse.moveMouse(x, y, Coordinate.Abs)
         mouse.button(Button.Left, Direction.Click)
-        return { method: 'mouse click', x, y, activateError: err?.message ?? String(err) }
+        return { method: 'mouse click', x, y, activateError: err instanceof Error ? err.message : String(err) }
     }
 }
 
 function findArchiveButton() {
     const root = AccessibilityNode.fromPid(outlookPid)
-    const matches = []
-    let found = null
+    const matches: any[] = []
+    let found: any = null
     let visited = 0
 
-    function walk(node, depth = 0) {
+    function walk(node: any, depth = 0) {
         if (found || visited++ > 8000 || depth > 18) return
 
         let info
@@ -216,7 +213,7 @@ function findArchiveButton() {
             return
         }
 
-        let children = []
+        let children: any[] = []
         try { children = node.children() } catch { }
         for (const child of children) walk(child, depth + 1)
     }
@@ -227,20 +224,14 @@ function findArchiveButton() {
 }
 
 const approval = loadApprovedActions()
-assertGuiActionAllowed(RUN_DIR, POLICY, {
-    action: 'archive_approved_outlook_emails',
-    riskLevel: RISK_LEVELS.StateChanging,
-    target: { approvedActionsFile: approval.path, count: approval.actions.length },
-    reason: 'Archive only explicitly approved Outlook email targets.',
-})
 
 const instance = await step(
-    POLICY.stealFocus ? 'open and focus Outlook' : 'open Outlook without stealing focus',
+    STEAL_FOCUS ? 'open and focus Outlook' : 'open Outlook without stealing focus',
     async () => {
         const app = findApp(['Microsoft Outlook'], 'Outlook')
-        const inst = app.open(null, POLICY.stealFocus ? FocusPolicy.Steal : FocusPolicy.DoNotSteal, Visibility.Show, true)
+        const inst = app.open(null, STEAL_FOCUS ? FocusPolicy.Steal : FocusPolicy.DoNotSteal, Visibility.Show, true)
         await sleep(2500)
-        if (POLICY.stealFocus) inst.focus()
+        if (STEAL_FOCUS) inst.focus()
         inst.enableAccessibility()
         outlookPid = inst.pid
         await sleep(1000)
@@ -255,7 +246,7 @@ const instance = await step(
 const archiveResult = await step(
     'archive approved emails',
     async () => {
-        const result = { approvedActionsFile: approval.path, attempted: approval.actions.length, archived: 0, verifiedGone: 0, failures: [], selections: [] }
+        const result: any = { approvedActionsFile: approval.path, attempted: approval.actions.length, archived: 0, verifiedGone: 0, failures: [], selections: [] }
 
         for (const action of approval.actions.slice().sort((a, b) => (b.index ?? 0) - (a.index ?? 0))) {
             console.log(`Archiving approved email${action.index ? ` #${action.index}` : ''}: ${action.reason}`)
@@ -278,7 +269,7 @@ const archiveResult = await step(
                 if (stillPresent) throw new Error('archive_verification_failed_email_still_visible')
                 result.verifiedGone++
             } catch (err) {
-                result.failures.push({ index: action.index, error: err?.message ?? String(err), raw: action.raw })
+                result.failures.push({ index: action.index, error: err instanceof Error ? err.message : String(err), raw: action.raw })
             }
         }
 
@@ -295,8 +286,6 @@ writeFileSync(join(RUN_DIR, 'result.json'), JSON.stringify({
     ok: true,
     app: 'Microsoft Outlook',
     goal: 'archive_approved_unread_emails',
-    mode: POLICY.mode,
-    riskLevel: RISK_LEVELS.StateChanging,
     phase: 'complete',
     artifactsDir: RUN_DIR,
     inputs: { approvedActionsFile: approval.path },

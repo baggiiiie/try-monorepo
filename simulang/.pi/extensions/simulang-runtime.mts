@@ -141,50 +141,6 @@ export function nodeText(info) {
   ].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
 }
 
-function inferRisk(action = {}) {
-  const explicit = action.riskLevel || action.risk
-  if (explicit) return explicit
-
-  const actionType = String(action.type || action.kind || '').toLowerCase()
-  const intentText = [
-    action.query,
-    action.text,
-    action.name,
-    action.label,
-    action.description,
-    action.intent,
-  ].filter(Boolean).join(' ').toLowerCase()
-
-  if (/\b(production|prod|billing|permission|security|admin|customer)\b/.test(intentText)) return 'production-impacting'
-  if (/\b(send|submit|post|publish|invite|share|reply|forward)\b/.test(intentText)) return 'externally-visible'
-  if (/\b(delete|remove|archive|discard|cancel|erase|trash|permanently)\b/.test(intentText)) return 'destructive'
-  if (/\b(setvalue|type|typetext|paste|drag|drop|upload|save)\b/.test(actionType)) return 'state-changing'
-  if (/\b(openapp|press|activate|clickax|wait|screenshot|scroll|key|presskey)\b/.test(actionType)) return 'reversible-navigation'
-  return 'reversible-navigation'
-}
-
-function isRiskAllowed(risk, safety) {
-  if (risk === 'observe-only') return true
-  if (risk === 'reversible-navigation') return true
-  if (risk === 'state-changing') return safety.allowStateChanging !== false
-  if (risk === 'destructive') return safety.allowDestructive === true
-  if (risk === 'externally-visible') return safety.allowExternal === true || safety.allowExternalSend === true
-  if (risk === 'production-impacting') return safety.allowProduction === true || safety.allowProductionChanges === true
-  return false
-}
-
-function makeSafety(params = {}) {
-  const safety = params.safety || params.options?.safety || {}
-  return {
-    stealFocus: params.stealFocus ?? safety.stealFocus ?? process.env.STEAL_FOCUS === '1',
-    allowStateChanging: safety.allowStateChanging ?? process.env.ALLOW_STATE_CHANGING !== '0',
-    allowDestructive: safety.allowDestructive ?? process.env.ALLOW_DESTRUCTIVE === '1',
-    allowExternal: safety.allowExternal ?? safety.allowExternalSend ?? process.env.ALLOW_EXTERNAL_SEND === '1',
-    allowProduction: safety.allowProduction ?? safety.allowProductionChanges ?? process.env.ALLOW_PRODUCTION_CHANGES === '1',
-    allowCoordinates: safety.allowCoordinates ?? process.env.ALLOW_COORDINATES === '1',
-  }
-}
-
 function keyByName(name) {
   if (typeof name === 'number') return name
   const raw = String(name || '')
@@ -219,7 +175,7 @@ export function createGui({ runDir, params = {} } = {}) {
   const keyboard = new KeyboardController()
   const mouse = new MouseController()
   const trace = []
-  const safety = makeSafety(params)
+  const stealFocus = params.stealFocus ?? process.env.STEAL_FOCUS === '1'
   let currentPid = params.pid || params.target?.pid || 0
   let stepIndex = 0
 
@@ -372,16 +328,8 @@ export function createGui({ runDir, params = {} } = {}) {
   }
 
   async function act(action = {}, options = {}) {
-    const risk = inferRisk(action)
     const id = `${String(++stepIndex).padStart(2, '0')}-${slug(action.type || 'action')}`
-    record('action:start', { id, action, risk })
-
-    if (!isRiskAllowed(risk, safety)) {
-      const blocked = { ok: false, blocked: true, risk, reason: `Risk ${risk} is not allowed by current safety policy`, action }
-      writeArtifact(`${id}-blocked.json`, blocked)
-      record('action:blocked', blocked)
-      return blocked
-    }
+    record('action:start', { id, action })
 
     try {
       const type = action.type || action.kind
@@ -398,12 +346,12 @@ export function createGui({ runDir, params = {} } = {}) {
       else if (type === 'click' || type === 'clickCoordinates') result = await clickCoordinates(action)
       else throw new Error(`Unsupported action type: ${type}`)
 
-      const out = { ok: true, id, risk, action, result }
+      const out = { ok: true, id, action, result }
       record('action:done', out)
       writeArtifact(`${id}.json`, out)
       return out
     } catch (error) {
-      const out = { ok: false, id, risk, action, error: safeError(error) }
+      const out = { ok: false, id, action, error: safeError(error) }
       record('action:error', out)
       writeArtifact(`${id}-error.json`, out)
       return out
@@ -414,7 +362,7 @@ export function createGui({ runDir, params = {} } = {}) {
     const appName = action.app || action.name || action.query
     if (!appName) throw new Error('openApp action requires app/name/query')
     const app = App.exists(appName) ? App.exactName(appName) : System.fuzzySearch(appName)
-    const focusPolicy = (action.stealFocus ?? safety.stealFocus) ? FocusPolicy.Steal : FocusPolicy.DoNotSteal
+    const focusPolicy = (action.stealFocus ?? stealFocus) ? FocusPolicy.Steal : FocusPolicy.DoNotSteal
     const visibility = action.hidden ? Visibility.Hidden : Visibility.Show
     const inst = app.open(action.url ?? null, focusPolicy, visibility, action.waitForLoadComplete ?? true)
     currentPid = inst.pid
@@ -424,11 +372,6 @@ export function createGui({ runDir, params = {} } = {}) {
   }
 
   async function activateWindow(action = {}) {
-    const mayStealFocus = action.stealFocus ?? safety.stealFocus
-    if (!mayStealFocus) {
-      throw new Error('activateWindow requires explicit focus permission: set action.stealFocus=true, tool stealFocus=true, or safety.stealFocus=true.')
-    }
-
     const target = action.target || params.target || {}
     const win = resolveWindow(target)
     const appName = action.app || action.name || target.app || (win ? inferAppNameFromWindowTitle(win.title) : null)
@@ -476,7 +419,7 @@ export function createGui({ runDir, params = {} } = {}) {
     if (!node) throw new Error(`No AX candidate found for query: ${query}`)
     const selected = safeNodeInfo(node, { index: selectedIndex })
     if (action.scrollIntoView) safeCall(() => node.scrollIntoView())
-    if (action.focus || action.stealFocus || safety.stealFocus) safeCall(() => node.focus())
+    if (action.focus || action.stealFocus || stealFocus) safeCall(() => node.focus())
     await sleep(action.beforeMs ?? 100)
     node.activate()
     await sleep(action.waitMs ?? DEFAULT_WAIT_MS)
@@ -493,7 +436,7 @@ export function createGui({ runDir, params = {} } = {}) {
     const node = found.nodes[action.index ?? 0]
     if (!node) throw new Error(`No AX candidate found for query: ${query}`)
     const selected = safeNodeInfo(node, { index: action.index ?? 0 })
-    if (action.focus || action.stealFocus || safety.stealFocus) safeCall(() => node.focus())
+    if (action.focus || action.stealFocus || stealFocus) safeCall(() => node.focus())
     node.setValue(String(value))
     await sleep(action.waitMs ?? DEFAULT_WAIT_MS)
     return { query, value, selected }
@@ -565,9 +508,6 @@ export function createGui({ runDir, params = {} } = {}) {
   }
 
   async function clickCoordinates(action) {
-    if (!safety.allowCoordinates && action.allowCoordinates !== true) {
-      throw new Error('Coordinate clicks are disabled. Set safety.allowCoordinates or action.allowCoordinates explicitly.')
-    }
     mouse.moveMouse(action.x, action.y, Coordinate.Abs)
     mouse.button(buttonByName(action.button), Direction.Click)
     await sleep(action.waitMs ?? DEFAULT_WAIT_MS)
@@ -639,7 +579,6 @@ export function createGui({ runDir, params = {} } = {}) {
   return {
     sim,
     runDir,
-    safety,
     get currentPid() { return currentPid },
     set currentPid(pid) { currentPid = pid },
     artifactPath,
