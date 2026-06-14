@@ -62,9 +62,7 @@ Use shared helpers from `workflow-utils.mts` when available:
 
 - `createRunDir`
 - `createStepRunner`
-- `runStrategies`
 - `safeNodeInfo`
-- `nodeText`
 
 Every generated workflow should write machine-readable artifacts:
 

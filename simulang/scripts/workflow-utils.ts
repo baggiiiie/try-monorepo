@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   AccessibilityNode,
@@ -13,15 +13,6 @@ import {
 export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 export const STEAL_FOCUS = process.env.STEAL_FOCUS === '1'
-
-export function writeJson(path: string, value: unknown) {
-  writeFileSync(path, JSON.stringify(value, null, 2))
-}
-
-export function readJson<T>(path: string, fallback: T): T {
-  if (!existsSync(path)) return fallback
-  return JSON.parse(readFileSync(path, 'utf8')) as T
-}
 
 export function createRunDir(prefix: string) {
   const runDir = join(process.cwd(), '.runs', `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}`)
@@ -136,63 +127,4 @@ export function chord(keyboard: any, modifiers: any[], key: any) {
   for (const modifier of modifiers) keyboard.key(modifier, Direction.Press)
   keyboard.key(key, Direction.Click)
   for (const modifier of modifiers.slice().reverse()) keyboard.key(modifier, Direction.Release)
-}
-
-function errorDetails(err: unknown) {
-  return {
-    message: errorMessage(err),
-    stack: errorStack(err),
-  }
-}
-
-export async function runStrategies({ app, goal, runDir, strategies, verify, suggestedNextSteps = [] }: any) {
-  const attempts: any[] = []
-
-  for (const strategy of strategies) {
-    console.log(`Trying strategy: ${strategy.name}`)
-    try {
-      const action = await strategy.run()
-      const verification = await verify({ strategy: strategy.name, action })
-      const attempt = { strategy: strategy.name, actionOk: true, action, verification }
-      attempts.push(attempt)
-
-      if (verification?.ok) {
-        const result = {
-          ok: true,
-          app,
-          goal,
-          strategy: strategy.name,
-          phase: 'verify',
-          artifactsDir: runDir,
-          attempts,
-          verification,
-        }
-        writeFileSync(join(runDir, 'result.json'), JSON.stringify(result, null, 2))
-        return result
-      }
-
-      console.warn(`Strategy ${strategy.name} did not satisfy verifier: ${verification?.reason ?? 'unknown reason'}`)
-    } catch (err) {
-      attempts.push({ strategy: strategy.name, actionOk: false, error: errorDetails(err) })
-      console.warn(`Strategy ${strategy.name} failed: ${errorMessage(err)}`)
-    }
-  }
-
-  const lastAttempt = attempts.at(-1)
-  const result = {
-    ok: false,
-    app,
-    goal,
-    phase: lastAttempt?.actionOk === false ? 'action' : 'verify',
-    reason: lastAttempt?.verification?.reason ?? lastAttempt?.error?.message ?? 'all_strategies_failed',
-    strategiesTried: attempts.map((attempt) => attempt.strategy),
-    artifactsDir: runDir,
-    attempts,
-    suggestedNextSteps,
-  }
-  writeFileSync(join(runDir, 'result.json'), JSON.stringify(result, null, 2))
-
-  const err: any = new Error(`${goal} failed after ${attempts.length} strategies: ${result.reason}`)
-  err.result = result
-  throw err
 }
