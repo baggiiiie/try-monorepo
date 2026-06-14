@@ -25,9 +25,8 @@ import {
     createRunDir,
     createStepRunner,
     findApp,
-    latestWindowForPid,
-    nodeText,
     safeNodeInfo,
+    getWindowsForPid,
     sleep,
 } from './workflow-utils.ts'
 
@@ -38,10 +37,15 @@ const RUN_DIR = createRunDir('outlook-archive-approved')
 
 const mouse = new MouseController()
 let outlookPid = 0
-const step = createStepRunner(RUN_DIR, () => ({ pid: outlookPid, latestWindow: latestOutlookWindow }))
+const step = createStepRunner(RUN_DIR, () => ({ pid: outlookPid, window: outlookWindow }))
 
-function latestOutlookWindow() {
-    return latestWindowForPid(outlookPid, /outlook|inbox|mail|search/i)
+function outlookWindow() {
+    const windows = getWindowsForPid(outlookPid)
+    if (!windows.length) throw new Error(`No visible windows for pid ${outlookPid}`)
+    const match = windows.find((w) => /outlook|inbox|mail|search/i.test(w.title))
+        ?? windows.find((w) => w.title.trim())
+        ?? windows[0]
+    return match.window
 }
 
 function allText(node: any, depth = 0): string[] {
@@ -69,18 +73,15 @@ function collectEmailCandidates(limit = 100) {
     const seen = new Set<string>()
 
     function walk(node: any, depth = 0, inMessageList = false) {
-        let box
-        try { box = node.boundingBox() } catch { box = { left: 0, top: 0, right: 0, bottom: 0 } }
-
-        let info
+        let info: any
         try { info = safeNodeInfo(node) } catch { info = {} }
-        const nodeSummary = nodeText(info)
-        const nowInMessageList = inMessageList || /\bmessage list\b/i.test(nodeSummary)
-        const actions = info.actions ?? []
+        const box = info.boundingBox ?? { left: 0, top: 0, right: 0, bottom: 0 }
+        const actions: string[] = info.actions ?? []
+        const nowInMessageList = inMessageList || /\bmessage list\b/i.test(info.overallDescription ?? '')
 
         const text = [...new Set(allText(node))].join(' | ').replace(/\s+/g, ' ').trim()
-        const h = box.bottom - box.top
         const w = box.right - box.left
+        const h = box.bottom - box.top
 
         if (nowInMessageList && actions.includes('AXPress') && w > 250 && h >= 18 && h <= 180 && looksLikeMessageRow(text)) {
             const signature = emailSignature(text)
@@ -201,7 +202,7 @@ function findArchiveButton() {
 
         let info
         try { info = safeNodeInfo(node) } catch { return }
-        const text = nodeText(info)
+        const text = info.overallDescription ?? ''
         const box = info.boundingBox
         const isButton = /button/i.test([info.localizedControlType, info.overallDescription].filter(Boolean).join(' '))
         const isArchive = /\barchive\b/i.test(text)
@@ -228,7 +229,8 @@ const approval = loadApprovedActions()
 const instance = await step(
     STEAL_FOCUS ? 'open and focus Outlook' : 'open Outlook without stealing focus',
     async () => {
-        const app = findApp(['Microsoft Outlook'], 'Outlook')
+        const { exact_match, fuzzy_match } = findApp('Microsoft Outlook')
+        const app = exact_match ?? fuzzy_match
         const inst = app.open(null, STEAL_FOCUS ? FocusPolicy.Steal : FocusPolicy.DoNotSteal, Visibility.Show, true)
         await sleep(2500)
         if (STEAL_FOCUS) inst.focus()
@@ -239,7 +241,7 @@ const instance = await step(
     },
     async () => {
         if (!outlookPid) throw new Error('Outlook pid was 0/unknown')
-        latestOutlookWindow()
+        outlookWindow()
     },
 )
 

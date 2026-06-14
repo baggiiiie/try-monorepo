@@ -33,26 +33,31 @@ export function slug(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
-export function findApp(exactNames: string[], fuzzyName: string) {
-  for (const name of exactNames) {
-    if (App.exists(name)) return App.exactName(name)
+// Resolve an app from a single name and hand both candidates back to the
+// caller: a deterministic exact match (or null) and the fuzzy best-guess.
+// The caller decides which to trust (typically `exact_match ?? fuzzy_match`).
+export function findApp(name: string) {
+  return {
+    exact_match: App.exists(name) ? App.exactName(name) : null,
+    fuzzy_match: System.fuzzySearch(name),
   }
-  return System.fuzzySearch(fuzzyName)
 }
 
-export function latestWindowForPid(pid: number, titleHint: RegExp) {
-  const windows = Window.allForPid(pid)
-  if (!windows.length) throw new Error(`No visible windows for pid ${pid}`)
-
-  return windows.find((w) => titleHint.test(w.title))
-    ?? windows.find((w) => w.title.trim())
-    ?? windows[0]
+// List every visible window for `pid` with its title and the usable Window
+// handle. `Window` exposes no stable per-window id in the API, so `index` is
+// just the positional order from Window.allForPid. The caller owns selection.
+export function getWindowsForPid(pid: number) {
+  return Window.allForPid(pid).map((window, index) => ({
+    index,
+    title: window.title,
+    window,
+  }))
 }
 
 type DiagnosticContext = {
   runDir?: string
   pid?: number
-  latestWindow?: (() => { snapshot(): string }) | null
+  window?: (() => { snapshot(): string }) | null
 }
 
 function errorMessage(err: unknown) {
@@ -63,7 +68,7 @@ function errorStack(err: unknown) {
   return err instanceof Error ? (err.stack ?? err.message) : String(err)
 }
 
-export function dumpDiagnostics(label: string, err: unknown, { runDir, pid = 0, latestWindow = null }: DiagnosticContext = {}) {
+export function dumpDiagnostics(label: string, err: unknown, { runDir, pid = 0, window = null }: DiagnosticContext = {}) {
   const dir = join(runDir ?? join(process.cwd(), '.runs', 'diagnostics'), label)
   mkdirSync(dir, { recursive: true })
 
@@ -86,9 +91,9 @@ export function dumpDiagnostics(label: string, err: unknown, { runDir, pid = 0, 
       writeFileSync(join(dir, 'focused-ax-error.txt'), String(e))
     }
 
-    if (pid && latestWindow) {
+    if (pid && window) {
       try {
-        writeFileSync(join(dir, 'app-window.ax.txt'), latestWindow().snapshot())
+        writeFileSync(join(dir, 'app-window.ax.txt'), window().snapshot())
       } catch (e) {
         writeFileSync(join(dir, 'app-window-ax-error.txt'), String(e))
       }
@@ -125,12 +130,6 @@ export function safeNodeInfo(node: any) {
   try { info.boundingBox = node.boundingBox() } catch { info.boundingBox = null }
   try { info.actions = node.supportedActions() } catch { info.actions = [] }
   return info
-}
-
-export function nodeText(info: any) {
-  return [info.name, info.value, info.description, info.helpText, info.overallDescription]
-    .filter(Boolean)
-    .join(' ')
 }
 
 export function chord(keyboard: any, modifiers: any[], key: any) {
