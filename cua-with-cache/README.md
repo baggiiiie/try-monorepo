@@ -3,6 +3,27 @@
 This repo currently contains the `gui-cache` design and a Phase-1 validation
 harness for Outlook.
 
+## Run the cache-backed Outlook check
+
+```sh
+npm run check:outlook
+```
+
+This runs the reusable GUI cache layer against Outlook, verifies the cached
+`Search` and `Inbox` descriptors, then selects the top 3 visible inbox rows and
+returns reading-pane content. The email-reading step uses row-center mouse
+clicks because Outlook exposes row boxes reliably, while row `activate()` can
+return `AXError::AttributeUnsupported` on macOS.
+
+The workflow entrypoint intentionally has no command-line options; it runs the
+default workflow and prints the JSON report. If you need different behavior,
+import `runOutlookCheck(...)` from `src/workflows/outlook-check.mjs` and pass
+options in code instead of growing another CLI wrapper.
+
+Note: selecting unread messages in Outlook may cause Outlook itself to mark
+them read depending on the user's mail settings. URLs in extracted content are
+redacted to `[url]` before they are printed or returned.
+
 ## Run the Outlook descriptor spike
 
 ```sh

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check:outlook": "simulang run scripts/check-outlook.mjs --",
+    "check:outlook": "simulang run src/workflows/outlook-check.mjs",
     "phase1:outlook": "simulang run scripts/phase1-outlook.mjs --",
     "phase1:outlook:ground": "simulang run scripts/phase1-outlook.mjs -- --ground-on-miss"
   }
