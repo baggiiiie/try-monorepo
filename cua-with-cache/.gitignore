@@ -1,0 +1,4 @@
+node_modules/
+.gui-cache/
+phase1-results/*.json
+phase1-results/*.md
