@@ -6,9 +6,17 @@ import {
   TraversalOrder,
 } from '@simular-ai/simulang-js'
 
-import { summarizeCacheResult } from '../../../src/cached-simulang.mjs'
-import { roleName } from '../../../src/core/descriptor.mjs'
-import { boxCenter, safe } from '../../../src/core/util.mjs'
+import { boxCenter, safe } from '../../../src/index.mjs'
+import {
+  boxKey,
+  nodeActions,
+  nodeBox,
+  nodeChildren,
+  nodeRole,
+  nodeText as axNodeText,
+  sleep,
+  walkNode as walkAxTree,
+} from '../../shared/ax-tree.mjs'
 
 export const DEFAULT_EMAIL_COUNT = 3
 export const DEFAULT_READ_DELAY_MS = 2500
@@ -20,90 +28,17 @@ const GROUP_HEADER_PATTERN = /^(Today|Yesterday|Last Week|Last Month|This Year),
 const ZERO_WIDTH_PATTERN = /[\u034f\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g
 const URL_PATTERN = /https?:\/\/\S+/gi
 
+// App config for openApp(...). Stable controls we ground + cache before
+// reading the inbox live.
 export const OUTLOOK_APP = {
   app: 'Microsoft Outlook',
   appCandidates: ['Microsoft Outlook', 'Outlook'],
   cacheDir: '.gui-cache/outlook',
   threshold: 0.35,
   maxNodes: 1000,
-  openApp: true,
-  focusApp: true,
-  targets: OUTLOOK_TARGETS,
 }
 
-export const outlookReadEmailsAction = {
-  match: matchOutlookEmailIntent,
-  run: runOutlookEmailAction,
-}
-
-function matchOutlookEmailIntent({ app, task, options }) {
-  if (app.id !== 'outlook') return null
-
-  if (task && typeof task === 'object') {
-    const type = normalizeIntentType(task.type ?? task.intent)
-    if (!type) return null
-    return {
-      type,
-      text: task.text ?? task.task ?? type,
-      emailCount: task.count ?? task.emailCount ?? options.emailCount ?? DEFAULT_EMAIL_COUNT,
-      fields: task.fields ?? options.fields ?? ['subject', 'sender', 'content', 'sent'],
-    }
-  }
-
-  const text = String(task ?? '').trim()
-  const lower = text.toLowerCase()
-  if (!/\b(email|emails|mail|message|messages|inbox)\b/.test(lower)) return null
-  return {
-    type: 'readTopEmails',
-    text,
-    emailCount: options.emailCount ?? emailCountFromText(lower) ?? DEFAULT_EMAIL_COUNT,
-    fields: options.fields ?? fieldsFromText(lower),
-  }
-}
-
-async function runOutlookEmailAction({ agent, app, options, intent }) {
-  const logCache = options.logCache ?? app.options.logCache ?? true
-  const cache = agent.openCache(app, options)
-  const targets = options.targets ?? app.options.targets ?? OUTLOOK_TARGETS
-  const results = []
-  for (const target of targets) {
-    results.push(await cache.observe({ target }))
-  }
-
-  if (logCache) console.error('[cache] email content: LIVE_READ (not cached)')
-  const emailCheck = await readTopInboxEmails(cache, {
-    emailCount: intent.emailCount,
-    maxNodes: options.maxNodes ?? app.options.maxNodes,
-    readDelayMs: options.readDelayMs ?? app.options.readDelayMs,
-    bodyMaxChars: options.bodyMaxChars ?? app.options.bodyMaxChars,
-  })
-
-  return {
-    success: results.every((result) => result.success) && emailCheck.success,
-    app: app.app,
-    appId: app.id,
-    task: intent.text,
-    intent: {
-      type: intent.type,
-      emailCount: intent.emailCount,
-      fields: intent.fields,
-    },
-    cacheDir: cache.storage.cacheDir,
-    cacheMode: cache.storage.cacheMode,
-    threshold: cache.threshold,
-    maxNodes: cache.maxNodes,
-    scope: {
-      kind: cache.scope.kind,
-      pid: cache.scope.pid,
-      pidsSeen: cache.pidsSeen,
-      windowsSeen: cache.windowsSeen,
-    },
-    context: cache.context,
-    results,
-    summary: results.map(summarizeCacheResult),
-    emailCheck,
-  }
-}
+export { OUTLOOK_TARGETS }
 
 export async function readTopInboxEmails(gui, {
   emailCount = DEFAULT_EMAIL_COUNT,
@@ -321,52 +256,16 @@ function readReadingPane(scope, { maxNodes, tableBox, bodyMaxChars }) {
   }
 }
 
-function walkNode(root, visitor, depth = 0, state = { seen: new Set(), count: 0 }) {
-  if (!root || depth > 14 || state.count > 5000) return
-  state.count += 1
-  const key = `${depth}:${nodeRole(root)}:${boxKey(nodeBox(root))}:${nodeFullText(root).slice(0, 100)}`
-  if (state.seen.has(key)) return
-  state.seen.add(key)
-
-  visitor(root, depth)
-  for (const child of nodeChildren(root)) walkNode(child, visitor, depth + 1, state)
-}
-
-function nodeRole(node) {
-  return roleName(safe('role', () => node.role, 'unknown'))
-}
-
-function nodeChildren(node) {
-  const children = safe('children', () => node.children(), [])
-  return Array.isArray(children) ? children : []
-}
-
-function nodeActions(node) {
-  const actions = safe('supportedActions', () => node.supportedActions(), [])
-  return Array.isArray(actions) ? actions : []
-}
-
-function nodeBox(node) {
-  if (!node) return null
-  const box = safe('boundingBox', () => node.boundingBox(), null)
-  return box && typeof box === 'object' ? box : null
+function walkNode(root, visitor) {
+  walkAxTree(root, visitor, { maxDepth: 14, maxNodes: 5000, keyText: nodeFullText })
 }
 
 function nodeText(node) {
-  return cleanText([
-    safe('name', () => node.name, ''),
-    safe('description', () => node.description, ''),
-    safe('value', () => node.value, ''),
-  ].filter(Boolean).join(' | '))
+  return axNodeText(node, { clean: cleanText })
 }
 
 function nodeFullText(node) {
-  return cleanText([
-    safe('name', () => node.name, ''),
-    safe('description', () => node.description, ''),
-    safe('value', () => node.value, ''),
-    safe('overallDescription', () => node.overallDescription, ''),
-  ].filter(Boolean).join(' | '))
+  return axNodeText(node, { full: true, clean: cleanText })
 }
 
 function parseRowSummary(text) {
@@ -479,36 +378,9 @@ function findSentLine(lines) {
     ?? null
 }
 
-function normalizeIntentType(type) {
-  const value = String(type ?? '').trim().toLowerCase()
-  if (['readtopemails', 'checktopemails', 'reademails', 'checkemails'].includes(value)) return 'readTopEmails'
-  return null
-}
-
-function emailCountFromText(text) {
-  const match = text.match(/\b(?:first|top)\s+(\d+)\b/) ?? text.match(/\b(\d+)\s+(?:email|emails|mail|message|messages)\b/)
-  return match ? Number(match[1]) : null
-}
-
-function fieldsFromText(text) {
-  const fields = []
-  if (/\bsubject\b/.test(text)) fields.push('subject')
-  if (/\b(sender|from)\b/.test(text)) fields.push('sender')
-  if (/\b(content|body)\b/.test(text)) fields.push('content')
-  if (/\b(date|sent|time)\b/.test(text)) fields.push('sent')
-  if (/\b(other info|metadata|details)\b/.test(text) && !fields.includes('sent')) fields.push('sent')
-  return fields.length > 0 ? fields : ['subject', 'sender', 'content', 'sent']
-}
-
 function truncateText(text, maxChars) {
   if (!maxChars || text.length <= maxChars) return text
   return `${text.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`
 }
 
-function boxKey(box) {
-  return box ? [box.left, box.top, box.right, box.bottom].map((value) => Math.round(value)).join(',') : 'no-box'
-}
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}

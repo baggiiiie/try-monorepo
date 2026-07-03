@@ -35,12 +35,12 @@ export class GuiCache {
     this.storage = new JsonCacheStorage({ cacheDir, cacheMode })
   }
 
-  async observe(spec) {
-    return this.act({ ...spec, action: 'observe' })
+  async observe(target, options = {}) {
+    return this.act(target, { ...options, action: 'observe' })
   }
 
-  async act(spec) {
-    const normalized = normalizeSpec(spec)
+  async act(target, options = {}) {
+    const normalized = normalizeSpec(toSpec(target, options))
     const keys = variableKeys(normalized.variables)
     const key = cacheKey({
       target: normalized.target,
@@ -69,6 +69,10 @@ export class GuiCache {
       key,
       cachePath: resolve(this.storage.pathForKey(key)),
     }
+    // The live simulang node is carried non-enumerably so callers can read
+    // from it directly (walk children, screenshot, read text) without a
+    // second search, while JSON.stringify(report) stays clean.
+    attachNode(withCacheInfo, result.node ?? null)
     this.logCacheResult(withCacheInfo)
     return withCacheInfo
   }
@@ -143,6 +147,16 @@ export class GuiCache {
   }
 }
 
+function toSpec(target, options = {}) {
+  if (target && typeof target === 'object') return { ...target, ...options }
+  return { target, ...options }
+}
+
+function attachNode(obj, node) {
+  Object.defineProperty(obj, 'node', { value: node ?? null, enumerable: false, configurable: true })
+  return obj
+}
+
 function normalizeSpec(spec) {
   if (!spec?.target) throw new Error('act/observe requires a target')
   return {
@@ -154,7 +168,7 @@ function normalizeSpec(spec) {
 }
 
 function result(cacheStatus, spec, match, descriptor) {
-  return {
+  return attachNode({
     success: true,
     cacheStatus,
     target: spec.target,
@@ -162,11 +176,11 @@ function result(cacheStatus, spec, match, descriptor) {
     descriptor,
     match: publicMatch(match),
     message: `${cacheStatus}: ${spec.target}`,
-  }
+  }, match.selectedNode)
 }
 
 function refused(spec, match, message) {
-  return {
+  return attachNode({
     success: false,
     cacheStatus: 'REFUSED',
     target: spec.target,
@@ -174,7 +188,7 @@ function refused(spec, match, message) {
     descriptor: null,
     match: publicMatch(match),
     message,
-  }
+  }, match.selectedNode ?? null)
 }
 
 function cacheStatusLabel(status) {

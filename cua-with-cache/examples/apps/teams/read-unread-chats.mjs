@@ -4,9 +4,16 @@ import {
   TraversalOrder,
 } from '@simular-ai/simulang-js'
 
-import { summarizeCacheResult } from '../../../src/cached-simulang.mjs'
-import { roleName } from '../../../src/core/descriptor.mjs'
-import { boxCenter, safe } from '../../../src/core/util.mjs'
+import { boxCenter, safe } from '../../../src/index.mjs'
+import {
+  boxKey,
+  nodeBox,
+  nodeChildren,
+  nodeRole,
+  nodeText as axNodeText,
+  sleep,
+  walkNode as walkAxTree,
+} from '../../shared/ax-tree.mjs'
 
 export const DEFAULT_MAX_SCROLLS = 8
 export const DEFAULT_MAX_NODES = 1600
@@ -17,91 +24,17 @@ const SCROLL_SETTLE_MS = 400
 const ZERO_WIDTH_PATTERN = /[\u034f\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g
 const URL_PATTERN = /https?:\/\/\S+/gi
 
+// App config for openApp(...) plus the two cached navigation controls the
+// demo activates before reading unread chats live.
 export const TEAMS_APP = {
   app: 'Microsoft Teams',
   appCandidates: ['Microsoft Teams', 'Teams', 'Microsoft Teams (work or school)', 'Microsoft Teams classic'],
   cacheDir: '.gui-cache/teams',
   threshold: 0.35,
   maxNodes: DEFAULT_MAX_NODES,
-  openApp: true,
-  focusApp: true,
 }
 
-export const teamsUnreadChatsAction = {
-  match: matchTeamsUnreadChatsIntent,
-  run: runTeamsUnreadChatsAction,
-}
-
-function matchTeamsUnreadChatsIntent({ app, task, options }) {
-  if (app.id !== 'teams') return null
-
-  if (task && typeof task === 'object') {
-    const type = normalizeIntentType(task.type ?? task.intent)
-    if (!type) return null
-    return {
-      type,
-      text: task.text ?? task.task ?? type,
-      fields: task.fields ?? options.fields ?? ['sender', 'message'],
-    }
-  }
-
-  const text = String(task ?? '').trim()
-  const lower = text.toLowerCase()
-  if (!/\b(chat|chats|teams)\b/.test(lower) || !/\bunread\b/.test(lower)) return null
-  return {
-    type: 'readUnreadChats',
-    text,
-    fields: options.fields ?? chatFieldsFromText(lower),
-  }
-}
-
-async function runTeamsUnreadChatsAction({ agent, app, options, intent }) {
-  const logCache = options.logCache ?? app.options.logCache ?? true
-  const cache = agent.openCache(app, options)
-  const navigation = [
-    { target: options.chatTarget ?? TEAMS_CHAT_TARGET, action: 'activate' },
-    { target: options.unreadTarget ?? TEAMS_UNREAD_TARGET, action: 'activate' },
-  ]
-
-  const results = []
-  for (const step of navigation) {
-    results.push(await cache.act(step))
-    await sleep(options.navigationDelayMs ?? 500)
-  }
-
-  if (logCache) console.error('[cache] Teams unread chat content: LIVE_READ (not cached)')
-  const unreadChats = await readUnreadChats(cache, {
-    maxNodes: options.maxNodes ?? app.options.maxNodes,
-    maxScrolls: options.maxScrolls,
-    maxChats: options.maxChats,
-  })
-
-  return {
-    success: results.every((result) => result.success) && unreadChats.success,
-    app: app.app,
-    appId: app.id,
-    task: intent.text,
-    intent: {
-      type: intent.type,
-      fields: intent.fields,
-    },
-    cacheDir: cache.storage.cacheDir,
-    cacheMode: cache.storage.cacheMode,
-    threshold: cache.threshold,
-    maxNodes: cache.maxNodes,
-    scope: {
-      kind: cache.scope.kind,
-      pid: cache.scope.pid,
-      pidsSeen: cache.pidsSeen,
-      windowsSeen: cache.windowsSeen,
-    },
-    context: cache.context,
-    results,
-    summary: results.map(summarizeCacheResult),
-    unreadChats,
-    chats: unreadChats.chats,
-  }
-}
+export { TEAMS_CHAT_TARGET, TEAMS_UNREAD_TARGET }
 
 export async function readUnreadChats(gui, {
   maxNodes = DEFAULT_MAX_NODES,
@@ -209,19 +142,6 @@ function isLikelySenderPrefix(value) {
   return true
 }
 
-function normalizeIntentType(type) {
-  const value = String(type ?? '').trim().toLowerCase()
-  if (['readunreadchats', 'checkunreadchats', 'readteamschats', 'checkteamschats'].includes(value)) return 'readUnreadChats'
-  return null
-}
-
-function chatFieldsFromText(text) {
-  const fields = []
-  if (/\bsender\b/.test(text)) fields.push('sender')
-  if (/\b(message|content|body)\b/.test(text)) fields.push('message')
-  return fields.length > 0 ? fields : ['sender', 'message']
-}
-
 function rowTextItems(row) {
   const items = []
   walkNode(row, (node) => {
@@ -299,44 +219,10 @@ function chatKey(chat) {
   return `${chat.sender}\n${chat.message}`.toLowerCase()
 }
 
-function walkNode(root, visitor, depth = 0, state = { seen: new Set(), count: 0 }) {
-  if (!root || depth > 10 || state.count > 2000) return
-  state.count += 1
-  const key = `${depth}:${nodeRole(root)}:${boxKey(nodeBox(root))}:${nodeText(root).slice(0, 100)}`
-  if (state.seen.has(key)) return
-  state.seen.add(key)
-
-  visitor(root, depth)
-  for (const child of nodeChildren(root)) walkNode(child, visitor, depth + 1, state)
-}
-
-function nodeRole(node) {
-  return roleName(safe('role', () => node.role, 'unknown'))
-}
-
-function nodeChildren(node) {
-  const children = safe('children', () => node.children(), [])
-  return Array.isArray(children) ? children : []
-}
-
-function nodeBox(node) {
-  if (!node) return null
-  const box = safe('boundingBox', () => node.boundingBox(), null)
-  return box && typeof box === 'object' ? box : null
+function walkNode(root, visitor) {
+  walkAxTree(root, visitor, { maxDepth: 10, maxNodes: 2000, keyText: nodeText })
 }
 
 function nodeText(node) {
-  return normalizeChatText([
-    safe('name', () => node.name, ''),
-    safe('description', () => node.description, ''),
-    safe('value', () => node.value, ''),
-  ].filter(Boolean).join(' | '))
-}
-
-function boxKey(box) {
-  return box ? [box.left, box.top, box.right, box.bottom].map((value) => Math.round(value)).join(',') : 'no-box'
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+  return axNodeText(node, { clean: normalizeChatText })
 }
