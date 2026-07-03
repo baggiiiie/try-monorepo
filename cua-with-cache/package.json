@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check:outlook": "simulang run src/workflows/outlook-check.mjs"
+    "check:outlook": "simulang run examples/outlook-check.mjs",
+    "check:teams": "simulang run examples/teams-unread-chats.mjs"
   }
 }

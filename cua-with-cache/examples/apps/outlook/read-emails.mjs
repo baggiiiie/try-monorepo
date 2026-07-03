@@ -6,17 +6,104 @@ import {
   TraversalOrder,
 } from '@simular-ai/simulang-js'
 
-import { roleName } from '../../core/descriptor.mjs'
-import { boxCenter, safe } from '../../core/util.mjs'
+import { summarizeCacheResult } from '../../../src/cached-simulang.mjs'
+import { roleName } from '../../../src/core/descriptor.mjs'
+import { boxCenter, safe } from '../../../src/core/util.mjs'
 
 export const DEFAULT_EMAIL_COUNT = 3
 export const DEFAULT_READ_DELAY_MS = 2500
 export const DEFAULT_BODY_MAX_CHARS = 4000
+const OUTLOOK_TARGETS = ['Search', 'Inbox']
 const READ_POLL_MS = 250
 
 const GROUP_HEADER_PATTERN = /^(Today|Yesterday|Last Week|Last Month|This Year),? Expanded$/i
 const ZERO_WIDTH_PATTERN = /[\u034f\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g
 const URL_PATTERN = /https?:\/\/\S+/gi
+
+export const OUTLOOK_APP = {
+  app: 'Microsoft Outlook',
+  appCandidates: ['Microsoft Outlook', 'Outlook'],
+  cacheDir: '.gui-cache/outlook',
+  threshold: 0.35,
+  maxNodes: 1000,
+  openApp: true,
+  focusApp: true,
+  targets: OUTLOOK_TARGETS,
+}
+
+export const outlookReadEmailsAction = {
+  match: matchOutlookEmailIntent,
+  run: runOutlookEmailAction,
+}
+
+function matchOutlookEmailIntent({ app, task, options }) {
+  if (app.id !== 'outlook') return null
+
+  if (task && typeof task === 'object') {
+    const type = normalizeIntentType(task.type ?? task.intent)
+    if (!type) return null
+    return {
+      type,
+      text: task.text ?? task.task ?? type,
+      emailCount: task.count ?? task.emailCount ?? options.emailCount ?? DEFAULT_EMAIL_COUNT,
+      fields: task.fields ?? options.fields ?? ['subject', 'sender', 'content', 'sent'],
+    }
+  }
+
+  const text = String(task ?? '').trim()
+  const lower = text.toLowerCase()
+  if (!/\b(email|emails|mail|message|messages|inbox)\b/.test(lower)) return null
+  return {
+    type: 'readTopEmails',
+    text,
+    emailCount: options.emailCount ?? emailCountFromText(lower) ?? DEFAULT_EMAIL_COUNT,
+    fields: options.fields ?? fieldsFromText(lower),
+  }
+}
+
+async function runOutlookEmailAction({ agent, app, options, intent }) {
+  const logCache = options.logCache ?? app.options.logCache ?? true
+  const cache = agent.openCache(app, options)
+  const targets = options.targets ?? app.options.targets ?? OUTLOOK_TARGETS
+  const results = []
+  for (const target of targets) {
+    results.push(await cache.observe({ target }))
+  }
+
+  if (logCache) console.error('[cache] email content: LIVE_READ (not cached)')
+  const emailCheck = await readTopInboxEmails(cache, {
+    emailCount: intent.emailCount,
+    maxNodes: options.maxNodes ?? app.options.maxNodes,
+    readDelayMs: options.readDelayMs ?? app.options.readDelayMs,
+    bodyMaxChars: options.bodyMaxChars ?? app.options.bodyMaxChars,
+  })
+
+  return {
+    success: results.every((result) => result.success) && emailCheck.success,
+    app: app.app,
+    appId: app.id,
+    task: intent.text,
+    intent: {
+      type: intent.type,
+      emailCount: intent.emailCount,
+      fields: intent.fields,
+    },
+    cacheDir: cache.storage.cacheDir,
+    cacheMode: cache.storage.cacheMode,
+    threshold: cache.threshold,
+    maxNodes: cache.maxNodes,
+    scope: {
+      kind: cache.scope.kind,
+      pid: cache.scope.pid,
+      pidsSeen: cache.pidsSeen,
+      windowsSeen: cache.windowsSeen,
+    },
+    context: cache.context,
+    results,
+    summary: results.map(summarizeCacheResult),
+    emailCheck,
+  }
+}
 
 export async function readTopInboxEmails(gui, {
   emailCount = DEFAULT_EMAIL_COUNT,
@@ -390,6 +477,27 @@ function findSentLine(lines) {
   return lines.find((line) => /^(Today|Yesterday) at \d/i.test(line))
     ?? lines.find((line) => /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s+/i.test(line))
     ?? null
+}
+
+function normalizeIntentType(type) {
+  const value = String(type ?? '').trim().toLowerCase()
+  if (['readtopemails', 'checktopemails', 'reademails', 'checkemails'].includes(value)) return 'readTopEmails'
+  return null
+}
+
+function emailCountFromText(text) {
+  const match = text.match(/\b(?:first|top)\s+(\d+)\b/) ?? text.match(/\b(\d+)\s+(?:email|emails|mail|message|messages)\b/)
+  return match ? Number(match[1]) : null
+}
+
+function fieldsFromText(text) {
+  const fields = []
+  if (/\bsubject\b/.test(text)) fields.push('subject')
+  if (/\b(sender|from)\b/.test(text)) fields.push('sender')
+  if (/\b(content|body)\b/.test(text)) fields.push('content')
+  if (/\b(date|sent|time)\b/.test(text)) fields.push('sent')
+  if (/\b(other info|metadata|details)\b/.test(text) && !fields.includes('sent')) fields.push('sent')
+  return fields.length > 0 ? fields : ['subject', 'sender', 'content', 'sent']
 }
 
 function truncateText(text, maxChars) {

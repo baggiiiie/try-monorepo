@@ -1,36 +1,38 @@
 # gui-cache
 
-This repo contains a reusable GUI cache layer and an Outlook workflow that uses
-it to read the top visible inbox messages.
+This repo contains a reusable GUI cache layer on top of simulang.
 
-## Run the cache-backed Outlook check
+- `src/` is the library: cache keys, descriptor matching, replay/heal logic,
+  and the generic `createCachedSimulang(...)` agent wrapper.
+- `examples/` contains app-specific demo/test automation for Outlook and
+  Microsoft Teams. Those scripts are intentionally outside the library.
+
+## Run the demos
 
 ```sh
 npm run check:outlook
+npm run check:teams
 ```
 
-This runs the reusable GUI cache layer against Outlook, verifies the cached
-`Search` and `Inbox` descriptors, then selects the top 3 visible inbox rows and
-returns reading-pane content. The email-reading step uses row-center mouse
-clicks because Outlook exposes row boxes reliably, while row `activate()` can
-return `AXError::AttributeUnsupported` on macOS.
+The Outlook demo verifies cached `Search` and `Inbox` descriptors, then reads
+visible inbox rows live. The Teams demo verifies cached Teams navigation
+controls, then reads unread chat previews live.
 
-The runnable workflow is intentionally thin. Its core shape is:
+The runnable demos are intentionally thin. Their core shape is:
 
 ```js
-import gui from '../cached-simulang.mjs'
+import gui from './gui.mjs'
 
 gui.findApp('outlook')
-const result = await gui.act('check first 3 emails, return subject, sender, content, and other info')
+const result = await gui.act('check first 5 emails, return subject, sender, content, and other info')
 ```
 
-Outlook-specific tree walking and reading-pane parsing live behind `gui.act(...)`,
-not in the workflow orchestration file.
+App-specific tree walking/parsing lives under `examples/apps/...`, not in the
+generic cache library.
 
 The cache stores reusable UI grounding, such as descriptors for stable controls.
-It does not cache returned email content: message rows and reading-pane text are
-read live on each `gui.act(...)` call, and each selected row is verified against
-the reading pane before content is returned.
+It does not cache returned Outlook email content or Teams chat content; those
+are read live on each `gui.act(...)` call.
 
 Note: selecting unread messages in Outlook may cause Outlook itself to mark
 them read depending on the user's mail settings. URLs in extracted content are

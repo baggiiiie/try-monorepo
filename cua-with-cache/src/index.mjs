@@ -1,5 +1,5 @@
 export { default } from './cached-simulang.mjs'
-export { default as gui, createCachedSimulang, CachedSimulangAgent } from './cached-simulang.mjs'
+export { default as gui, createCachedSimulang, CachedSimulangAgent, summarizeCacheResult } from './cached-simulang.mjs'
 export { GuiCache } from './core/gui-cache.mjs'
 export { JsonCacheStorage } from './core/storage.mjs'
 export { cacheKey, normalizeTarget, variableKeys } from './core/key.mjs'

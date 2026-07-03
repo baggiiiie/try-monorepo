@@ -1,29 +1,15 @@
-import { readTopInboxEmails } from './apps/outlook/read-emails.mjs'
 import { GuiCache } from './core/gui-cache.mjs'
 
-const DEFAULT_TARGETS = ['Search', 'Inbox']
-
-const APP_CONFIGS = {
-  outlook: {
-    id: 'outlook',
-    app: 'Microsoft Outlook',
-    appCandidates: ['Microsoft Outlook', 'Outlook'],
-    cacheDir: '.gui-cache/outlook',
-    threshold: 0.35,
-    maxNodes: 1000,
-    openApp: true,
-    focusApp: true,
-    targets: DEFAULT_TARGETS,
-  },
-}
-
 export class CachedSimulangAgent {
-  constructor(defaults = {}) {
-    this.defaults = defaults
+  constructor(config = {}) {
+    this.defaults = config.defaults ?? {}
+    this.apps = normalizeApps(config.apps ?? {})
+    this.actions = [...(config.actions ?? [])]
+    this.currentApp = null
   }
 
   findApp(name, options = {}) {
-    const config = appConfig(name)
+    const config = this.appConfig(name)
     const appOptions = {
       ...config,
       ...this.defaults,
@@ -31,10 +17,9 @@ export class CachedSimulangAgent {
       app: options.app ?? config.app,
       appCandidates: options.appCandidates ?? config.appCandidates,
       cacheDir: options.cacheDir ?? config.cacheDir,
-      cacheMode: options.cacheMode ?? this.defaults.cacheMode ?? 'auto',
-      threshold: options.threshold ?? this.defaults.threshold ?? config.threshold,
-      maxNodes: options.maxNodes ?? this.defaults.maxNodes ?? config.maxNodes,
-      targets: options.targets ?? config.targets,
+      cacheMode: options.cacheMode ?? this.defaults.cacheMode ?? config.cacheMode ?? 'auto',
+      threshold: options.threshold ?? this.defaults.threshold ?? config.threshold ?? 0.35,
+      maxNodes: options.maxNodes ?? this.defaults.maxNodes ?? config.maxNodes ?? 4000,
     }
 
     const app = {
@@ -48,84 +33,54 @@ export class CachedSimulangAgent {
     return app
   }
 
+  registerAction(action) {
+    if (typeof action?.match !== 'function' || typeof action?.run !== 'function') {
+      throw new Error('registerAction requires { match, run } functions')
+    }
+    this.actions.push(action)
+    return this
+  }
+
   async act(appOrTask, taskOrOptions = {}, maybeOptions = {}) {
     const [app, task, options] = normalizeActArgs(this.currentApp, appOrTask, taskOrOptions, maybeOptions)
     if (!app?.options) throw new Error('gui.act requires an app returned by gui.findApp(...)')
 
-    const intent = parseIntent(task, options)
-    if (app.id === 'outlook' && intent.type === 'readTopEmails') {
-      return runOutlookEmailAction(app, intent, options)
+    for (const action of this.actions) {
+      const intent = action.match({ agent: this, app, task, options })
+      if (!intent) continue
+      return action.run({ agent: this, app, task, options, intent })
     }
 
-    throw new Error(`Unsupported task for ${app.app}: ${intent.text}`)
+    throw new Error(`Unsupported task for ${app.app}: ${taskText(task)}`)
+  }
+
+  openCache(app = this.currentApp, options = {}) {
+    if (!app?.options) throw new Error('openCache requires an app returned by gui.findApp(...)')
+    return GuiCache.open({
+      ...app.options,
+      ...options,
+      app: options.app ?? app.options.app,
+      appCandidates: options.appCandidates ?? app.options.appCandidates,
+      cacheDir: options.cacheDir ?? app.options.cacheDir,
+      cacheMode: options.cacheMode ?? app.options.cacheMode,
+      threshold: options.threshold ?? app.options.threshold,
+      maxNodes: options.maxNodes ?? app.options.maxNodes,
+      logCache: options.logCache ?? app.options.logCache ?? true,
+    })
+  }
+
+  appConfig(name) {
+    const key = normalizeAppName(name)
+    return this.apps[key] ?? fallbackAppConfig(name, key)
   }
 }
 
-export function createCachedSimulang(defaults = {}) {
-  return new CachedSimulangAgent(defaults)
+export function createCachedSimulang(config = {}) {
+  if (isAgentConfig(config)) return new CachedSimulangAgent(config)
+  return new CachedSimulangAgent({ defaults: config })
 }
 
-const gui = createCachedSimulang()
-export default gui
-
-async function runOutlookEmailAction(app, intent, options) {
-  const logCache = options.logCache ?? app.options.logCache ?? true
-  const cache = GuiCache.open({
-    ...app.options,
-    ...options,
-    app: options.app ?? app.options.app,
-    appCandidates: options.appCandidates ?? app.options.appCandidates,
-    cacheDir: options.cacheDir ?? app.options.cacheDir,
-    cacheMode: options.cacheMode ?? app.options.cacheMode,
-    threshold: options.threshold ?? app.options.threshold,
-    maxNodes: options.maxNodes ?? app.options.maxNodes,
-    logCache,
-  })
-  const targets = options.targets ?? app.options.targets ?? DEFAULT_TARGETS
-  const results = []
-  for (const target of targets) {
-    results.push(await cache.observe({ target }))
-  }
-
-  if (logCache) console.error('[cache] email content: LIVE_READ (not cached)')
-  const emailCheck = await readTopInboxEmails(cache, {
-    emailCount: intent.emailCount,
-    maxNodes: options.maxNodes ?? app.options.maxNodes,
-    readDelayMs: options.readDelayMs ?? app.options.readDelayMs,
-    bodyMaxChars: options.bodyMaxChars ?? app.options.bodyMaxChars,
-  })
-
-  const summary = results.map((result) => summarizeTargetResult(result))
-  const report = {
-    success: results.every((result) => result.success) && emailCheck.success,
-    app: app.app,
-    appId: app.id,
-    task: intent.text,
-    intent: {
-      type: intent.type,
-      emailCount: intent.emailCount,
-      fields: intent.fields,
-    },
-    cacheDir: cache.storage.cacheDir,
-    cacheMode: cache.storage.cacheMode,
-    threshold: cache.threshold,
-    maxNodes: cache.maxNodes,
-    scope: {
-      kind: cache.scope.kind,
-      pid: cache.scope.pid,
-      pidsSeen: cache.pidsSeen,
-      windowsSeen: cache.windowsSeen,
-    },
-    context: cache.context,
-    results,
-    summary,
-    emailCheck,
-  }
-
-  return report
-}
-
-function summarizeTargetResult(result) {
+export function summarizeCacheResult(result) {
   return {
     target: result.target,
     success: result.success,
@@ -140,11 +95,38 @@ function summarizeTargetResult(result) {
   }
 }
 
-function appConfig(name) {
-  const key = normalizeAppName(name)
-  const config = APP_CONFIGS[key]
-  if (!config) throw new Error(`Unsupported app: ${name}`)
-  return config
+const gui = createCachedSimulang()
+export default gui
+
+function normalizeApps(apps) {
+  if (Array.isArray(apps)) {
+    return Object.fromEntries(apps.map((app) => [normalizeAppName(app.id ?? app.app), normalizeAppConfig(app)]))
+  }
+  return Object.fromEntries(
+    Object.entries(apps).map(([key, app]) => [normalizeAppName(key), normalizeAppConfig({ id: key, ...app })]),
+  )
+}
+
+function normalizeAppConfig(config) {
+  const id = normalizeAppName(config.id ?? config.app)
+  const app = config.app ?? config.id
+  return {
+    ...config,
+    id,
+    app,
+    appCandidates: config.appCandidates ?? [app],
+    cacheDir: config.cacheDir ?? `.gui-cache/${id}`,
+  }
+}
+
+function fallbackAppConfig(name, id) {
+  const app = String(name ?? '').trim()
+  return {
+    id,
+    app,
+    appCandidates: [app],
+    cacheDir: `.gui-cache/${id}`,
+  }
 }
 
 function normalizeActArgs(currentApp, appOrTask, taskOrOptions, maybeOptions) {
@@ -153,53 +135,19 @@ function normalizeActArgs(currentApp, appOrTask, taskOrOptions, maybeOptions) {
 }
 
 function normalizeAppName(name) {
-  const value = String(name ?? '').trim().toLowerCase()
-  if (value === 'outlook' || value === 'microsoft outlook') return 'outlook'
-  return value
+  return String(name ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
 }
 
-function parseIntent(task, options) {
-  if (task && typeof task === 'object') {
-    const type = normalizeIntentType(task.type ?? task.intent)
-    return {
-      type,
-      text: task.text ?? task.task ?? type,
-      emailCount: task.count ?? task.emailCount ?? options.emailCount ?? 3,
-      fields: task.fields ?? options.fields ?? ['subject', 'sender', 'content', 'sent'],
-    }
-  }
-
-  const text = String(task ?? '').trim()
-  const lower = text.toLowerCase()
-  if (/\b(email|emails|mail|message|messages|inbox)\b/.test(lower)) {
-    return {
-      type: 'readTopEmails',
-      text,
-      emailCount: options.emailCount ?? emailCountFromText(lower) ?? 3,
-      fields: options.fields ?? fieldsFromText(lower),
-    }
-  }
-
-  throw new Error(`Unsupported task: ${text}`)
+function isAgentConfig(config) {
+  return Boolean(config?.apps || config?.actions || config?.defaults)
 }
 
-function normalizeIntentType(type) {
-  const value = String(type ?? '').trim().toLowerCase()
-  if (['readtopemails', 'checktopemails', 'reademails', 'checkemails'].includes(value)) return 'readTopEmails'
-  throw new Error(`Unsupported intent type: ${type}`)
-}
-
-function emailCountFromText(text) {
-  const match = text.match(/\b(?:first|top)\s+(\d+)\b/) ?? text.match(/\b(\d+)\s+(?:email|emails|mail|message|messages)\b/)
-  return match ? Number(match[1]) : null
-}
-
-function fieldsFromText(text) {
-  const fields = []
-  if (/\bsubject\b/.test(text)) fields.push('subject')
-  if (/\b(sender|from)\b/.test(text)) fields.push('sender')
-  if (/\b(content|body)\b/.test(text)) fields.push('content')
-  if (/\b(date|sent|time)\b/.test(text)) fields.push('sent')
-  if (/\b(other info|metadata|details)\b/.test(text) && !fields.includes('sent')) fields.push('sent')
-  return fields.length > 0 ? fields : ['subject', 'sender', 'content', 'sent']
+function taskText(task) {
+  if (typeof task === 'string') return task
+  if (task && typeof task === 'object') return task.text ?? task.task ?? task.type ?? JSON.stringify(task)
+  return String(task ?? '')
 }

@@ -1,6 +1,6 @@
-import gui from '../cached-simulang.mjs'
+import gui from './gui.mjs'
 
-const OUTLOOK_CHECK_TASK = 'check first 4 emails, return subject, sender, content, and other info'
+const OUTLOOK_CHECK_TASK = 'check first 5 emails, return subject, sender, content, and other info'
 
 try {
     gui.findApp('outlook')
