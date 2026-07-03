@@ -1,11 +1,9 @@
 {
-  "name": "gui-cache-phase1",
+  "name": "gui-cache",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "check:outlook": "simulang run src/workflows/outlook-check.mjs",
-    "phase1:outlook": "simulang run scripts/phase1-outlook.mjs --",
-    "phase1:outlook:ground": "simulang run scripts/phase1-outlook.mjs -- --ground-on-miss"
+    "check:outlook": "simulang run src/workflows/outlook-check.mjs"
   }
 }

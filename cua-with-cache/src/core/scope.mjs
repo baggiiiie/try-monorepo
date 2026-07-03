@@ -9,13 +9,12 @@ import {
 import { boxArea, hashObject, pidsForAppCandidates, processName, safe, sha256 } from './util.mjs'
 
 export function createAppScope(pid, { appName = 'app' } = {}) {
-  const root = AccessibilityNode.fromPid(pid)
   return {
     kind: 'app',
     appName,
     pid,
     title: '',
-    scoredSearch: (...args) => root.scoredSearch(...args),
+    scoredSearch: (...args) => AccessibilityNode.fromPid(pid).scoredSearch(...args),
   }
 }
 
@@ -36,6 +35,7 @@ export function openScope({
   app = 'Microsoft Outlook',
   appCandidates = [app],
   openApp = false,
+  focusApp = false,
   windowScope = false,
   scanAllWindows = false,
   focusWindow = false,
@@ -45,7 +45,12 @@ export function openScope({
   if (openApp) {
     for (const candidate of appCandidates) {
       if (!App.exists(candidate)) continue
-      instance = App.exactName(candidate).open(null, FocusPolicy.DoNotSteal, Visibility.Show, true)
+      instance = App.exactName(candidate).open(
+        null,
+        focusApp ? FocusPolicy.Steal : FocusPolicy.DoNotSteal,
+        Visibility.Show,
+        true,
+      )
       safe('enableAccessibility', () => instance.enableAccessibility())
       break
     }
