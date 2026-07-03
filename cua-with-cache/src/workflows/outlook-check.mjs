@@ -2,7 +2,7 @@ import { pathToFileURL } from 'node:url'
 
 import gui from '../cached-simulang.mjs'
 
-const OUTLOOK_CHECK_TASK = 'check first 3 emails, return subject, sender, content, and other info'
+const OUTLOOK_CHECK_TASK = 'check first 4 emails, return subject, sender, content, and other info'
 
 export async function runOutlookCheck() {
     gui.findApp('outlook')

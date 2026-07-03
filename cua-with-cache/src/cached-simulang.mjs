@@ -69,6 +69,7 @@ const gui = createCachedSimulang()
 export default gui
 
 async function runOutlookEmailAction(app, intent, options) {
+  const logCache = options.logCache ?? app.options.logCache ?? true
   const cache = GuiCache.open({
     ...app.options,
     ...options,
@@ -78,6 +79,7 @@ async function runOutlookEmailAction(app, intent, options) {
     cacheMode: options.cacheMode ?? app.options.cacheMode,
     threshold: options.threshold ?? app.options.threshold,
     maxNodes: options.maxNodes ?? app.options.maxNodes,
+    logCache,
   })
   const targets = options.targets ?? app.options.targets ?? DEFAULT_TARGETS
   const results = []
@@ -85,6 +87,7 @@ async function runOutlookEmailAction(app, intent, options) {
     results.push(await cache.observe({ target }))
   }
 
+  if (logCache) console.error('[cache] email content: LIVE_READ (not cached)')
   const emailCheck = await readTopInboxEmails(cache, {
     emailCount: intent.emailCount,
     maxNodes: options.maxNodes ?? app.options.maxNodes,
@@ -92,7 +95,8 @@ async function runOutlookEmailAction(app, intent, options) {
     bodyMaxChars: options.bodyMaxChars ?? app.options.bodyMaxChars,
   })
 
-  return {
+  const summary = results.map((result) => summarizeTargetResult(result))
+  const report = {
     success: results.every((result) => result.success) && emailCheck.success,
     app: app.app,
     appId: app.id,
@@ -102,10 +106,10 @@ async function runOutlookEmailAction(app, intent, options) {
       emailCount: intent.emailCount,
       fields: intent.fields,
     },
-    cacheDir: app.options.cacheDir,
-    cacheMode: app.options.cacheMode,
-    threshold: app.options.threshold,
-    maxNodes: app.options.maxNodes,
+    cacheDir: cache.storage.cacheDir,
+    cacheMode: cache.storage.cacheMode,
+    threshold: cache.threshold,
+    maxNodes: cache.maxNodes,
     scope: {
       kind: cache.scope.kind,
       pid: cache.scope.pid,
@@ -114,16 +118,25 @@ async function runOutlookEmailAction(app, intent, options) {
     },
     context: cache.context,
     results,
-    summary: results.map((result) => ({
-      target: result.target,
-      success: result.success,
-      cacheStatus: result.cacheStatus,
-      matchStatus: result.match.status,
-      candidates: result.match.candidateCount,
-      role: result.descriptor?.role ?? result.match.selected?.role ?? null,
-      message: result.message,
-    })),
+    summary,
     emailCheck,
+  }
+
+  return report
+}
+
+function summarizeTargetResult(result) {
+  return {
+    target: result.target,
+    success: result.success,
+    cacheStatus: result.cacheStatus,
+    cacheHit: result.cacheStatus === 'HIT',
+    cacheKey: result.key ?? null,
+    cachePath: result.cachePath ?? null,
+    matchStatus: result.match.status,
+    candidates: result.match.candidateCount,
+    role: result.descriptor?.role ?? result.match.selected?.role ?? null,
+    message: result.message,
   }
 }
 

@@ -1,3 +1,5 @@
+import { resolve } from 'node:path'
+
 import { performAction } from './actions.mjs'
 import { nodeDescriptor, resolveDescriptor, resolveTarget } from './descriptor.mjs'
 import { cacheKey, normalizeTarget, variableKeys } from './key.mjs'
@@ -17,16 +19,19 @@ export class GuiCache {
       cacheMode: options.cacheMode ?? 'auto',
       threshold: options.threshold ?? 0.35,
       maxNodes: options.maxNodes ?? 4000,
+      logCache: options.logCache ?? false,
     })
   }
 
-  constructor({ scope, context, pidsSeen, windowsSeen, cacheDir, cacheMode, threshold, maxNodes }) {
+  constructor({ scope, context, pidsSeen, windowsSeen, cacheDir, cacheMode, threshold, maxNodes, logCache }) {
     this.scope = scope
     this.context = context
     this.pidsSeen = pidsSeen
     this.windowsSeen = windowsSeen
     this.threshold = threshold
     this.maxNodes = maxNodes
+    this.logCache = logCache
+    this.cacheDirLogged = false
     this.storage = new JsonCacheStorage({ cacheDir, cacheMode })
   }
 
@@ -48,14 +53,34 @@ export class GuiCache {
     const entry = await this.storage.read(key)
     if (entry) {
       const hit = await this.tryCachedEntry(entry, normalized)
-      if (hit.cacheStatus !== 'REFUSED') return { ...hit, key }
+      if (hit.cacheStatus !== 'REFUSED') return this.cacheResult(hit, key)
 
       const healed = await this.resolveAndStore(normalized, key, 'HEALED')
-      if (healed.cacheStatus !== 'REFUSED') return { ...healed, key }
-      return { ...hit, key }
+      if (healed.cacheStatus !== 'REFUSED') return this.cacheResult(healed, key)
+      return this.cacheResult(hit, key)
     }
 
-    return { ...(await this.resolveAndStore(normalized, key, 'MISS')), key }
+    return this.cacheResult(await this.resolveAndStore(normalized, key, 'MISS'), key)
+  }
+
+  cacheResult(result, key) {
+    const withCacheInfo = {
+      ...result,
+      key,
+      cachePath: resolve(this.storage.pathForKey(key)),
+    }
+    this.logCacheResult(withCacheInfo)
+    return withCacheInfo
+  }
+
+  logCacheResult(result) {
+    if (!this.logCache) return
+    if (!this.cacheDirLogged) {
+      console.error(`[cache] dir: ${resolve(this.storage.cacheDir)}`)
+      this.cacheDirLogged = true
+    }
+    console.error(`[cache] ${result.target}: ${cacheStatusLabel(result.cacheStatus)}`)
+    console.error(`[cache]   path: ${result.cachePath}`)
   }
 
   async tryCachedEntry(entry, spec) {
@@ -150,6 +175,14 @@ function refused(spec, match, message) {
     match: publicMatch(match),
     message,
   }
+}
+
+function cacheStatusLabel(status) {
+  if (status === 'HIT') return 'HIT'
+  if (status === 'MISS') return 'MISS (not hit; resolved live and stored)'
+  if (status === 'HEALED') return 'HEALED (not hit; stale cache refreshed)'
+  if (status === 'REFUSED') return 'REFUSED (not hit; cache entry was not safe to use)'
+  return `${status ?? 'UNKNOWN'} (not hit)`
 }
 
 function publicMatch(match) {
