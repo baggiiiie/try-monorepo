@@ -20,6 +20,11 @@ export function openApp(name, config = {}) {
     cacheMode: config.cacheMode ?? 'auto',
     threshold: config.threshold ?? 0.35,
     maxNodes: config.maxNodes ?? 4000,
+    minScore: config.minScore ?? 1.5,
+    minScoreGap: config.minScoreGap ?? 0.25,
+    highRiskMinScoreGap: config.highRiskMinScoreGap ?? 0.75,
+    highRiskMinScore: config.highRiskMinScore ?? 2.5,
+    highRiskCachedMinScore: config.highRiskCachedMinScore ?? 5,
     logCache: config.logCache ?? true,
     openApp: config.openApp ?? true,
     focusApp: config.focusApp ?? true,
@@ -38,7 +43,9 @@ export function summarizeResult(result) {
     cachePath: result.cachePath ?? null,
     matchStatus: result.match?.status ?? null,
     candidates: result.match?.candidateCount ?? 0,
+    scoreGap: result.match?.scoreGap ?? null,
     role: result.descriptor?.role ?? result.match?.selected?.role ?? null,
+    actionPerformed: result.actionPerformed ?? false,
     message: result.message,
   }
 }

@@ -4,13 +4,11 @@ export function variableKeys(variables = {}) {
   return Object.keys(variables ?? {}).sort()
 }
 
-export function cacheKey({ target, action, stableAppId, routeKey, variableKeys: keys = [] }) {
+export function cacheKey({ target, stableAppId, routeKey }) {
   return sha256(stableJson({
     target: normalizeTarget(target),
-    action,
     stableAppId,
     routeKey,
-    variableKeys: [...keys].sort(),
   }))
 }
 

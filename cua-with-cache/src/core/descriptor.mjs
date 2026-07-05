@@ -119,7 +119,12 @@ export function resolveDescriptor(scope, descriptor, options = {}) {
   return rankCandidates(nodes, descriptor, options)
 }
 
-function rankCandidates(nodes, descriptor, { containerBox = null } = {}) {
+function rankCandidates(nodes, descriptor, {
+  containerBox = null,
+  minScore = 1.5,
+  minScoreGap = 0.25,
+  requireTokenMatch = false,
+} = {}) {
   const query = descriptor.query
   const rawCandidates = nodes.map((node) => ({
     node,
@@ -131,6 +136,7 @@ function rankCandidates(nodes, descriptor, { containerBox = null } = {}) {
       index,
       ...candidate,
       score: candidateScore(candidate.descriptor, descriptor),
+      tokenScore: candidateTokenScore(candidate.descriptor, descriptor),
     }))
     .filter(({ descriptor: candidate }) => !descriptor.role || candidate.role === descriptor.role)
     .sort((a, b) => b.score - a.score)
@@ -145,8 +151,23 @@ function rankCandidates(nodes, descriptor, { containerBox = null } = {}) {
     })
   }
 
-  if (plausible.length === 1 || plausible[0].score > plausible[1].score) {
-    const selected = plausible[0]
+  const top = plausible[0]
+  const runnerUp = plausible[1]
+  const scoreGap = runnerUp ? round(top.score - runnerUp.score, 4) : null
+  if (top.score < minScore || (requireTokenMatch && top.tokenScore === 0)) {
+    return stripNodes({
+      status: 'low-confidence',
+      rawCandidateCount: rawCandidates.length,
+      candidateCount: candidates.length,
+      plausibleCount: plausible.length,
+      tieBreakScore: top.score,
+      scoreGap,
+      candidates,
+    })
+  }
+
+  if (!runnerUp || scoreGap >= minScoreGap) {
+    const selected = top
     return stripNodes({
       status: 'unique',
       rawCandidateCount: rawCandidates.length,
@@ -156,6 +177,7 @@ function rankCandidates(nodes, descriptor, { containerBox = null } = {}) {
       selectedDescriptor: selected.descriptor,
       selectedIndex: selected.index,
       tieBreakScore: selected.score,
+      scoreGap,
       candidates,
     })
   }
@@ -166,6 +188,7 @@ function rankCandidates(nodes, descriptor, { containerBox = null } = {}) {
     candidateCount: candidates.length,
     plausibleCount: plausible.length,
     tieBreakScore: plausible[0].score,
+    scoreGap,
     candidates,
   })
 }
@@ -197,10 +220,7 @@ function candidateFingerprint(candidate) {
 }
 
 function candidateScore(candidate, descriptor) {
-  const tokenScore = Math.max(
-    tokenOverlap(candidate.nameTokens, descriptor.nameTokens),
-    tokenOverlap(candidate.descriptionTokens, descriptor.descriptionTokens),
-  )
+  const tokenScore = candidateTokenScore(candidate, descriptor)
   const roleScore = !descriptor.role || candidate.role === descriptor.role ? 1 : 0
   const actionScore = descriptor.supportedActions?.some((action) => candidate.supportedActions?.includes(action)) ? 1 : 0
   const posScore = candidate.posHint && descriptor.posHint
@@ -213,6 +233,15 @@ function candidateScore(candidate, descriptor) {
     roleScore * 3 + actionScore * 2 + tokenScore * 2 + posScore
       + specificRoleScore + depthScore + smallBoxScore,
     4,
+  )
+}
+
+function candidateTokenScore(candidate, descriptor) {
+  return Math.max(
+    tokenOverlap(candidate.nameTokens, descriptor.nameTokens),
+    tokenOverlap(candidate.nameTokens, descriptor.descriptionTokens),
+    tokenOverlap(candidate.descriptionTokens, descriptor.nameTokens),
+    tokenOverlap(candidate.descriptionTokens, descriptor.descriptionTokens),
   )
 }
 

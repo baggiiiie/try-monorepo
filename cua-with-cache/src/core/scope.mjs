@@ -23,7 +23,7 @@ export function createWindowScope(window, { appName = 'app' } = {}) {
     kind: 'window',
     appName,
     pid: safe('pid', () => window.pid, 0),
-    title: safe('title', () => window.title, ''),
+    get title() { return safe('title', () => window.title, '') },
     boundingBox: () => window.boundingBox(),
     snapshot: () => window.snapshot(),
     scoredSearch: (...args) => window.scoredSearch(...args),

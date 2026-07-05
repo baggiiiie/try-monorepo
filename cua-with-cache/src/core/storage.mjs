@@ -16,7 +16,7 @@ export class JsonCacheStorage {
     try {
       return JSON.parse(await readFile(this.pathForKey(key), 'utf8'))
     } catch (error) {
-      if (error?.code === 'ENOENT') return null
+      if (error?.code === 'ENOENT' || error instanceof SyntaxError) return null
       throw error
     }
   }

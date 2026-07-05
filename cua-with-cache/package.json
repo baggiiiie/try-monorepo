@@ -3,8 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": "./src/index.mjs",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "check:outlook": "simulang run examples/outlook-check.mjs",
-    "check:teams": "simulang run examples/teams-unread-chats.mjs"
+    "test": "node --test",
+    "check:outlook": "simulang run examples/outlook-check.mjs"
+  },
+  "dependencies": {
+    "@simular-ai/simulang-js": "6.0.1"
   }
 }

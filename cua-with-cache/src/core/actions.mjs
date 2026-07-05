@@ -14,3 +14,7 @@ export function performAction(node, spec) {
   }
   throw new Error(`Unsupported action: ${action}`)
 }
+
+export function isAction(spec) {
+  return (spec.action ?? 'observe') !== 'observe'
+}
