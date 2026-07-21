@@ -15,7 +15,11 @@ grounding, actions, extraction, deterministic replay, and healing.
 - The action cache stores resolved operations and replays them without an LLM.
 - The agent cache records successful trajectories and deterministically replays
   navigation, actions, scrolling, waits, and form input.
-- Failed action replay can re-ground the target and update its cached selector.
+- On an action-cache miss, Stagehand invokes its configured inference client
+  in-process to ground the instruction, executes the resolved action, and
+  stores it. It does not launch an external coding agent.
+- Failed action replay can use that same inference client to re-ground the
+  target and update its cached selector.
 
 Stagehand does not eliminate site-specific logic. The caller writes the steps,
 or an agent generates them. It also does not cache dynamic business data such
@@ -39,9 +43,10 @@ Improve the project in this order:
 3. **Cache generated workflows.** Let an agent write a short program against
    that API, validate a successful run, then replay the program without the
    agent.
-4. **Heal at the smallest level.** Re-ground a stale element first; invoke an
-   agent to repair the workflow only when the sequence or extraction logic has
-   changed.
+4. **Heal inside the cache layer.** On a miss or stale descriptor, call a
+   configured grounding model with the current JSON-safe UI snapshot, validate
+   its proposed action, and store the successful replacement. Do not launch a
+   coding-agent subprocess from a workflow runner.
 5. **Never cache live app content.** Cache how to reach and read email data,
    but read sender, subject, body, and state on every run.
 

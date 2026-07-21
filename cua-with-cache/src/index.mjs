@@ -5,3 +5,5 @@ export { nodeDescriptor, resolveDescriptor, resolveTarget, roleName } from './co
 export { performAction } from './core/actions.mjs'
 export { nodeView, nodeViewFingerprint } from './core/node-view.mjs'
 export { boxCenter, safe } from './core/util.mjs'
+export { CuaDriverCli, CuaDriverError } from './cua/driver.mjs'
+export { openCuaApp, CuaGuiCache, selectCuaWindow } from './cua/gui-cache.mjs'

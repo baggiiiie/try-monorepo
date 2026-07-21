@@ -1,0 +1,8 @@
+# Cua Driver learnings
+
+- Cua Driver 0.10.0 is a host-native macOS driver, not a VM. `launch_app` attaches/launches without intentionally fronting the app, and accessibility actions default to background delivery.
+- `get_window_state` is authoritative for each action turn. Its `element_index` and `element_token` are ephemeral and replaced by a fresh snapshot; neither is cached.
+- The cache stores only durable grounding: concept/query, role, stable label/identifier/help tokens, actions, ancestor roles, and relative geometry, keyed by app, window, scope, and structural match. It never stores pid/window IDs, snapshots/screenshots, ephemeral handles, live values, or extracted data.
+- For this project, CUA's main advantage over Simulang is its explicit background AX delivery: it can invoke supported element actions without moving the pointer or foregrounding Outlook. Pixel actions still depend on a capturable screenshot and may require bringing the relevant window into view.
+- Currently Outlook exposes a recursive `AXApplication`/menu structure to both engines' depth-first traversal. CUA returned 3,961 menu elements and no Message List in the live check. Although Accessibility and Screen Recording grants report true, `screen_recording_capturable:false` prevents adding a screenshot fallback in this environment. The demo reports this limitation as failure; it does not fabricate email results.
+- Conclusion: CUA is the stronger action backend for non-focus-stealing automation, but it is not yet a better Outlook grounding backend. The next useful CUA improvement is cycle/deduplication plus breadth-first, window-rooted AX traversal; screenshot/vision grounding is the fallback for custom-drawn controls.

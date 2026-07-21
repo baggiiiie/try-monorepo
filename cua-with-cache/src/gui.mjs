@@ -45,7 +45,9 @@ export function summarizeResult(result) {
     candidates: result.match?.candidateCount ?? 0,
     scoreGap: result.match?.scoreGap ?? null,
     role: result.descriptor?.role ?? result.match?.selected?.role ?? null,
+    actionRequested: result.actionRequested ?? false,
     actionPerformed: result.actionPerformed ?? false,
+    actionOutcome: result.actionOutcome ?? null,
     message: result.message,
   }
 }

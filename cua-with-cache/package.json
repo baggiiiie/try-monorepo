@@ -9,7 +9,8 @@
   },
   "scripts": {
     "test": "node --test",
-    "check:outlook": "node scripts/check-outlook.mjs"
+    "check:outlook": "simulang run examples/outlook-check.mjs",
+    "check:outlook:cua": "node examples/outlook-cua-check.mjs"
   },
   "dependencies": {
     "@simular-ai/simulang-js": "6.0.1"

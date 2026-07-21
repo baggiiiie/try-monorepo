@@ -1,9 +1,9 @@
 # Target Architecture
 
 The final product is a Stagehand-style cached automation layer for native GUIs.
-Agents write short workflows against a small, app-agnostic API. A successful
-workflow is persisted and normally replays without an agent; an agent returns
-only when grounding or workflow behavior can no longer be repaired locally.
+Callers write short workflows against a small, app-agnostic API. Cached actions
+replay deterministically; a cache miss or stale target invokes a configured
+grounding model inside the library and stores the validated replacement.
 
 ## Ownership boundaries
 
@@ -88,11 +88,11 @@ load cached workflow
   → validate the result
 ```
 
-If a target descriptor drifts, the library re-grounds and updates only that
-operation. If the application's sequence or extraction semantics have changed,
-the repair agent updates the workflow and the validated replacement becomes the
-new cached version.
+If a target descriptor drifts, the library gives its configured grounding
+model a fresh JSON-safe UI snapshot, validates the proposed target/action, and
+updates only that operation. Workflow runners never launch external coding
+agents.
 
-The normal execution path therefore uses no agent. App-specific knowledge still
-exists, but as a concise cached program rather than a large handwritten adapter
-or application logic inside the generic library.
+The cache-hit path therefore uses no model inference. App-specific knowledge
+still exists, but as a concise cached program rather than a large handwritten
+adapter or application logic inside the generic library.

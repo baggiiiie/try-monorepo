@@ -102,14 +102,24 @@ retry the action.
 
 ```sh
 npm run check:outlook
+npm run check:outlook:cua
 ```
 
 The demo grounds stable Outlook controls through the cache, then reads the top
-three emails live from the accessibility tree and prints a JSON report. If the
-workflow exits unsuccessfully, the npm command starts an Amp agent with the
-failure output, lets it repair stale cache data or code, and retries once.
-Set `OUTLOOK_SELF_HEAL=0` to run the check without launching an agent.
+three emails live from the accessibility tree and prints a JSON report. The
+runner executes the workflow once and reports failures; it never launches a
+coding agent. Today, cache misses are grounded deterministically with
+Simulang's `scoredSearch` and then stored. The target design is to let the cache
+layer call a configured inference client on misses or stale descriptors, as
+Stagehand does. The cache stores only reusable UI grounding and never caches
+returned app content.
 
-The cache stores only reusable UI grounding (descriptors for stable controls).
-It never caches returned app content; demo-specific live reads happen outside
-the library.
+The alternate CUA command uses the host-native `cua-driver` CLI and background
+AX actions. Unlike the Simulang backend (live accessibility nodes and
+`scoredSearch`), the CUA backend normalizes each CLI snapshot and re-resolves a
+durable descriptor to a fresh ephemeral element token/index before every
+action. Both cache only grounding and read returned data live. See
+[`CUA-LEARNINGS.md`](CUA-LEARNINGS.md) for the current Outlook recursive AX-tree
+and unavailable screenshot limitation. The command requires a running Cua
+Driver daemon with macOS Accessibility permission; screenshot fallback also
+requires capturable Screen Recording permission.

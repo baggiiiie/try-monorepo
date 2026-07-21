@@ -3,6 +3,7 @@
 - This is a reusable GUI cache library on top of `@simular-ai/simulang-js`.
 - Design goal: a Stagehand-style layer for GUIs. `observe` grounds + caches a
   UI concept; `act` replays it deterministically and self-heals on drift.
+- Here, self-healing means the cache layer internally re-grounds a missing or stale action and updates its cache, never that a workflow runner launches an external coding agent.
 - Keep `src/` library-only: cache keys, descriptor matching, storage, the
   observe/act replay/heal engine, and the generic `openApp(...)` factory.
 - The library must stay app-agnostic. No natural-language task parsing / intent
