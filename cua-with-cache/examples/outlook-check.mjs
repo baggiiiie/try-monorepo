@@ -1,27 +1,23 @@
+import { readTopInboxEmails } from './apps/outlook/read-emails.mjs'
 import { openApp, summarizeResult } from '../src/index.mjs'
 
-const OUTLOOK_APP = {
-  app: 'Microsoft Outlook',
-  appCandidates: ['Microsoft Outlook', 'Outlook'],
-  cacheDir: '.gui-cache/outlook',
-  threshold: 0.35,
-  maxNodes: 1000,
-}
-
-const OUTLOOK_TARGETS = ['Search', 'Inbox']
+const EMAIL_COUNT = 3
 
 try {
-  const gui = openApp('outlook', OUTLOOK_APP)
-
-  const grounded = []
-  for (const target of OUTLOOK_TARGETS) {
-    grounded.push(await gui.observe(target))
-  }
-
+  const gui = openApp('outlook', {
+    app: 'Microsoft Outlook',
+    appCandidates: ['Microsoft Outlook', 'Outlook'],
+    maxNodes: 1000,
+  })
+  const search = await gui.observe('Search', { timeoutMs: 2500 })
+  const triage = search.success
+    ? await readTopInboxEmails(gui, { count: EMAIL_COUNT })
+    : { success: false, requested: EMAIL_COUNT, returned: 0, message: search.message, emails: [] }
   const report = {
-    success: grounded.every((result) => result.success),
+    success: search.success && triage.success,
     app: gui.scope.appName,
-    grounded: grounded.map(summarizeResult),
+    grounded: [summarizeResult(search)],
+    triage,
   }
 
   console.log(JSON.stringify(report, null, 2))

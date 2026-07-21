@@ -60,6 +60,7 @@ export function nodeDescriptor(node, query, containerBox = null) {
   return {
     role,
     query,
+    directTokens: sanitizedTokens(`${name} ${description}`, query),
     nameTokens: sanitizedTokens(name, query),
     descriptionTokens: sanitizedTokens(`${description} ${overall}`, query),
     nameTokenCount: tokenize(name).length,
@@ -137,6 +138,7 @@ function rankCandidates(nodes, descriptor, {
       ...candidate,
       score: candidateScore(candidate.descriptor, descriptor),
       tokenScore: candidateTokenScore(candidate.descriptor, descriptor),
+      targetTokenScore: tokenOverlap(candidate.descriptor.directTokens, tokenize(query)),
     }))
     .filter(({ descriptor: candidate }) => !descriptor.role || candidate.role === descriptor.role)
     .sort((a, b) => b.score - a.score)
@@ -154,7 +156,7 @@ function rankCandidates(nodes, descriptor, {
   const top = plausible[0]
   const runnerUp = plausible[1]
   const scoreGap = runnerUp ? round(top.score - runnerUp.score, 4) : null
-  if (top.score < minScore || (requireTokenMatch && top.tokenScore === 0)) {
+  if (top.score < minScore || (requireTokenMatch && top.targetTokenScore === 0)) {
     return stripNodes({
       status: 'low-confidence',
       rawCandidateCount: rawCandidates.length,

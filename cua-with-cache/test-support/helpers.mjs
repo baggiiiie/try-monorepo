@@ -1,6 +1,7 @@
 export function fakeNode({
   name = '',
   description = '',
+  overallDescription = description,
   role = 'button',
   value = '',
   actions = ['activate'],
@@ -9,7 +10,7 @@ export function fakeNode({
   return {
     name,
     description,
-    overallDescription: description,
+    overallDescription,
     role,
     value,
     className: 'FakeNode',

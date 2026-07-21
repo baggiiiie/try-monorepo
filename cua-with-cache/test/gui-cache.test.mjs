@@ -72,6 +72,39 @@ test('context drift heals the grounding before use', async (t) => {
   assert.equal((await second.observe('Send')).cacheStatus, 'HEALED')
 })
 
+test('observe can wait for a temporarily unavailable target', async (t) => {
+  const { gui, node, scope } = await cacheHarness(t)
+  let attempts = 0
+  scope.scoredSearch = () => (++attempts < 3 ? [] : [node])
+
+  const report = await gui.observe('Send', { timeoutMs: 100, pollMs: 1 })
+
+  assert.equal(report.cacheStatus, 'MISS')
+  assert.equal(attempts, 3)
+})
+
+test('cached descriptors cannot replay against nodes unrelated to the target', async (t) => {
+  const first = await cacheHarness(t, { node: fakeNode({ name: 'Inbox' }) })
+  await first.gui.observe('Inbox')
+
+  const titleBar = fakeNode({ name: 'Title bar', overallDescription: 'Inbox' })
+  const second = new GuiCache({
+    scope: { scoredSearch: () => [titleBar] },
+    context: fakeContext(),
+    pidsSeen: 1,
+    windowsSeen: 0,
+    cacheDir: first.cacheDir,
+    cacheMode: 'auto',
+    threshold: 0.35,
+    maxNodes: 100,
+    logCache: false,
+  })
+
+  const report = await second.observe('Inbox')
+  assert.equal(report.cacheStatus, 'REFUSED')
+  assert.equal(report.match.status, 'low-confidence')
+})
+
 test('high-risk actions require explicit verification', async (t) => {
   const { gui, node } = await cacheHarness(t)
   const report = await gui.act('Send', { action: 'activate', risk: 'high' })

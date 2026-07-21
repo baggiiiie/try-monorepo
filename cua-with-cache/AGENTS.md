@@ -11,6 +11,10 @@
 - Put demos, probes, and app-specific GUI automation under `examples/`.
 - Demo workflows should stay thin: `openApp(...)`, a few `observe`/`act` calls
   on stable controls, then live reading; print the report.
+- Agent-authored top-level workflows should use the small public cached API,
+  not import raw simulang primitives. Hide unavoidable app-specific traversal,
+  parsing, and physical-input fallbacks in capability modules under
+  `examples/apps/<app>/` so runnable workflow files remain declarative.
 - Prefer simulang primitives over reinventing them: `scoredSearch` for
   grounding, node action methods (`activate`/`setValue`/...), `.children()`,
   `App`/`Instance`/`Window` for launch/scope.

@@ -65,7 +65,19 @@ export class GuiCache {
   }
 
   async observe(target, options = {}) {
-    return this.act(target, { ...options, action: 'observe' })
+    const {
+      timeoutMs = 0,
+      pollMs = 100,
+      ...observeOptions
+    } = options
+    const deadline = Date.now() + Math.max(0, timeoutMs)
+    let report
+    do {
+      report = await this.act(target, { ...observeOptions, action: 'observe' })
+      if (report.success || Date.now() >= deadline) return report
+      await sleep(Math.max(0, pollMs))
+    } while (Date.now() < deadline)
+    return report
   }
 
   async act(target, options = {}) {
@@ -205,7 +217,11 @@ export class GuiCache {
         ? (cached ? this.highRiskCachedMinScore : this.highRiskMinScore)
         : this.minScore,
       minScoreGap: highRisk ? this.highRiskMinScoreGap : this.minScoreGap,
-      requireTokenMatch: highRisk,
+      // A descriptor can otherwise score as "unique" from role, geometry,
+      // and supported actions alone even when it no longer represents the
+      // requested concept (for example, an "Inbox" cache entry resolving to
+      // Outlook's title bar). Never accept a grounding with no target text.
+      requireTokenMatch: true,
     }
   }
 }
@@ -332,4 +348,8 @@ function normalizeRouteKey(routeKey) {
   const normalized = String(routeKey).trim()
   if (!normalized) throw new Error('routeKey must not be empty')
   return normalized
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }

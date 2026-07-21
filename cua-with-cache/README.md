@@ -8,7 +8,7 @@ deterministically, with automatic self-healing when the UI drifts.
 
 - `src/` is the library: cache keys, descriptor matching, storage, and the
   `observe`/`act` replay + self-heal engine. It is app-agnostic.
-- `examples/outlook-check.mjs` is a minimal Outlook grounding/cache check.
+- `examples/outlook-check.mjs` is a cache-backed Outlook email-triage demo.
 
 ## API
 
@@ -94,8 +94,11 @@ retry the action.
 npm run check:outlook
 ```
 
-The demo is intentionally direct: `openApp(...)`, a few `observe` calls on
-stable controls, then a JSON report.
+The demo grounds stable Outlook controls through the cache, then reads the top
+three emails live from the accessibility tree and prints a JSON report. If the
+workflow exits unsuccessfully, the npm command starts an Amp agent with the
+failure output, lets it repair stale cache data or code, and retries once.
+Set `OUTLOOK_SELF_HEAL=0` to run the check without launching an agent.
 
 The cache stores only reusable UI grounding (descriptors for stable controls).
 It never caches returned app content; demo-specific live reads happen outside
