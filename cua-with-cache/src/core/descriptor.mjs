@@ -125,6 +125,8 @@ function rankCandidates(nodes, descriptor, {
   minScore = 1.5,
   minScoreGap = 0.25,
   requireTokenMatch = false,
+  role = null,
+  actions = null,
 } = {}) {
   const query = descriptor.query
   const rawCandidates = nodes.map((node) => ({
@@ -140,7 +142,9 @@ function rankCandidates(nodes, descriptor, {
       tokenScore: candidateTokenScore(candidate.descriptor, descriptor),
       targetTokenScore: tokenOverlap(candidate.descriptor.directTokens, tokenize(query)),
     }))
-    .filter(({ descriptor: candidate }) => !descriptor.role || candidate.role === descriptor.role)
+    .filter(({ descriptor: candidate }) => (!descriptor.role || candidate.role === descriptor.role)
+      && (!role || candidate.role === role)
+      && (!actions || actions.every((action) => candidate.supportedActions?.includes(action))))
     .sort((a, b) => b.score - a.score)
 
   if (plausible.length === 0) {

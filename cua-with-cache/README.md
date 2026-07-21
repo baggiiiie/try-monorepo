@@ -36,14 +36,24 @@ already-running instance without launching or stealing focus, pass
 const gui = openApp('outlook', { app: 'Microsoft Outlook', openApp: false })
 ```
 
-Every `observe`/`act` returns a JSON-friendly report plus a non-enumerable
-`.node` — the live simulang `AccessibilityNode` — so callers read app data
-directly from the grounded element:
+Every `observe`/`act` returns a JSON-friendly report and a hierarchical runtime
+locator. Passing that report to another operation always re-resolves it, rather
+than acting on its potentially stale `.node`. Scoped and collection operations
+compose without importing Simulang:
 
 ```js
-const { node } = await gui.observe('Inbox')
-for (const row of node.children()) { /* read live */ }
+const list = await gui.observe('Message List', { within: 'Inbox' })
+const rows = await gui.observeMany('messages', { within: list, role: 'cell', limit: 3 })
+const before = await gui.extract('Reading pane', { project: parsePane })
+await gui.act(rows.items[0], 'activate')
+await gui.waitForChange('Reading pane', { from: before, project: parsePane })
 ```
+
+`extract` serializes a bounded, JSON-safe `NodeView` and applies the caller's
+deterministic `project(view)` and optional `validate(data, view)` callbacks.
+It does not infer a schema or semantics from natural language, and neither the
+tree nor projected dynamic data is cached. App-specific filtering and parsing
+belongs in concise workflow/capability code under `examples/`.
 
 Reports carry a `cacheStatus`:
 

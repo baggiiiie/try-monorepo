@@ -14,3 +14,14 @@ test('candidate selection refuses a narrow score gap', () => {
   assert.equal(match.status, 'ambiguous')
   assert.equal(match.scoreGap, 0)
 })
+
+test('candidate selection applies structural role constraints before choosing', () => {
+  const button = fakeNode({ name: 'Inbox', role: 'button' })
+  const window = fakeNode({ name: 'Inbox', role: 'window' })
+  const scope = { scoredSearch: () => [button, window] }
+
+  const match = resolveTarget(scope, 'Inbox', { role: 'window' })
+
+  assert.equal(match.status, 'unique')
+  assert.equal(match.selectedNode, window)
+})

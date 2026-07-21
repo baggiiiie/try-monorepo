@@ -6,15 +6,17 @@ import {
   Window,
 } from '@simular-ai/simulang-js'
 
-import { boxArea, hashObject, pidsForAppCandidates, processName, safe, sha256 } from './util.mjs'
+import { hashObject, pidsForAppCandidates, processName, safe, sha256 } from './util.mjs'
 
-export function createAppScope(pid, { appName = 'app' } = {}) {
+export function createAppScope(pid, { appName = 'app', instance = null } = {}) {
   return {
     kind: 'app',
     appName,
     pid,
     title: '',
-    scoredSearch: (...args) => AccessibilityNode.fromPid(pid).scoredSearch(...args),
+    scoredSearch: (...args) => instance
+      ? instance.scoredSearch(...args)
+      : AccessibilityNode.fromPid(pid).scoredSearch(...args),
   }
 }
 
@@ -24,10 +26,10 @@ export function createWindowScope(window, { appName = 'app' } = {}) {
     appName,
     pid: safe('pid', () => window.pid, 0),
     get title() { return safe('title', () => window.title, '') },
-    boundingBox: () => window.boundingBox(),
+    // Simulang Window v6 exposes search/snapshot but no window geometry.
+    boundingBox: () => null,
     snapshot: () => window.snapshot(),
     scoredSearch: (...args) => window.scoredSearch(...args),
-    screenshot: (...args) => window.screenshot(...args),
   }
 }
 
@@ -52,6 +54,7 @@ export function openScope({
         true,
       )
       safe('enableAccessibility', () => instance.enableAccessibility())
+      if (focusApp) safe('instance.focus', () => instance.focus())
       break
     }
   }
@@ -59,7 +62,7 @@ export function openScope({
   const candidatePids = instance?.pid ? [instance.pid] : pidsForAppCandidates(appCandidates)
   if (!windowScope && candidatePids.length > 0) {
     return {
-      scope: createAppScope(candidatePids[0], { appName: app }),
+      scope: createAppScope(candidatePids[0], { appName: app, instance }),
       context: scopeContext({ kind: 'app', pid: candidatePids[0], appName: app }, app),
       pidsSeen: candidatePids.length,
       windowsSeen: 0,
@@ -87,10 +90,9 @@ export function openScope({
     windows = windows.filter((window) => safe('title', () => window.title, '').toLowerCase().includes(needle))
   }
 
-  windows.sort((a, b) => boxArea(safe('box', () => b.boundingBox(), null)) - boxArea(safe('box', () => a.boundingBox(), null)))
   const window = windows[0]
   if (!window) throw new Error(`Could not find a visible window or app root for ${app}`)
-  if (focusWindow) safe('window.focus', () => window.focus())
+  if (focusWindow && instance) safe('instance.focus', () => instance.focus())
 
   const scope = createWindowScope(window, { appName: app })
   return {

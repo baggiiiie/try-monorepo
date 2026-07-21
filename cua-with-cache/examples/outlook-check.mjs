@@ -1,5 +1,5 @@
 import { readTopInboxEmails } from './apps/outlook/read-emails.mjs'
-import { openApp, summarizeResult } from '../src/index.mjs'
+import { openApp } from '../src/index.mjs'
 
 const EMAIL_COUNT = 3
 
@@ -9,14 +9,10 @@ try {
     appCandidates: ['Microsoft Outlook', 'Outlook'],
     maxNodes: 1000,
   })
-  const search = await gui.observe('Search', { timeoutMs: 2500 })
-  const triage = search.success
-    ? await readTopInboxEmails(gui, { count: EMAIL_COUNT })
-    : { success: false, requested: EMAIL_COUNT, returned: 0, message: search.message, emails: [] }
+  const triage = await readTopInboxEmails(gui, { count: EMAIL_COUNT })
   const report = {
-    success: search.success && triage.success,
-    app: gui.scope.appName,
-    grounded: [summarizeResult(search)],
+    success: triage.success,
+    app: gui.appName,
     triage,
   }
 

@@ -6,6 +6,8 @@ export function fakeNode({
   value = '',
   actions = ['activate'],
   box = { left: 10, top: 10, right: 110, bottom: 40 },
+  children = [],
+  activate = null,
 } = {}) {
   return {
     name,
@@ -19,9 +21,10 @@ export function fakeNode({
     activateCount: 0,
     supportedActions: () => actions,
     boundingBox: () => box,
+    children: () => children,
     ancestors: () => [],
     parent: () => null,
-    activate() { this.activateCount += 1 },
+    activate() { this.activateCount += 1; return activate?.(this) },
     focus() {},
     toggle() {},
     select() {},

@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { isAction, performAction } from './actions.mjs'
 import { nodeDescriptor, resolveDescriptor, resolveTarget } from './descriptor.mjs'
 import { cacheKey, normalizeTarget } from './key.mjs'
+import { nodeView, nodeViewFingerprint } from './node-view.mjs'
 import { openScope, scopeContext } from './scope.mjs'
 import { JsonCacheStorage } from './storage.mjs'
 import { isOutcomePredicate, predicateValidationError, verifyPredicate } from './verify.mjs'
@@ -26,6 +27,7 @@ export class GuiCache {
       highRiskCachedMinScore: options.highRiskCachedMinScore ?? 5,
       routeKey: options.routeKey ?? null,
       logCache: options.logCache ?? false,
+      mouseController: options.mouseController ?? null,
     })
   }
 
@@ -45,8 +47,10 @@ export class GuiCache {
     highRiskCachedMinScore = 5,
     routeKey = null,
     logCache,
+    mouseController = null,
   }) {
     this.scope = scope
+    this.appName = scope.appName ?? context.stableAppId
     this.context = context
     this.defaultRouteKey = context.routeKey
     this.pidsSeen = pidsSeen
@@ -60,6 +64,7 @@ export class GuiCache {
     this.highRiskCachedMinScore = highRiskCachedMinScore
     this.routeKeyOverride = routeKey == null ? null : normalizeRouteKey(routeKey)
     this.logCache = logCache
+    this.mouseController = mouseController
     this.cacheDirLogged = false
     this.storage = new JsonCacheStorage({ cacheDir, cacheMode })
   }
@@ -80,13 +85,171 @@ export class GuiCache {
     return report
   }
 
+  async observeMany(id, options = {}) {
+    if (!options.within) throw new Error('observeMany requires within')
+    const { timeoutMs = 0, pollMs = 100 } = options
+    const deadline = Date.now() + Math.max(0, timeoutMs)
+    let report
+    do {
+      report = await this.observeManyOnce(id, options)
+      if (report.success || Date.now() >= deadline) return report
+      await sleep(Math.max(0, pollMs))
+    } while (true)
+  }
+
+  async observeManyOnce(id, options) {
+    const parent = await this.resolveReference(options.within)
+    if (!parent.success) return { success: false, id, available: 0, items: [], message: parent.message }
+    let candidates
+    try {
+      candidates = descendants(parent.node, options.maxNodes ?? this.maxNodes)
+        .filter((node) => collectionMatch(nodeView(node, { maxDepth: 0, maxNodes: 1 }), options))
+    } catch (error) {
+      return { success: false, id, available: 0, items: [], message: `Could not read collection: ${error.message}` }
+    }
+    const available = candidates.length
+    const selected = candidates.slice(0, options.limit ?? available)
+    const identity = options.identity ?? 'position'
+    const allKeys = candidates.map((node, index) => identity === 'position'
+      ? index
+      : identity(nodeView(node, { maxDepth: 1, maxNodes: 30 }), index))
+    if (identity !== 'position' && (allKeys.some((key) => typeof key !== 'string' || !key.trim()) || new Set(allKeys).size !== allKeys.length)) {
+      return { success: false, id, available, items: [], message: 'Collection identities must be non-empty strings and unique across all candidates' }
+    }
+    const keys = allKeys.slice(0, selected.length)
+    const parentLocator = parent.locator
+    const items = selected.map((node, index) => attachLocator({
+      success: true,
+      target: `${id}[${String(keys[index])}]`,
+      index,
+      identity: keys[index],
+      view: nodeView(node, { maxDepth: options.maxDepth ?? 2, maxNodes: options.itemMaxNodes ?? 100 }),
+    }, {
+      kind: 'collection-item', id, parent: parentLocator, options: collectionLocatorOptions(options),
+      identity: identity === 'position' ? { type: 'position', value: index } : { type: 'key', value: keys[index], callback: identity },
+    }))
+    const require = options.require ?? 0
+    return { success: items.length >= require, id, available, items, message: `Observed ${items.length}/${available} items` }
+  }
+
+  async extract(target, { project = (view) => view, validate, maxDepth = 6, maxNodes = 500 } = {}) {
+    const resolved = await this.resolveReference(target)
+    if (!resolved.success) return { success: false, data: null, fingerprint: null, message: resolved.message }
+    const view = nodeView(resolved.node, { maxDepth, maxNodes })
+    let data
+    try {
+      data = project(view)
+      const valid = validate ? await validate(data, view) : true
+      return { success: valid !== false, data, fingerprint: nodeViewFingerprint(view), message: valid === false ? 'Validation failed' : 'Extracted live data' }
+    } catch (error) {
+      return { success: false, data: null, fingerprint: nodeViewFingerprint(view), message: error.message }
+    }
+  }
+
+  async waitFor(target, options = {}) {
+    const { timeoutMs = 2000, pollMs = 100, until = (_data, report) => report.success, ...extractOptions } = options
+    const deadline = Date.now() + Math.max(0, timeoutMs)
+    let report
+    do {
+      report = await this.extract(target, extractOptions)
+      if (report.success && await until(report.data, report)) return report
+      if (Date.now() >= deadline) break
+      await sleep(pollMs)
+    } while (true)
+    return { ...report, success: false, message: 'waitFor timed out' }
+  }
+
+  async waitForChange(target, options = {}) {
+    if (!options.from) throw new Error('waitForChange requires an explicit from extraction or fingerprint')
+    const baseline = typeof options.from === 'string' ? options.from : options.from.fingerprint
+    if (!baseline) throw new Error('waitForChange baseline has no fingerprint')
+    const { from, until, ...rest } = options
+    return this.waitFor(target, {
+      ...rest,
+      until: async (data, report) => report.fingerprint !== baseline && (!until || await until(data, report)),
+    })
+  }
+
+  async resolveReference(reference, options = {}) {
+    const timeoutMs = options.timeoutMs ?? 0
+    const pollMs = options.pollMs ?? 100
+    const deadline = Date.now() + Math.max(0, timeoutMs)
+    let report
+    do {
+      report = await this.resolveReferenceOnce(reference)
+      if (report.success || Date.now() >= deadline) return report
+      await sleep(Math.max(0, pollMs))
+    } while (true)
+  }
+
+  async resolveReferenceOnce(reference) {
+    const locator = reference?.locator
+    if (!locator) {
+      const observed = await this.observe(reference)
+      return attachLocator(observed, rootLocator(observed))
+    }
+    if (locator.kind === 'root') return attachLocator(await this.observe(locator.target, locator.options), locator)
+    if (locator.kind === 'scoped') {
+      const parentReport = await this.resolveReferenceOnce(attachLocator({}, locator.parent))
+      if (!parentReport.success) return parentReport
+      const parent = attachLocator(attachNode({ success: true, target: 'scope' }, parentReport.node), locator.parent)
+      return attachLocator(await this.observe(locator.target, { ...locator.options, within: parent }), locator)
+    }
+    const parentReport = await this.resolveReferenceOnce(attachLocator({}, locator.parent))
+    if (!parentReport.success) return parentReport
+    let nodes
+    try { nodes = descendants(parentReport.node, locator.options.maxNodes ?? this.maxNodes)
+      .filter((node) => collectionMatch(nodeView(node, { maxDepth: 0, maxNodes: 1 }), locator.options))
+    } catch (error) {
+      return { success: false, node: null, locator, message: `Could not read collection: ${error.message}` }
+    }
+    let matches
+    if (locator.identity.type === 'position') matches = nodes.slice(locator.identity.value, locator.identity.value + 1)
+    else matches = nodes.filter((node, index) => locator.identity.callback(nodeView(node, { maxDepth: 1, maxNodes: 30 }), index) === locator.identity.value)
+    if (matches.length !== 1) return { success: false, node: null, locator, message: `Collection identity resolved ${matches.length} items` }
+    return attachLocator(attachNode({ success: true, target: reference.target, message: 'Collection item re-resolved' }, matches[0]), locator)
+  }
+
+  async resolveLocator(locator) {
+    const report = await this.resolveReference(attachLocator({}, locator))
+    return report
+  }
+
   async act(target, options = {}) {
-    const normalized = normalizeSpec(toSpec(target, options))
+    if (typeof options === 'string') options = { action: options }
+    if (target?.locator) {
+      const grounded = await this.resolveReference(target, options)
+      if (!grounded.success) return grounded
+      const spec = normalizeSpec({ target: target.target, ...options, mouseController: options.mouseController ?? this.mouseController })
+      const verificationError = verificationSpecError(spec)
+      if (verificationError) return attachLocator(refused(spec, emptyMatch(), verificationError), grounded.locator ?? target.locator)
+      if (!verifyPredicate(this.scope, grounded.node, spec.verify?.pre, spec.variables)) {
+        return attachLocator(refused(spec, emptyMatch(), 'pre-verification failed'), grounded.locator ?? target.locator)
+      }
+      const report = await this.executeOnce(attachNode({ ...grounded, cacheStatus: 'LIVE', descriptor: grounded.descriptor ?? null, match: grounded.match ?? emptyMatch() }, grounded.node, emptyMatch()), spec)
+      return attachLocator(report, grounded.locator ?? target.locator)
+    }
+    const normalized = normalizeSpec({ ...toSpec(target, options), mouseController: options.mouseController ?? this.mouseController })
     const context = this.refreshContext()
+    let operationScope = this.scope
+    let parentScopeKey = null
+    let parentLocator = null
+    if (normalized.within) {
+      const parent = await this.resolveReference(normalized.within)
+      if (!parent.success) return parent
+      operationScope = parent.node
+      parentLocator = parent.locator
+      parentScopeKey = locatorKey(parentLocator)
+    }
     const key = cacheKey({
       target: normalized.target,
       stableAppId: context.stableAppId,
       routeKey: context.routeKey,
+      operationKind: 'observe',
+      operationId: normalized.id ?? normalized.target,
+      parentScopeKey,
+      query: normalized.query,
+      match: serializableMatch(normalized.match ?? normalized),
     })
 
     const verificationError = verificationSpecError(normalized)
@@ -101,16 +264,22 @@ export class GuiCache {
     const entry = await this.storage.read(key)
     let grounded
     if (isUsableEntry(entry) && entryMatchesContext(entry, this.context)) {
-      grounded = await this.tryCachedEntry(entry, normalized)
+      grounded = await this.tryCachedEntry(entry, normalized, operationScope)
       if (grounded.cacheStatus === 'REFUSED') {
-        grounded = await this.resolveAndStore(normalized, key, 'HEALED')
+        grounded = await this.resolveAndStore(normalized, key, 'HEALED', operationScope)
       }
     } else {
-      grounded = await this.resolveAndStore(normalized, key, entry ? 'HEALED' : 'MISS')
+      grounded = await this.resolveAndStore(normalized, key, entry ? 'HEALED' : 'MISS', operationScope)
     }
 
     if (grounded.cacheStatus === 'REFUSED') return this.cacheResult(grounded, key)
-    return this.cacheResult(await this.executeOnce(grounded, normalized), key)
+    if (!singleMatch(nodeView(grounded.node, { maxDepth: 0, maxNodes: 1 }), normalized.match ?? normalized)) {
+      return this.cacheResult(refused(normalized, grounded.matchInternal, 'match constraints failed'), key)
+    }
+    const report = this.cacheResult(await this.executeOnce(grounded, normalized), key)
+    return attachLocator(report, parentLocator
+      ? { kind: 'scoped', target: normalized.target, options: locatorOptions(normalized), parent: parentLocator }
+      : { kind: 'root', target: normalized.target, options: locatorOptions(normalized) })
   }
 
   cacheResult(result, key) {
@@ -137,8 +306,8 @@ export class GuiCache {
     console.error(`[cache]   path: ${result.cachePath}`)
   }
 
-  async tryCachedEntry(entry, spec) {
-    const match = resolveDescriptor(this.scope, entry.descriptor, this.resolveOptions(spec, { cached: true }))
+  async tryCachedEntry(entry, spec, scope = this.scope) {
+    const match = resolveDescriptor(scope, entry.descriptor, this.resolveOptions(spec, { cached: true }))
     if (match.status !== 'unique') {
       return refused(spec, match, `cached descriptor resolved as ${match.status}`)
     }
@@ -150,8 +319,8 @@ export class GuiCache {
     return result('HIT', spec, match, entry.descriptor)
   }
 
-  async resolveAndStore(spec, key, cacheStatus) {
-    const match = resolveTarget(this.scope, spec.target, this.resolveOptions(spec))
+  async resolveAndStore(spec, key, cacheStatus, scope = this.scope) {
+    const match = resolveTarget(scope, spec.query ?? spec.target, this.resolveOptions(spec))
     if (match.status !== 'unique') {
       return refused(spec, match, `target resolved as ${match.status}`)
     }
@@ -160,7 +329,10 @@ export class GuiCache {
       return refused(spec, match, 'pre-verification failed')
     }
 
-    const descriptor = nodeDescriptor(match.selectedNode, normalizeTarget(spec.target), this.context.containerBox)
+    const containerBox = scope === this.scope
+      ? this.context.containerBox
+      : safeBoundingBox(scope) ?? this.context.containerBox
+    const descriptor = nodeDescriptor(match.selectedNode, normalizeTarget(spec.query ?? spec.target), containerBox)
     await this.storage.write(key, {
       version: 2,
       target: spec.target,
@@ -209,10 +381,13 @@ export class GuiCache {
 
   resolveOptions(spec, { cached = false } = {}) {
     const highRisk = spec.risk === 'high'
+    const match = spec.match ?? spec
     return {
       threshold: this.threshold,
       maxNodes: this.maxNodes,
       containerBox: this.context.containerBox,
+      role: match.role ?? null,
+      actions: match.actions ?? null,
       minScore: highRisk
         ? (cached ? this.highRiskCachedMinScore : this.highRiskMinScore)
         : this.minScore,
@@ -241,6 +416,84 @@ function attachNode(obj, node, matchInternal = null) {
     })
   }
   return obj
+}
+
+function attachLocator(obj, locator) {
+  Object.defineProperty(obj, 'locator', { value: locator, enumerable: false, configurable: true })
+  return obj
+}
+
+function rootLocator(report) {
+  return report?.locator ?? { kind: 'root', target: report.target, options: {} }
+}
+
+function locatorKey(locator) {
+  if (!locator) return null
+  if (locator.kind === 'root') return `root:${normalizeTarget(locator.target)}:${JSON.stringify(serializableLocatorOptions(locator.options))}`
+  if (locator.kind === 'scoped') return `${locatorKey(locator.parent)}/scoped:${normalizeTarget(locator.target)}:${JSON.stringify(serializableLocatorOptions(locator.options))}`
+  const identity = `${locator.identity?.type}:${JSON.stringify(locator.identity?.value)}`
+  return `${locatorKey(locator.parent)}/collection:${normalizeTarget(locator.id)}:${JSON.stringify(serializableLocatorOptions(locator.options))}:${identity}`
+}
+
+function serializableMatch(options = {}) {
+  const result = {}
+  for (const key of ['role', 'enabled', 'actions', 'minHeight', 'minWidth']) {
+    if (options[key] != null) result[key] = options[key]
+  }
+  return Object.keys(result).length ? result : null
+}
+
+function serializableLocatorOptions(options = {}) {
+  return { query: options.query ? normalizeTarget(options.query) : null, match: serializableMatch(options.match ?? options) }
+}
+
+function safeBoundingBox(node) {
+  try { return node?.boundingBox?.() ?? null } catch { return null }
+}
+
+function locatorOptions(spec) {
+  const { timeoutMs, pollMs, within, action, variables, mouseController, ...options } = spec
+  return options
+}
+
+function collectionLocatorOptions(options) {
+  const { within, identity, limit, require, where, timeoutMs, pollMs, ...structural } = options
+  return { ...structural, where }
+}
+
+function descendants(root, maxNodes) {
+  const found = []
+  const queue = [...safeChildren(root)]
+  while (queue.length && found.length < maxNodes) {
+    const node = queue.shift()
+    found.push(node)
+    queue.push(...safeChildren(node))
+  }
+  return found
+}
+
+function safeChildren(node) {
+  const children = node?.children?.() ?? []
+  if (!Array.isArray(children)) throw new Error('children() did not return an array')
+  return children
+}
+
+function collectionMatch(view, options) {
+  if (!view) return false
+  if (options.role && view.role !== options.role) return false
+  if (options.actions && !options.actions.every((action) => view.actions.includes(action))) return false
+  if (options.minHeight && (!view.box || view.box.bottom - view.box.top < options.minHeight)) return false
+  if (options.minWidth && (!view.box || view.box.right - view.box.left < options.minWidth)) return false
+  return options.where ? Boolean(options.where(view)) : true
+}
+
+function singleMatch(view, options) {
+  if (options.role && view.role !== options.role) return false
+  if (options.enabled != null && view.enabled !== options.enabled) return false
+  if (options.actions && !options.actions.every((action) => view.actions.includes(action))) return false
+  if (typeof options === 'function') return Boolean(options(view))
+  if (typeof options.where === 'function') return Boolean(options.where(view))
+  return true
 }
 
 function normalizeSpec(spec) {

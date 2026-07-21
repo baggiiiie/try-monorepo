@@ -13,12 +13,16 @@
   on stable controls, then live reading; print the report.
 - Agent-authored top-level workflows should use the small public cached API,
   not import raw simulang primitives. Hide unavoidable app-specific traversal,
-  parsing, and physical-input fallbacks in capability modules under
-  `examples/apps/<app>/` so runnable workflow files remain declarative.
+  filtering, and parsing in capability modules under `examples/apps/<app>/`
+  so runnable workflow files remain declarative. Physical-input fallback,
+  polling, stale-node recovery, and tree serialization belong in the generic
+  library.
 - Prefer simulang primitives over reinventing them: `scoredSearch` for
   grounding, node action methods (`activate`/`setValue`/...), `.children()`,
   `App`/`Instance`/`Window` for launch/scope.
-- `observe`/`act` reports expose the live grounded node as a non-enumerable
-  `.node`; read live app data from it instead of re-searching.
+- Treat the non-enumerable `.node` on reports as a compatibility escape hatch.
+  Agent-authored workflows should pass reports back to `act`/`extract`/wait
+  APIs so the library can re-resolve stale nodes, and should interpret only
+  JSON-safe `NodeView` values rather than raw simulang nodes.
 - Returned app data such as email or chat content should be read live by demos/capabilities, not cached by the library.
 - Use `jj` for version-control operations in this repository.
