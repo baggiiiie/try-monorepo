@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createPiGrounder } from '../src/index.mjs'
+import { createLocalPiGrounder, createPiGrounder } from '../src/index.mjs'
 
 test('Pi grounder requests and validates one structured element selection', async () => {
   let context
@@ -58,4 +58,24 @@ test('Pi grounder sends a byte-bounded structural view without live text or desc
 test('Pi grounder rejects a fixed request larger than maxPromptBytes', async () => {
   const grounder = createPiGrounder({ models: { completeSimple: async () => assert.fail('model should not run') }, model: {}, maxPromptBytes: 32 })
   await assert.rejects(() => grounder.ground({ target: 'Search'.repeat(20), candidates: [{ id: 0, view: {} }] }), /maxPromptBytes/)
+})
+
+test('local Pi grounder uses configured model and reasoning defaults', async () => {
+  const calls = []
+  const models = {
+    getModel: (providerId, modelId) => ({ providerId, id: modelId }),
+    completeSimple: async (model, _context, options) => {
+      calls.push({ model, options })
+      return { stopReason: 'toolUse', content: [{ type: 'toolCall', id: 'call-1', name: 'select_element', arguments: { candidateId: 0, confidence: 0.9 } }] }
+    },
+  }
+  const settings = {
+    getDefaultProvider: () => 'openai-codex',
+    getDefaultModel: () => 'gpt-local',
+    getDefaultThinkingLevel: () => 'high',
+  }
+  const grounder = await createLocalPiGrounder({ models, settings })
+  await grounder.ground({ target: 'Search', candidates: [{ id: 0, view: { role: 'button' } }] })
+  assert.deepEqual(calls[0].model, { providerId: 'openai-codex', id: 'gpt-local' })
+  assert.equal(calls[0].options.reasoning, 'high')
 })

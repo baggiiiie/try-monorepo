@@ -41,11 +41,16 @@ export class CuaGuiCache {
     this.groundingMaxCandidates = groundingMaxCandidates
   }
 
-  async snapshot() {
-    const raw = await this.driver.call('get_window_state', { pid: this.pid, window_id: this.windowId, include_screenshot: false, max_elements: this.maxElements, max_depth: this.maxDepth })
+  async snapshot({ includeScreenshot = false } = {}) {
+    const raw = await this.driver.call('get_window_state', { pid: this.pid, window_id: this.windowId, include_screenshot: includeScreenshot, max_elements: this.maxElements, max_depth: this.maxDepth })
     const data = unwrap(raw)
     const source = data.elements ?? data.structuredContent?.elements ?? raw.structuredContent?.elements ?? []
-    return { elements: source.map(normalizeElement), truncated: Boolean(data.truncated || source.length >= this.maxElements) }
+    return {
+      elements: source.map(normalizeElement),
+      truncated: Boolean(data.truncated || source.length >= this.maxElements),
+      screenshotWidth: Number(data.screenshot_width ?? 0) || null,
+      screenshotHeight: Number(data.screenshot_height ?? 0) || null,
+    }
   }
 
   key(concept, options = {}) {
@@ -132,10 +137,10 @@ export class CuaGuiCache {
     }) }
   }
 
-  async resolveReference(ref) {
+  async resolveReference(ref, snapshotOptions) {
     if (typeof ref === 'string') ref = await this.observe(ref)
     if (!ref?.success && !locatorOf(ref)) return ref ?? { success: false, message: 'invalid reference' }
-    const snap = await this.snapshot()
+    const snap = await this.snapshot(snapshotOptions)
     const result = resolveLocator(locatorOf(ref), snap, this)
     return result.success ? { ...result, snapshot: snap } : result
   }
@@ -143,13 +148,17 @@ export class CuaGuiCache {
   async act(target, options = {}) {
     if (typeof options === 'string') options = { action: options }
     const ref = typeof target === 'string' ? await this.observe(target, options) : target
-    const fresh = await this.resolveReference(ref)
+    const pixelAddressing = options.addressing === 'pixel'
+    const fresh = await this.resolveReference(ref, { includeScreenshot: pixelAddressing })
     if (!fresh.success) return { success: false, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', message: fresh.message }
     const action = options.action ?? 'click'
     const tool = action === 'setValue' ? 'set_value' : action === 'typeText' ? 'type_text' : action === 'press' ? 'click' : action
     if (!['click', 'set_value', 'type_text'].includes(tool)) return { success: false, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', message: `unsupported CUA action: ${action}` }
     const e = fresh.element
-    const input = { pid: this.pid, window_id: this.windowId, ...(e.element_token ? { element_token: e.element_token } : { element_index: e.element_index }) }
+    if (pixelAddressing && tool !== 'click') return { success: false, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', message: 'pixel addressing is supported only for click/press actions' }
+    const point = pixelAddressing ? screenshotPoint(e.frame, this.window, fresh.snapshot) : null
+    if (pixelAddressing && !point) return { success: false, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', message: 'pixel addressing requires an element frame and capturable window screenshot' }
+    const input = { pid: this.pid, window_id: this.windowId, ...(point ?? (e.element_token ? { element_token: e.element_token } : { element_index: e.element_index })) }
     if (tool === 'click') Object.assign(input, { action: options.pressAction ?? 'press', delivery_mode: options.deliveryMode ?? 'background' })
     if (tool === 'set_value') input.value = String(options.value ?? '')
     if (tool === 'type_text') Object.assign(input, { text: String(options.text ?? options.value ?? ''), delivery_mode: options.deliveryMode ?? 'background' })
@@ -254,6 +263,14 @@ function fingerprint(value) {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 function bounds(w) { const b = w?.bounds ?? w?.frame; if (!b) return null; return { x: b.x ?? b.left ?? 0, y: b.y ?? b.top ?? 0, w: b.w ?? b.width ?? ((b.right ?? 0) - (b.left ?? 0)), h: b.h ?? b.height ?? ((b.bottom ?? 0) - (b.top ?? 0)) } }
+function screenshotPoint(frame, window, snapshot) {
+  const windowBounds = bounds(window)
+  if (!frame || !windowBounds || !snapshot.screenshotWidth || !snapshot.screenshotHeight || windowBounds.w <= 0 || windowBounds.h <= 0) return null
+  return {
+    x: ((frame.x + frame.w / 2 - windowBounds.x) * snapshot.screenshotWidth) / windowBounds.w,
+    y: ((frame.y + frame.h / 2 - windowBounds.y) * snapshot.screenshotHeight) / windowBounds.h,
+  }
+}
 function area(b) { return b ? b.w * b.h : 0 }
 function visible(w) { return w.visible !== false && w.is_visible !== false && w.on_screen !== false && w.is_on_screen !== false && !w.minimized }
 function norm(s) { return String(s ?? '').trim().toLowerCase() }

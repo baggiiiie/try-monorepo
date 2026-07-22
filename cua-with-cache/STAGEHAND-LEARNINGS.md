@@ -12,7 +12,10 @@ grounding, actions, extraction, deterministic replay, and healing.
   grounding call.
 - `extract()` reads live page data into a caller-provided schema.
 - `agent()` plans multi-step workflows from a high-level task.
-- The action cache stores resolved operations and replays them without an LLM.
+- A resolved action is structured replay data—selector, description, method,
+  and arguments—not generated Playwright source code.
+- The local action cache stores those resolved actions across runs and replays
+  them without an LLM when `cacheDir` is configured.
 - The agent cache records successful trajectories and deterministically replays
   navigation, actions, scrolling, waits, and form input.
 - On an action-cache miss, Stagehand invokes its configured inference client
@@ -27,24 +30,23 @@ as current page content; that data must be extracted live.
 
 ## Implications for this project
 
-Our cache stores individual Simulang or CUA element descriptors. Like
-Stagehand's action cache, hits replay without a model and misses can use an
-in-process inference client. The public API now includes scoped observation,
-collections, bounded live extraction, and generic waits/change detection.
-Whole-program workflow caching and a high-level planning agent are not
-implemented; Outlook-specific meaning remains in capability modules under
-`examples/apps/outlook/`.
+Our current cache stores individual Simulang or CUA element descriptors, which
+is one level below Stagehand's action artifact. We should compile a Pi-grounded
+CUA choice into `{ target, method, arguments, addressing, deliveryMode }`, then
+cache and replay that structured action. Simulang remains available, but the
+first complete path will focus on CUA.
 
 Remaining directions:
 
-1. **Cache generated workflows.** Let an agent write a short program against
-   that API, validate a successful run, then replay the program without the
-   agent.
-2. **Broaden durable native-GUI identity carefully.** Preserve replay safety
+1. **Compile and cache CUA actions.** Resolve semantic instructions with Pi,
+   validate the target and method, and persist a replayable action artifact.
+2. **Cache workflow replay steps.** A successful multi-step run should bypass
+   planning on later runs while healing only stale steps.
+3. **Broaden durable native-GUI identity carefully.** Preserve replay safety
    without leaking dynamic content or relying on ephemeral element handles.
-3. **Improve native snapshots.** Add cycle-safe, window-rooted traversal and a
-   vision fallback for custom-drawn controls.
-4. **Never cache live app content.** Cache how to reach and read email data,
+4. **Ground from AX plus screenshots.** Add cycle-safe, window-rooted traversal
+   and vision fallback for missing or custom-drawn controls.
+5. **Never cache live app content.** Cache how to reach and read email data,
    but read sender, subject, body, and state on every run.
 
 The target top-level workflow should remain declarative:
@@ -62,9 +64,8 @@ for (const message of messages) {
 }
 ```
 
-The Outlook meaning belongs in this generated workflow, not in `src/`. The
-generic cache layer should make the workflow short enough that a repair agent
-can safely generate and update it.
+The Outlook meaning belongs in concise instructions, schemas, and workflow
+ordering—not in `src/` and not in a family of backend-specific adapters.
 
 Unlike an LLM-backed schema extractor, this project's `extract` only serializes
 a bounded `NodeView` and invokes explicit projection and validation callbacks.

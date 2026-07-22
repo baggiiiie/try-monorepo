@@ -1,9 +1,39 @@
 # Target Architecture
 
-The final product is a Stagehand-style cached automation layer for native GUIs.
-Callers write short workflows against a small, app-agnostic API. Cached actions
-replay deterministically; a cache miss or stale target invokes a configured
-grounding model inside the library and stores the validated replacement.
+The product is a Stagehand-style compiler and cache for native GUI actions.
+Callers provide concise semantic actions and live extraction schemas. On a
+miss, Pi resolves an action against the current GUI; the library validates and
+condenses that result into structured replay data. On a hit, the action replays
+without a model turn.
+
+Current development focuses on CUA Driver. Simulang remains in the repository,
+but the Outlook workflow should not be duplicated across backend-specific
+capability files.
+
+## Compilation boundary
+
+The model does not generate source code. It selects one offered target and a
+supported method. The library owns conversion into a durable action:
+
+```js
+{
+  instruction: 'open the first unread email',
+  target: {
+    role: 'AXCell',
+    labelTokens: ['unread'],
+    ancestorRoles: ['AXTable'],
+    relativeFrame: { x: 0.18, y: 0.24, w: 0.16, h: 0.05 },
+  },
+  method: 'click',
+  arguments: [],
+  addressing: 'pixel',
+  deliveryMode: 'foreground',
+}
+```
+
+This is equivalent to Stagehand's replayable
+`Action { selector, description, method, arguments }`: structured intermediate
+data interpreted by a generic dispatcher, not generated JavaScript.
 
 ## Ownership boundaries
 
@@ -16,27 +46,26 @@ The library owns reusable automation mechanics:
 - Scoped observation and extraction.
 - Actions with accessibility and physical-input strategies.
 - Generic waits, change detection, retries, and validation.
-- Descriptor and operation caching.
-- Deterministic operation replay and granular self-healing.
+- Compiling model-grounded choices into validated actions.
+- Action and workflow-step caching.
+- Deterministic replay and granular self-healing.
 
-Its public interface remains small:
+Its target public interface remains small:
 
 ```js
 openApp(...)
-gui.observe(...)
-gui.observeMany(...)
-gui.act(...)
-gui.extract(...)
-gui.waitFor(...)
-gui.waitForChange(...)
+gui.act('semantic instruction')
+gui.extract('semantic instruction', schema)
+gui.run('workflow key', input)
 ```
 
 The library contains no Outlook, Teams, or other application-specific concepts.
 
 ### App-specific workflows
 
-App-specific logic lives in short agent-authored workflows composed from the
-generic API. For Outlook email triage, the workflow defines that it must:
+Application or site semantics still exist, just as they do in Stagehand.
+Prefer short instructions, schemas, and validation over traversal helpers. For
+Outlook email triage, the workflow defines that it must:
 
 - Open Inbox.
 - Identify message rows rather than group headings.
@@ -45,28 +74,12 @@ generic API. For Outlook email triage, the workflow defines that it must:
 - Read each current sender, subject, and body.
 - Apply the requested triage rules.
 
-The workflow remains ordinary caller code. The current library caches each
-grounded UI concept independently; it does not yet serialize or replay a whole
-program. App-specific exceptions stay in capability modules under `examples/`;
-they never become APIs such as `readOutlookEmails()` or
-`waitForOutlookReadingPane()` in `src/`.
+These semantics belong in one concise workflow definition. CUA traversal,
+physical input, coordinate conversion, waiting, and stale-target repair belong
+in the generic library, not Outlook-specific helpers.
 
 ```js
-await gui.act('Inbox', 'activate')
-
-const messages = await gui.observeMany('first three email messages', {
-  within: 'Message list',
-})
-
-for (const message of messages) {
-  const before = await gui.extract('Reading pane', { project: parseEmail })
-  await gui.act(message, 'activate')
-  yield await gui.waitForChange('Reading pane', {
-    from: before,
-    project: parseEmail,
-    validate: isValidEmail,
-  })
-}
+const result = await gui.run('triage-inbox', { count: 3 })
 ```
 
 ### Live application data
@@ -75,25 +88,25 @@ Dynamic results are always read live. The cache may remember how to locate and
 read an email, but it never stores the email's sender, subject, body, unread
 state, or current triage result as reusable grounding data.
 
-Extraction is deliberately not semantic inference: the library creates a
-bounded JSON-safe `NodeView`, then runs deterministic caller-provided projection
-and validation callbacks. Application meaning remains in capability code.
+The current implementation extracts through deterministic `NodeView`
+projections. The target API adds schema-constrained semantic extraction while
+still reading current application data on every run.
 
 ## Runtime behavior
 
 ```text
-run workflow code
-  → resolve each operation from its cached descriptor
-  → replay deterministic actions
-  → read current app data live
-  → validate the result
+semantic action
+  → look up compiled action
+  → HIT: resolve durable target and dispatch without Pi
+  → MISS/STALE: snapshot current GUI, ask Pi to select a bounded target/method
+  → validate and compile the action
+  → dispatch once, verify, and cache only after a safe outcome
 ```
 
-If a target descriptor drifts, the library grounds only that operation again.
-Without a grounder it uses backend-local deterministic scoring. With a Pi
-grounder it sends bounded structural candidates and sanitized durable tokens,
-then validates one structured `select_element` result and updates the cache.
-The model selects a target only; the caller's action is immutable. Workflow
+The CUA grounding snapshot should combine AX structure with a screenshot. AX is
+preferred for durable identity and action dispatch; screenshot grounding is
+needed when an app exposes actionless controls or a malformed/incomplete AX
+tree. Pi may choose only offered candidates and supported methods. Workflow
 runners never launch external coding agents.
 
 Model grounding is fail-closed: unknown candidates, low confidence, generic or
@@ -101,10 +114,17 @@ missing replay identity, changed nodes, failed preconditions, and provider
 errors do not dispatch an action. Once dispatch may have occurred, neither
 backend retries or heals that action.
 
-The cache-hit path therefore uses no model inference. App-specific knowledge
-still exists in concise workflow/capability code rather than a large adapter or
-application logic inside the generic library.
+The cache-hit path uses no model inference. Application knowledge remains in
+concise instructions, extraction schemas, and workflow ordering rather than a
+large adapter or application logic inside `src/`.
 
-The model integration uses `@earendil-works/pi-ai` directly for provider/model
-configuration and a single structured `select_element` tool call. It does not
-use Pi's TUI, coding agent, or an open-ended autonomous tool loop.
+Pi's local model/auth/settings configuration supplies inference. It does not
+use Pi's TUI or launch a coding agent.
+
+## Current implementation gap
+
+Today the library caches individual element descriptors and Pi selects only
+from structural AX candidates. It does not yet compile complete CUA actions,
+use screenshot grounding, expose schema-based semantic extraction, or cache and
+replay a workflow-step sequence. The existing Outlook capability is therefore
+a prototype, not evidence that the target architecture is complete.

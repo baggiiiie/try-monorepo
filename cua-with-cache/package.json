@@ -13,7 +13,8 @@
     "check:outlook:cua": "node examples/outlook-cua-check.mjs"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "^0.81.1",
+    "@earendil-works/pi-ai": "0.81.1",
+    "@earendil-works/pi-coding-agent": "0.81.1",
     "@simular-ai/simulang-js": "6.0.1"
   }
 }

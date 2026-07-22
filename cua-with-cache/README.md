@@ -1,14 +1,22 @@
 # gui-cache
 
-A reusable GUI cache layer for native accessibility automation, with Simulang
-and CUA Driver backends. It is to native GUI grounding what
-[Stagehand](https://github.com/browserbase/stagehand) is to Playwright: you
-`observe` a UI concept once to ground + cache it, then `act` on it
-deterministically, with automatic self-healing when the UI drifts.
+A prototype GUI action compiler and cache for native automation, with Simulang
+and CUA Driver backends. The target is Stagehand-style behavior: Pi resolves a
+semantic instruction once, the library condenses it into a structured action,
+and later runs replay that action deterministically without a model call.
+
+Current development focuses on making the CUA path complete. Simulang remains
+available but is not being removed or given a duplicate Outlook workflow.
 
 - `src/` is the library: cache keys, descriptor matching, storage, and the
   `observe`/`act` replay + self-heal engine. It is app-agnostic.
 - `examples/outlook-check.mjs` is a cache-backed Outlook email-triage demo.
+
+> **Current status:** the library currently caches element descriptors, not
+> complete actions or workflow replay steps. Pi can select structural AX
+> candidates, but cannot yet ground from CUA screenshots. The Outlook demo is a
+> prototype and still encounters CUA's intermittent recursive menu-only AX
+> snapshots. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the intended design.
 
 ## API
 
@@ -129,27 +137,32 @@ window titles, CUA indices, or CUA element tokens. It may select only one
 offered candidate and cannot change the caller's action. Low confidence,
 unknown IDs, generic identities, provider errors, and target drift are refused.
 
-Configure model-backed grounding explicitly:
+By default, the Outlook demos load Pi's local defaults and credentials from
+`~/.pi/agent/{settings,models,auth}.json`. Set `GUI_CACHE_MODEL=0` to run with
+deterministic grounding only, or override the local selection with
+`GUI_CACHE_MODEL_PROVIDER` and `GUI_CACHE_MODEL_ID`.
+
+Library callers can use the same local configuration:
 
 ```js
-import { createPiGrounder, openApp } from 'gui-cache'
+import { createLocalPiGrounder, openApp } from 'gui-cache'
 
 const gui = openApp('outlook', {
-  grounder: createPiGrounder({ providerId: 'openai', modelId: 'gpt-5-mini' }),
+  grounder: await createLocalPiGrounder(),
 })
 ```
 
-The Outlook checks also enable it when `GUI_CACHE_MODEL_ID` is set; provider
-defaults to `openai` and can be changed with `GUI_CACHE_MODEL_PROVIDER`.
-Authentication is handled by `@earendil-works/pi-ai` through the provider's
-normal environment variables, such as `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`.
+`createPiGrounder(...)` remains available for explicit application-owned model
+runtimes or environment-based provider authentication.
 
-The alternate CUA command uses the host-native `cua-driver` CLI and background
-AX actions. Unlike the Simulang backend (live accessibility nodes and
-`scoredSearch`), the CUA backend normalizes each CLI snapshot and re-resolves a
-durable descriptor to a fresh ephemeral element token/index before every
-action. Both cache only grounding and read returned data live. See
-[`CUA-LEARNINGS.md`](CUA-LEARNINGS.md) for the current Outlook recursive AX-tree
-and unavailable screenshot limitation. The command requires a running Cua
-Driver daemon with macOS Accessibility permission; screenshot fallback also
-requires capturable Screen Recording permission.
+The alternate CUA command uses the host-native `cua-driver` CLI. Unlike the
+Simulang backend (live accessibility nodes and `scoredSearch`), the CUA backend
+normalizes each CLI snapshot and re-resolves a durable descriptor to a fresh
+ephemeral element token/index before every action. Outlook message rows expose
+no AX action, so this example explicitly converts their fresh AX frames to
+screenshot coordinates and uses CUA's foreground pixel delivery; CUA briefly
+fronts Outlook, clicks once, and restores the prior app. Both backends cache
+only grounding and read returned data live. See
+[`CUA-LEARNINGS.md`](CUA-LEARNINGS.md) for the intermittent recursive Outlook
+AX-tree limitation. The command requires a running Cua Driver daemon with macOS
+Accessibility and Screen Recording permission.

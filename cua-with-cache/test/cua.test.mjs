@@ -115,19 +115,32 @@ test('CUA action is requested at most once even when the driver errors', async (
   assert.equal(h.calls.filter((x) => x.tool === 'click').length, 1)
 })
 
+test('CUA pixel addressing converts a fresh AX frame to screenshot coordinates', async (t) => {
+  const h = await harness(t)
+  const observed = await h.gui.observe('Send')
+  const action = await h.gui.act(observed, { action: 'press', addressing: 'pixel', deliveryMode: 'background' })
+  assert.equal(action.success, true)
+  const click = h.calls.at(-1)
+  assert.equal(click.tool, 'click')
+  assert.equal(click.input.element_token, undefined)
+  assert.equal(click.input.element_index, undefined)
+  assert.equal(click.input.x, 25)
+  assert.equal(click.input.y, 7.5)
+})
+
 async function harness(t, initial = {}) {
   const cacheDir = await mkdtemp(join(tmpdir(), 'cua-cache-test-'))
   t.after(() => rm(cacheDir, { recursive: true, force: true }))
   const state = { label: initial.label ?? 'Send', value: initial.value ?? '', token: 'fresh-1', rowToken: 'row-1', calls: [], failAction: false }
   const driver = { call: async (tool, input) => {
     state.calls.push({ tool, input })
-    if (tool === 'get_window_state') return { elements: [
+    if (tool === 'get_window_state') return { screenshot_width: input.include_screenshot ? 100 : null, screenshot_height: input.include_screenshot ? 50 : null, elements: [
       { element_index: 0, element_token: state.token, role: initial.role ?? 'AXButton', label: state.label, value: state.value, help: initial.help, identifier: initial.identifier, actions: ['AXPress'], frame: { x: 0, y: 0, w: 100, h: 30 } },
       ...(initial.child ? [{ element_index: 1, element_token: state.rowToken, parent_index: 0, role: 'AXRow', label: 'row', actions: ['AXPress'], frame: { x: 0, y: 40, w: 100, h: 30 } }] : []),
     ] }
     if (state.failAction) throw new Error('uncertain failure')
     return { ok: true }
   } }
-  state.gui = new CuaGuiCache({ name: 'Test', driver, pid: 1, window: { window_id: 2, title: initial.windowTitle ?? 'Main' }, cacheDir, minScore: 3, grounder: initial.grounder })
+  state.gui = new CuaGuiCache({ name: 'Test', driver, pid: 1, window: { window_id: 2, title: initial.windowTitle ?? 'Main', bounds: { x: 0, y: 0, width: 200, height: 100 } }, cacheDir, minScore: 3, grounder: initial.grounder })
   return state
 }

@@ -1,10 +1,10 @@
-import { createPiGrounder, openCuaApp } from '../src/index.mjs'
+import { createLocalPiGrounder, openCuaApp } from '../src/index.mjs'
 import { readTopInboxEmailsCua } from './apps/outlook/read-emails-cua.mjs'
 
-const grounder = process.env.GUI_CACHE_MODEL_ID ? createPiGrounder({
-  providerId: process.env.GUI_CACHE_MODEL_PROVIDER ?? 'openai',
+const grounder = process.env.GUI_CACHE_MODEL === '0' ? null : await createLocalPiGrounder({
+  providerId: process.env.GUI_CACHE_MODEL_PROVIDER,
   modelId: process.env.GUI_CACHE_MODEL_ID,
-}) : null
+})
 
 try {
   const gui = await openCuaApp('Outlook', { bundleId: 'com.microsoft.Outlook', windowTitle: 'Inbox', grounder })

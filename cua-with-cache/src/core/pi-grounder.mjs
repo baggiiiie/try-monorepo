@@ -62,6 +62,40 @@ export function createPiGrounder({
   }
 }
 
+export async function createLocalPiGrounder({
+  agentDir,
+  cwd = process.cwd(),
+  providerId,
+  modelId,
+  reasoning,
+  models: suppliedModels,
+  settings: suppliedSettings,
+  ...grounderOptions
+} = {}) {
+  const { ModelRuntime, SettingsManager, getAgentDir } = await import('@earendil-works/pi-coding-agent')
+  const localAgentDir = agentDir ?? getAgentDir()
+  const models = suppliedModels ?? await ModelRuntime.create({
+    authPath: `${localAgentDir}/auth.json`,
+    modelsPath: `${localAgentDir}/models.json`,
+  })
+  const settings = suppliedSettings ?? SettingsManager.create(cwd, localAgentDir)
+  const selectedProvider = providerId ?? settings.getDefaultProvider()
+  const selectedModelId = modelId ?? settings.getDefaultModel()
+  if (!selectedProvider || !selectedModelId) {
+    throw new Error(`Pi local config at ${localAgentDir} must set defaultProvider and defaultModel`)
+  }
+  const model = models.getModel(selectedProvider, selectedModelId)
+  if (!model) throw new Error(`Pi local model not found: ${selectedProvider}/${selectedModelId}`)
+  return createPiGrounder({
+    ...grounderOptions,
+    providerId: selectedProvider,
+    modelId: selectedModelId,
+    models,
+    model,
+    reasoning: reasoning ?? settings.getDefaultThinkingLevel() ?? 'low',
+  })
+}
+
 function compactCandidates(candidates, request, maxBytes) {
   const result = []
   if (Buffer.byteLength(JSON.stringify(request)) > maxBytes) {

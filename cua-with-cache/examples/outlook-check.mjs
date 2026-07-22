@@ -1,11 +1,11 @@
 import { readTopInboxEmails } from './apps/outlook/read-emails.mjs'
-import { createPiGrounder, openApp } from '../src/index.mjs'
+import { createLocalPiGrounder, openApp } from '../src/index.mjs'
 
 const EMAIL_COUNT = 3
-const grounder = process.env.GUI_CACHE_MODEL_ID ? createPiGrounder({
-  providerId: process.env.GUI_CACHE_MODEL_PROVIDER ?? 'openai',
+const grounder = process.env.GUI_CACHE_MODEL === '0' ? null : await createLocalPiGrounder({
+  providerId: process.env.GUI_CACHE_MODEL_PROVIDER,
   modelId: process.env.GUI_CACHE_MODEL_ID,
-}) : null
+})
 
 try {
   const gui = openApp('outlook', {
