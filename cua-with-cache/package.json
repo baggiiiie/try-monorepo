@@ -5,7 +5,7 @@
   "type": "module",
   "exports": "./src/index.mjs",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19.0"
   },
   "scripts": {
     "test": "node --test",
@@ -13,6 +13,7 @@
     "check:outlook:cua": "node examples/outlook-cua-check.mjs"
   },
   "dependencies": {
+    "@earendil-works/pi-ai": "^0.81.1",
     "@simular-ai/simulang-js": "6.0.1"
   }
 }

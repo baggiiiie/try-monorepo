@@ -8,7 +8,7 @@ import { GuiCache, contextMatches } from '../src/core/gui-cache.mjs'
 import { scopeContext } from '../src/core/scope.mjs'
 import { fakeContext, fakeNode } from '../test-support/helpers.mjs'
 
-async function cacheHarness(t, { node = fakeNode({ name: 'Send' }), context = fakeContext() } = {}) {
+async function cacheHarness(t, { node = fakeNode({ name: 'Send' }), context = fakeContext(), grounder = null } = {}) {
   const cacheDir = await mkdtemp(join(tmpdir(), 'gui-cache-engine-'))
   t.after(() => rm(cacheDir, { recursive: true, force: true }))
   const scope = {
@@ -25,9 +25,102 @@ async function cacheHarness(t, { node = fakeNode({ name: 'Send' }), context = fa
     threshold: 0.35,
     maxNodes: 100,
     logCache: false,
+    grounder,
   })
   return { gui, cacheDir, node, scope }
 }
+
+test('a configured grounder resolves a miss once and the cache replays without it', async (t) => {
+  let calls = 0
+  const grounder = { ground: async ({ candidates, reason }) => {
+    calls++
+    assert.equal(reason, 'cache-miss')
+    assert.equal(candidates.some((candidate) => 'node' in candidate), false)
+    return { candidateId: 0, confidence: 0.95 }
+  } }
+  const { gui } = await cacheHarness(t, { grounder })
+
+  assert.equal((await gui.observe('Send')).cacheStatus, 'MISS')
+  assert.equal((await gui.observe('Send')).cacheStatus, 'HIT')
+  assert.equal(calls, 1)
+})
+
+test('a configured grounder heals a stale descriptor and updates its replay identity', async (t) => {
+  const node = fakeNode({ name: 'Send' })
+  const reasons = []
+  const grounder = { ground: async ({ reason }) => {
+    reasons.push(reason)
+    return { candidateId: 0, confidence: 0.95 }
+  } }
+  const { gui } = await cacheHarness(t, { node, grounder })
+  assert.equal((await gui.observe('Send')).cacheStatus, 'MISS')
+
+  node.role = 'textbox'
+  assert.equal((await gui.observe('Send')).cacheStatus, 'HEALED')
+  assert.equal((await gui.observe('Send')).cacheStatus, 'HIT')
+  assert.deepEqual(reasons, ['cache-miss', 'stale-cache'])
+})
+
+test('a failed cached precondition is terminal and never invokes the grounder', async (t) => {
+  let calls = 0
+  const grounder = { ground: async () => ({ candidateId: 0, confidence: (++calls, 0.95) }) }
+  const { gui, node } = await cacheHarness(t, { grounder })
+  await gui.observe('Send')
+
+  const report = await gui.act('Send', { action: 'activate', verify: { pre: { role: 'textbox' } } })
+  assert.equal(report.message, 'pre-verification failed')
+  assert.equal(node.activateCount, 0)
+  assert.equal(calls, 1)
+})
+
+test('model grounding caches a semantic selection by its durable replay identity', async (t) => {
+  let calls = 0
+  const grounder = { ground: async () => ({ candidateId: 0, confidence: 0.95 }) }
+  grounder.ground = async () => ({ candidateId: 0, confidence: (++calls, 0.95) })
+  const { gui } = await cacheHarness(t, { node: fakeNode({ name: 'Search' }), grounder })
+  assert.equal((await gui.observe('Find')).cacheStatus, 'MISS')
+  assert.equal((await gui.observe('Find')).cacheStatus, 'HIT')
+  assert.equal(calls, 1)
+})
+
+test('timed observe does not repeat a failed model turn', async (t) => {
+  let calls = 0
+  const grounder = { ground: async () => { calls++; throw new Error('provider unavailable') } }
+  const { gui } = await cacheHarness(t, { grounder })
+  const report = await gui.observe('Send', { timeoutMs: 50, pollMs: 1 })
+  assert.equal(report.success, false)
+  assert.equal(calls, 1)
+})
+
+test('model grounding refuses when the selected node changes during inference', async (t) => {
+  const node = fakeNode({ name: 'Search' })
+  const grounder = { ground: async () => {
+    node.name = 'Cancel'
+    return { candidateId: 0, confidence: 0.95 }
+  } }
+  const { gui } = await cacheHarness(t, { node, grounder })
+  const report = await gui.observe('Find')
+  assert.equal(report.success, false)
+  assert.match(report.message, /stable durable replay identity/)
+})
+
+test('model grounding refuses generic identity and drift during cache write', async (t) => {
+  const grounder = { ground: async () => ({ candidateId: 0, confidence: 0.95 }) }
+  const generic = await cacheHarness(t, { node: fakeNode({ name: 'Button' }), grounder })
+  assert.match((await generic.gui.observe('Control')).message, /durable replay identity/)
+
+  const node = fakeNode({ name: 'Search' })
+  const { gui } = await cacheHarness(t, { node, grounder })
+  const write = gui.storage.write.bind(gui.storage)
+  gui.storage.write = async (...args) => {
+    await write(...args)
+    node.name = 'Cancel'
+  }
+  const report = await gui.act('Find', { action: 'activate' })
+  assert.equal(report.success, false)
+  assert.match(report.message, /changed before dispatch/)
+  assert.equal(node.activateCount, 0)
+})
 
 test('a failed post-verification never repeats an action', async (t) => {
   const { gui, node } = await cacheHarness(t)

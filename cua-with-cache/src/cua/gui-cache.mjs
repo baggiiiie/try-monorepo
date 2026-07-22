@@ -1,4 +1,6 @@
 import { cacheKey } from '../core/key.mjs'
+import { durableIdentityTokens, sanitizedTokens } from '../core/descriptor.mjs'
+import { selectModelCandidate } from '../core/pi-grounder.mjs'
 import { JsonCacheStorage } from '../core/storage.mjs'
 import { CuaDriverCli } from './driver.mjs'
 
@@ -23,7 +25,7 @@ export function selectCuaWindow(windows, titleHint = '') {
 }
 
 export class CuaGuiCache {
-  constructor({ name, bundleId, driver, pid, window, cacheDir, cacheMode = 'auto', minScore = 3, minScoreGap = .75, maxElements = 4000, maxDepth = 25 }) {
+  constructor({ name, bundleId, driver, pid, window, cacheDir, cacheMode = 'auto', minScore = 3, minScoreGap = .75, maxElements = 4000, maxDepth = 25, grounder = null, groundingMaxCandidates = 200 }) {
     this.name = name
     this.bundleId = bundleId ?? null
     this.driver = driver
@@ -35,6 +37,8 @@ export class CuaGuiCache {
     this.minScoreGap = minScoreGap
     this.maxElements = maxElements
     this.maxDepth = maxDepth
+    this.grounder = grounder
+    this.groundingMaxCandidates = groundingMaxCandidates
   }
 
   async snapshot() {
@@ -55,15 +59,59 @@ export class CuaGuiCache {
     const parent = options.within ? resolveLocator(locatorOf(options.within), snap, this) : null
     if (options.within && !parent?.success) return report(false, concept, key, 'REFUSED', { status: 'parent-miss' }, null, parent?.message)
     const pool = parent ? snap.elements.filter((e) => descendant(e, parent.element, snap.elements)) : snap.elements
-    let match = cached ? resolve(pool, cached.descriptor, options, this) : null
+    let match = cached ? resolve(pool, cached.descriptor, { ...options, requireIdentity: true }, this) : null
     let cacheStatus = cached && match?.status === 'unique' ? 'HIT' : cached ? 'HEALED' : 'MISS'
-    if (!match || match.status !== 'unique') match = resolve(pool, seedDescriptor(concept, options), options, this)
+    if (!match || match.status !== 'unique') {
+      try {
+        match = this.grounder
+          ? await this.resolveWithGrounder(concept, options, cacheStatus, pool, snap)
+          : resolve(pool, seedDescriptor(concept, options), { ...options, requireIdentity: true }, this)
+      } catch (error) {
+        return report(false, concept, key, 'REFUSED', { status: 'model-error' }, null, `model grounding failed: ${error.message}`)
+      }
+    }
     if (match.status !== 'unique') return report(false, concept, key, cacheStatus === 'MISS' ? 'REFUSED' : cacheStatus, match, null, `grounding ${match.status}`)
-    const descriptor = descriptorFor(match.element, concept, options, snap.elements)
-    await this.storage.write(key, { version: 1, descriptor })
+    const descriptor = cacheStatus === 'HIT' ? cached.descriptor : {
+      ...descriptorFor(match.element, concept, options, snap.elements),
+      ...(this.grounder ? { groundedBy: 'model' } : {}),
+    }
+    if (this.grounder && cacheStatus !== 'HIT' && !descriptorIdentity(descriptor)) {
+      return report(false, concept, key, 'REFUSED', match, null, 'model-selected target has no durable replay identity')
+    }
+    if (cacheStatus !== 'HIT') await this.storage.write(key, { version: 1, descriptor })
     const out = report(true, concept, key, cacheStatus, match, descriptor)
     attachLocator(out, { kind: parent ? 'scoped' : 'root', descriptor, query: options.query ?? concept, match: serializableMatch(options), parent: locatorOf(options.within) ?? null, scopeKey: key })
     return out
+  }
+
+  async resolveWithGrounder(concept, options, cacheStatus, pool, snap) {
+    const seed = seedDescriptor(concept, options)
+    const ranked = pool.filter((element) => structural(element, options))
+      .map((element) => ({ element, score: score(element, seed, snap.elements) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, this.groundingMaxCandidates)
+    const candidates = ranked.map(({ element }, id) => ({
+      id,
+      element,
+      view: { role: element.role, actions: element.actions, frame: element.frame },
+      descriptor: descriptorFor(element, concept, options, snap.elements),
+    }))
+    const choice = await selectModelCandidate(this.grounder, {
+      target: concept,
+      action: options.action ?? 'observe',
+      app: this.bundleId ?? this.name,
+      scope: 'window',
+      reason: cacheStatus === 'MISS' ? 'cache-miss' : 'stale-cache',
+    }, candidates)
+    if (!choice) return { status: 'miss', candidateCount: 0, score: 0, scoreGap: 0 }
+    return {
+      status: 'unique',
+      candidateCount: candidates.length,
+      score: ranked[choice.selected.id]?.score ?? 0,
+      scoreGap: null,
+      modelConfidence: choice.proposal.confidence,
+      element: choice.selected.element,
+    }
   }
 
   async observeMany(concept, options = {}) {
@@ -139,15 +187,22 @@ function normalizeElement(e) {
   const view = { element_index: e.element_index, ...(e.element_token ? { element_token: e.element_token } : {}), role: String(e.role ?? ''), label: String(e.label ?? e.name ?? ''), value: e.value == null ? null : String(e.value), identifier: String(e.identifier ?? ''), help: String(e.help ?? ''), actions: [...(e.actions ?? [])].map(String).sort(), frame, parent_index: e.parent_index ?? null, depth: e.depth ?? null }
   return JSON.parse(JSON.stringify(view))
 }
-function descriptorFor(e, concept, options, all) { return { concept: String(concept), query: options.query ?? null, role: e.role, labelTokens: tokens(e.label), identifierTokens: tokens(e.identifier), helpTokens: tokens(e.help), actions: e.actions, ancestorRoles: ancestors(e, all).map((x) => x.role).filter(Boolean).slice(-4), relativeFrame: relative(e.frame, bounds(options.within?.window ?? null) ?? boundsFromElements(all)) } }
+function descriptorFor(e, concept, options, all) { const query = options.query ?? concept; return { concept: String(concept), query: options.query ?? null, role: e.role, labelTokens: sanitizedTokens(e.label, query), identifierTokens: sanitizedTokens(e.identifier, query), helpTokens: sanitizedTokens(e.help, query), actions: e.actions, ancestorRoles: ancestors(e, all).map((x) => x.role).filter(Boolean).slice(-4), relativeFrame: relative(e.frame, bounds(options.within?.window ?? null) ?? boundsFromElements(all)) } }
 function seedDescriptor(concept, options) { return { concept, query: options.query, role: options.role, labelTokens: tokens(options.query ?? concept), actions: options.actions ?? [] } }
 function resolve(elements, d, options, gui) {
   const scored = elements.filter((e) => structural(e, options)).map((element) => ({ element, score: score(element, d, elements) })).sort((a, b) => b.score - a.score)
   const best = scored[0], gap = best ? best.score - (scored[1]?.score ?? 0) : 0
+  if (best && options.requireIdentity && !identityMatches(best.element, d)) return { status: 'miss', candidateCount: scored.length, score: best.score, scoreGap: gap }
   if (!best || best.score < gui.minScore) return { status: 'miss', candidateCount: scored.length, score: best?.score ?? 0, scoreGap: gap }
   if (scored[1] && gap < gui.minScoreGap) return { status: 'ambiguous', candidateCount: scored.length, score: best.score, scoreGap: gap }
   return { status: 'unique', candidateCount: scored.length, score: best.score, scoreGap: gap, element: best.element }
 }
+function identityMatches(e, d) {
+  const expected = durableIdentityTokens([...(d.labelTokens ?? []), ...(d.identifierTokens ?? []), ...(d.helpTokens ?? [])])
+  const actual = new Set([...tokens(e.label), ...tokens(e.identifier), ...tokens(e.help)])
+  return expected.length > 0 && expected.every((token) => actual.has(token))
+}
+function descriptorIdentity(d) { return durableIdentityTokens([...(d.labelTokens ?? []), ...(d.identifierTokens ?? []), ...(d.helpTokens ?? [])]).length > 0 }
 function score(e, d, all) { let s = e.role && e.role === d.role ? 3 : 0; s += overlap(tokens(e.label), d.labelTokens) * 4; s += overlap(tokens(e.identifier), d.identifierTokens) * 3; s += overlap(tokens(e.help), d.helpTokens) * 2; s += overlap(e.actions, d.actions); s += overlap(ancestors(e, all).map((x) => x.role), d.ancestorRoles); if (d.relativeFrame && e.frame) s += Math.max(0, 1 - distance(relative(e.frame, boundsFromElements(all)), d.relativeFrame)); return s }
 function structural(e, o = {}) { return (!o.role || e.role === o.role) && (!o.actions || o.actions.every((a) => e.actions.includes(a))) && (!o.frame || Object.entries(o.frame).every(([k, v]) => e.frame && Number(e.frame[k]) === Number(v))) }
 function ancestors(e, all) { const out = []; let p = e.parent_index; const map = new Map(all.map((x) => [x.element_index, x])); while (p != null && map.has(p) && out.length < 20) { const x = map.get(p); out.unshift(x); p = x.parent_index } return out }
@@ -177,7 +232,7 @@ function resolveLocator(locator, snap, gui) {
     const matches = candidates.filter((e, i) => String(locator.options.identity(subtree(e, snap.elements), i) ?? '').trim() === locator.identity)
     return matches.length === 1 ? { success: true, element: matches[0] } : { success: false, message: `collection identity matched ${matches.length} items; exactly one required` }
   }
-  const match = resolve(pool, locator.descriptor, locator.match, gui)
+  const match = resolve(pool, locator.descriptor, { ...locator.match, requireIdentity: true }, gui)
   return match.status === 'unique' ? { success: true, element: match.element } : { success: false, message: `fresh resolution ${match.status}` }
 }
 function subtree(root, all, maxNodes = 500, maxDepth = 20) {

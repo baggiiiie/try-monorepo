@@ -1,8 +1,13 @@
-import { openCuaApp } from '../src/index.mjs'
+import { createPiGrounder, openCuaApp } from '../src/index.mjs'
 import { readTopInboxEmailsCua } from './apps/outlook/read-emails-cua.mjs'
 
+const grounder = process.env.GUI_CACHE_MODEL_ID ? createPiGrounder({
+  providerId: process.env.GUI_CACHE_MODEL_PROVIDER ?? 'openai',
+  modelId: process.env.GUI_CACHE_MODEL_ID,
+}) : null
+
 try {
-  const gui = await openCuaApp('Outlook', { bundleId: 'com.microsoft.Outlook', windowTitle: 'Inbox' })
+  const gui = await openCuaApp('Outlook', { bundleId: 'com.microsoft.Outlook', windowTitle: 'Inbox', grounder })
   const triage = await readTopInboxEmailsCua(gui, { count: 3 })
   console.log(JSON.stringify({ success: triage.success, driver: 'cua-driver', triage }, null, 2))
   if (!triage.success) process.exitCode = 1

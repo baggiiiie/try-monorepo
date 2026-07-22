@@ -1,13 +1,18 @@
 import { readTopInboxEmails } from './apps/outlook/read-emails.mjs'
-import { openApp } from '../src/index.mjs'
+import { createPiGrounder, openApp } from '../src/index.mjs'
 
 const EMAIL_COUNT = 3
+const grounder = process.env.GUI_CACHE_MODEL_ID ? createPiGrounder({
+  providerId: process.env.GUI_CACHE_MODEL_PROVIDER ?? 'openai',
+  modelId: process.env.GUI_CACHE_MODEL_ID,
+}) : null
 
 try {
   const gui = openApp('outlook', {
     app: 'Microsoft Outlook',
     appCandidates: ['Microsoft Outlook', 'Outlook'],
     maxNodes: 1000,
+    grounder,
   })
   const triage = await readTopInboxEmails(gui, { count: EMAIL_COUNT })
   const report = {

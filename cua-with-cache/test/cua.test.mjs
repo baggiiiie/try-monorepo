@@ -43,6 +43,50 @@ test('CUA cache hit/heal and actions always use a fresh token', async (t) => {
   assert.equal(h.calls.at(-1).input.element_token, 'fresh-3')
 })
 
+test('CUA uses a configured grounder on a miss and replays the cached descriptor', async (t) => {
+  let calls = 0
+  const grounder = { ground: async ({ candidates, reason }) => {
+    calls++
+    assert.equal(reason, 'cache-miss')
+    assert.equal(candidates.some((candidate) => 'element' in candidate), false)
+    return { candidateId: 0, confidence: 0.9 }
+  } }
+  const h = await harness(t, { grounder })
+  assert.equal((await h.gui.observe('Send')).cacheStatus, 'MISS')
+  assert.equal((await h.gui.observe('Send')).cacheStatus, 'HIT')
+  assert.equal(calls, 1)
+})
+
+test('CUA gives a grounder only structural and sanitized candidate data', async (t) => {
+  const grounder = { ground: async ({ candidates, scope }) => {
+    const payload = JSON.stringify({ candidates, scope })
+    for (const secret of ['secretSender', 'secretBody', 'secretSubject', 'secretIdentifier', 'secretWindow']) {
+      assert.equal(payload.includes(secret), false)
+    }
+    return { candidateId: 0, confidence: 0.9 }
+  } }
+  const h = await harness(t, { grounder, label: 'Search secretSender', value: 'secretBody', help: 'secretSubject', identifier: 'secretIdentifier', windowTitle: 'secretWindow' })
+  assert.equal((await h.gui.observe('Search')).success, true)
+})
+
+test('CUA refuses a same-role cached control with no durable identity overlap', async (t) => {
+  const h = await harness(t)
+  await h.gui.observe('Send')
+  h.label = 'Cancel'
+
+  const report = await h.gui.observe('Send')
+  assert.equal(report.success, false)
+  assert.equal(report.cacheStatus, 'HEALED')
+})
+
+test('CUA refuses a model selection identified only as a generic control', async (t) => {
+  const grounder = { ground: async () => ({ candidateId: 0, confidence: 0.9 }) }
+  const h = await harness(t, { grounder, label: 'Button' })
+  const report = await h.gui.observe('Control')
+  assert.equal(report.success, false)
+  assert.match(report.message, /durable replay identity/)
+})
+
 test('CUA collection items re-resolve by position from a fresh snapshot', async (t) => {
   const h = await harness(t, { label: 'List', role: 'AXGroup', child: true })
   const list = await h.gui.observe('List')
@@ -53,11 +97,12 @@ test('CUA collection items re-resolve by position from a fresh snapshot', async 
 })
 
 test('CUA extraction is live and values are never persisted', async (t) => {
-  const h = await harness(t, { value: 'first' })
-  const observed = await h.gui.observe('Send')
+  const h = await harness(t, { label: 'Search secretSender', value: 'secretBody', help: 'secretSubject', identifier: 'secretIdentifier' })
+  const observed = await h.gui.observe('Search')
   h.value = 'second'
   assert.equal((await h.gui.extract(observed, { project: (v) => v.value })).data, 'second')
-  assert.equal((await readFile(h.gui.storage.pathForKey(observed.key), 'utf8')).includes('first'), false)
+  const cached = await readFile(h.gui.storage.pathForKey(observed.key), 'utf8')
+  for (const secret of ['secretSender', 'secretBody', 'secretSubject', 'secretIdentifier']) assert.equal(cached.includes(secret), false)
 })
 
 test('CUA action is requested at most once even when the driver errors', async (t) => {
@@ -77,12 +122,12 @@ async function harness(t, initial = {}) {
   const driver = { call: async (tool, input) => {
     state.calls.push({ tool, input })
     if (tool === 'get_window_state') return { elements: [
-      { element_index: 0, element_token: state.token, role: initial.role ?? 'AXButton', label: state.label, value: state.value, actions: ['AXPress'], frame: { x: 0, y: 0, w: 100, h: 30 } },
+      { element_index: 0, element_token: state.token, role: initial.role ?? 'AXButton', label: state.label, value: state.value, help: initial.help, identifier: initial.identifier, actions: ['AXPress'], frame: { x: 0, y: 0, w: 100, h: 30 } },
       ...(initial.child ? [{ element_index: 1, element_token: state.rowToken, parent_index: 0, role: 'AXRow', label: 'row', actions: ['AXPress'], frame: { x: 0, y: 40, w: 100, h: 30 } }] : []),
     ] }
     if (state.failAction) throw new Error('uncertain failure')
     return { ok: true }
   } }
-  state.gui = new CuaGuiCache({ name: 'Test', driver, pid: 1, window: { window_id: 2, title: 'Main' }, cacheDir, minScore: 3 })
+  state.gui = new CuaGuiCache({ name: 'Test', driver, pid: 1, window: { window_id: 2, title: initial.windowTitle ?? 'Main' }, cacheDir, minScore: 3, grounder: initial.grounder })
   return state
 }

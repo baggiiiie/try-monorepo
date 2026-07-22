@@ -1,9 +1,10 @@
 import { resolve } from 'node:path'
 
 import { isAction, performAction } from './actions.mjs'
-import { nodeDescriptor, resolveDescriptor, resolveTarget } from './descriptor.mjs'
+import { durableIdentityTokens, nodeDescriptor, resolveDescriptor, resolveTarget, searchScope } from './descriptor.mjs'
 import { cacheKey, normalizeTarget } from './key.mjs'
 import { nodeView, nodeViewFingerprint } from './node-view.mjs'
+import { selectModelCandidate } from './pi-grounder.mjs'
 import { openScope, scopeContext } from './scope.mjs'
 import { JsonCacheStorage } from './storage.mjs'
 import { isOutcomePredicate, predicateValidationError, verifyPredicate } from './verify.mjs'
@@ -28,6 +29,7 @@ export class GuiCache {
       routeKey: options.routeKey ?? null,
       logCache: options.logCache ?? false,
       mouseController: options.mouseController ?? null,
+      grounder: options.grounder ?? null,
     })
   }
 
@@ -48,6 +50,7 @@ export class GuiCache {
     routeKey = null,
     logCache,
     mouseController = null,
+    grounder = null,
   }) {
     this.scope = scope
     this.appName = scope.appName ?? context.stableAppId
@@ -65,6 +68,7 @@ export class GuiCache {
     this.routeKeyOverride = routeKey == null ? null : normalizeRouteKey(routeKey)
     this.logCache = logCache
     this.mouseController = mouseController
+    this.grounder = grounder
     this.cacheDirLogged = false
     this.storage = new JsonCacheStorage({ cacheDir, cacheMode })
   }
@@ -79,7 +83,7 @@ export class GuiCache {
     let report
     do {
       report = await this.act(target, { ...observeOptions, action: 'observe' })
-      if (report.success || Date.now() >= deadline) return report
+      if (report.success || report.modelAttempted || Date.now() >= deadline) return report
       await sleep(Math.max(0, pollMs))
     } while (Date.now() < deadline)
     return report
@@ -265,7 +269,7 @@ export class GuiCache {
     let grounded
     if (isUsableEntry(entry) && entryMatchesContext(entry, this.context)) {
       grounded = await this.tryCachedEntry(entry, normalized, operationScope)
-      if (grounded.cacheStatus === 'REFUSED') {
+      if (grounded.healable === true) {
         grounded = await this.resolveAndStore(normalized, key, 'HEALED', operationScope)
       }
     } else {
@@ -275,6 +279,14 @@ export class GuiCache {
     if (grounded.cacheStatus === 'REFUSED') return this.cacheResult(grounded, key)
     if (!singleMatch(nodeView(grounded.node, { maxDepth: 0, maxNodes: 1 }), normalized.match ?? normalized)) {
       return this.cacheResult(refused(normalized, grounded.matchInternal, 'match constraints failed'), key)
+    }
+    if (grounded.descriptor?.groundedBy === 'model') {
+      const current = nodeDescriptor(grounded.node, grounded.descriptor.query, operationScope === this.scope
+        ? this.context.containerBox
+        : safeBoundingBox(operationScope) ?? this.context.containerBox)
+      if (!sameReplayIdentity(grounded.descriptor, current)) {
+        return this.cacheResult(markModelAttempted(refused(normalized, grounded.matchInternal, 'model-selected target changed before dispatch')), key)
+      }
     }
     const report = this.cacheResult(await this.executeOnce(grounded, normalized), key)
     return attachLocator(report, parentLocator
@@ -288,6 +300,7 @@ export class GuiCache {
       key,
       cachePath: resolve(this.storage.pathForKey(key)),
     }
+    if (result.modelAttempted) markModelAttempted(withCacheInfo)
     // The live simulang node is carried non-enumerably so callers can read
     // from it directly (walk children, screenshot, read text) without a
     // second search, while JSON.stringify(report) stays clean.
@@ -309,7 +322,7 @@ export class GuiCache {
   async tryCachedEntry(entry, spec, scope = this.scope) {
     const match = resolveDescriptor(scope, entry.descriptor, this.resolveOptions(spec, { cached: true }))
     if (match.status !== 'unique') {
-      return refused(spec, match, `cached descriptor resolved as ${match.status}`)
+      return markHealable(refused(spec, match, `cached descriptor resolved as ${match.status}`))
     }
 
     if (!verifyPredicate(this.scope, match.selectedNode, spec.verify?.pre, spec.variables)) {
@@ -320,19 +333,36 @@ export class GuiCache {
   }
 
   async resolveAndStore(spec, key, cacheStatus, scope = this.scope) {
-    const match = resolveTarget(scope, spec.query ?? spec.target, this.resolveOptions(spec))
+    let match
+    if (this.grounder) {
+      try {
+        match = await this.resolveWithGrounder(spec, cacheStatus, scope)
+      } catch (error) {
+        return markModelAttempted(refused(spec, emptyMatch(), `model grounding failed: ${error.message}`))
+      }
+    } else {
+      match = resolveTarget(scope, spec.query ?? spec.target, this.resolveOptions(spec))
+    }
     if (match.status !== 'unique') {
-      return refused(spec, match, `target resolved as ${match.status}`)
+      const report = refused(spec, match, `target resolved as ${match.status}`)
+      return match.modelAttempted ? markModelAttempted(report) : report
     }
 
     if (!verifyPredicate(this.scope, match.selectedNode, spec.verify?.pre, spec.variables)) {
-      return refused(spec, match, 'pre-verification failed')
+      const report = refused(spec, match, 'pre-verification failed')
+      return match.modelAttempted ? markModelAttempted(report) : report
     }
 
     const containerBox = scope === this.scope
       ? this.context.containerBox
       : safeBoundingBox(scope) ?? this.context.containerBox
-    const descriptor = nodeDescriptor(match.selectedNode, normalizeTarget(spec.query ?? spec.target), containerBox)
+    let descriptor = nodeDescriptor(match.selectedNode, normalizeTarget(spec.query ?? spec.target), containerBox)
+    if (this.grounder) {
+      descriptor = modelReplayDescriptor(match.selectedDescriptor)
+      if (!descriptor || !sameReplayIdentity(descriptor, nodeDescriptor(match.selectedNode, descriptor.query, containerBox))) {
+        return markModelAttempted(refused(spec, match, 'model-selected target has no stable durable replay identity'))
+      }
+    }
     await this.storage.write(key, {
       version: 2,
       target: spec.target,
@@ -343,6 +373,43 @@ export class GuiCache {
     })
 
     return result(cacheStatus, spec, match, descriptor)
+  }
+
+  async resolveWithGrounder(spec, cacheStatus, scope) {
+    const query = spec.query ?? spec.target
+    const nodes = searchScope(scope, query, {
+      threshold: spec.groundingThreshold ?? 0,
+      maxNodes: this.maxNodes,
+    }).filter((node) => singleMatch(nodeView(node, { maxDepth: 0, maxNodes: 1 }), spec.match ?? spec))
+    const containerBox = scope === this.scope
+      ? this.context.containerBox
+      : safeBoundingBox(scope) ?? this.context.containerBox
+    const candidates = nodes.map((node, id) => ({
+      id,
+      node,
+      view: structuralView(nodeView(node, { maxDepth: 0, maxNodes: 1 })),
+      descriptor: nodeDescriptor(node, normalizeTarget(query), containerBox),
+    }))
+    const choice = await selectModelCandidate(this.grounder, {
+      target: spec.target,
+      action: spec.action,
+      app: this.context.stableAppId,
+      scope: this.context.routeKey,
+      reason: cacheStatus === 'MISS' ? 'cache-miss' : 'stale-cache',
+    }, candidates)
+    if (!choice) return { status: 'none', candidates: [], candidateCount: 0, modelAttempted: candidates.length > 0 }
+    return {
+      status: 'unique',
+      rawCandidateCount: candidates.length,
+      candidateCount: candidates.length,
+      plausibleCount: candidates.length,
+      selectedNode: choice.selected.node,
+      selectedDescriptor: choice.selected.descriptor,
+      selectedIndex: choice.selected.id,
+      candidates: candidates.map((candidate) => candidate.descriptor),
+      modelConfidence: choice.proposal.confidence,
+      modelAttempted: true,
+    }
   }
 
   async executeOnce(grounded, spec) {
@@ -531,6 +598,33 @@ function refused(spec, match, message, { actionPerformed = false, descriptor = n
     actionPerformed,
     message,
   }, match.selectedNode ?? null, match)
+}
+
+function markHealable(report) {
+  Object.defineProperty(report, 'healable', { value: true, enumerable: false })
+  return report
+}
+
+function markModelAttempted(report) {
+  Object.defineProperty(report, 'modelAttempted', { value: true, enumerable: false })
+  return report
+}
+
+function modelReplayDescriptor(descriptor) {
+  const identity = durableIdentityTokens(descriptor?.directTokens)
+  if (!identity.length) return null
+  return { ...descriptor, query: identity.join(' '), groundedBy: 'model' }
+}
+
+function sameReplayIdentity(expected, actual) {
+  if (expected.role !== actual.role || expected.classNameHash !== actual.classNameHash) return false
+  const current = new Set(actual.directTokens ?? [])
+  const identity = durableIdentityTokens(expected.directTokens)
+  return identity.length > 0 && identity.every((token) => current.has(token))
+}
+
+function structuralView(view) {
+  return Object.fromEntries(['role', 'enabled', 'actions', 'box'].filter((key) => view?.[key] != null).map((key) => [key, view[key]]))
 }
 
 function cacheStatusLabel(status) {

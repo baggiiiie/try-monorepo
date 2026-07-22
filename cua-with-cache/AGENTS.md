@@ -1,6 +1,6 @@
 # Project guidance
 
-- This is a reusable GUI cache library on top of `@simular-ai/simulang-js`.
+- This is a reusable GUI cache library with Simulang and CUA Driver backends.
 - Design goal: a Stagehand-style layer for GUIs. `observe` grounds + caches a
   UI concept; `act` replays it deterministically and self-heals on drift.
 - Here, self-healing means the cache layer internally re-grounds a missing or stale action and updates its cache, never that a workflow runner launches an external coding agent.

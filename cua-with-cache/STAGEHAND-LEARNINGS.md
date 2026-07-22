@@ -27,27 +27,24 @@ as current page content; that data must be extracted live.
 
 ## Implications for this project
 
-Our cache currently stores individual Simulang element descriptors. This is
-similar to Stagehand's action cache, but it lacks Stagehand's structured live
-extraction, collection operations, generic waits, and workflow replay. As a
-result, Outlook-specific traversal and synchronization are handwritten in
-`examples/apps/outlook/read-emails.mjs`.
+Our cache stores individual Simulang or CUA element descriptors. Like
+Stagehand's action cache, hits replay without a model and misses can use an
+in-process inference client. The public API now includes scoped observation,
+collections, bounded live extraction, and generic waits/change detection.
+Whole-program workflow caching and a high-level planning agent are not
+implemented; Outlook-specific meaning remains in capability modules under
+`examples/apps/outlook/`.
 
-Improve the project in this order:
+Remaining directions:
 
-1. **Cache operations, not only elements.** Persist the descriptor together
-   with its action method, scope, arguments, and validation.
-2. **Expand the small generic API.** Add scoped observation, collections,
-   generic change/condition waits, and bounded live projection. Keep all
-   APIs app-agnostic.
-3. **Cache generated workflows.** Let an agent write a short program against
+1. **Cache generated workflows.** Let an agent write a short program against
    that API, validate a successful run, then replay the program without the
    agent.
-4. **Heal inside the cache layer.** On a miss or stale descriptor, call a
-   configured grounding model with the current JSON-safe UI snapshot, validate
-   its proposed action, and store the successful replacement. Do not launch a
-   coding-agent subprocess from a workflow runner.
-5. **Never cache live app content.** Cache how to reach and read email data,
+2. **Broaden durable native-GUI identity carefully.** Preserve replay safety
+   without leaking dynamic content or relying on ephemeral element handles.
+3. **Improve native snapshots.** Add cycle-safe, window-rooted traversal and a
+   vision fallback for custom-drawn controls.
+4. **Never cache live app content.** Cache how to reach and read email data,
    but read sender, subject, body, and state on every run.
 
 The target top-level workflow should remain declarative:

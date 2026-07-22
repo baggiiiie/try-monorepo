@@ -5,9 +5,9 @@ import { posHint, round, safe, sha256 } from './util.mjs'
 const UI_TOKEN_ALLOWLIST = new Set([
   'account', 'all', 'archive', 'back', 'button', 'calendar', 'compose',
   'contacts', 'delete', 'drafts', 'filter', 'folder', 'folders', 'focused',
-  'forward', 'inbox', 'mail', 'message', 'messages', 'new', 'next', 'other',
+  'find', 'forward', 'inbox', 'mail', 'message', 'messages', 'new', 'next', 'other',
   'people', 'previous', 'reply', 'search', 'send', 'sent', 'settings', 'tab',
-  'toolbar', 'unread', 'view',
+  'submit', 'toolbar', 'unread', 'view',
 ])
 
 const ACTIONABLE_ACTIONS = new Set([
@@ -18,6 +18,10 @@ const ACTIONABLE_ACTIONS = new Set([
   'expand_collapse',
   'scroll_into_view',
   'focus',
+])
+
+const GENERIC_IDENTITY_TOKENS = new Set([
+  'button', 'folder', 'folders', 'mail', 'message', 'messages', 'tab', 'toolbar', 'view',
 ])
 
 export function roleName(role) {
@@ -43,6 +47,10 @@ export function sanitizedTokens(text, query) {
     if (result.length >= 24) break
   }
   return result
+}
+
+export function durableIdentityTokens(tokens = []) {
+  return tokens.filter((token) => !GENERIC_IDENTITY_TOKENS.has(token))
 }
 
 export function nodeDescriptor(node, query, containerBox = null) {

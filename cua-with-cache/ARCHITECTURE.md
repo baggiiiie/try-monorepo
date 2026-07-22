@@ -17,7 +17,7 @@ The library owns reusable automation mechanics:
 - Actions with accessibility and physical-input strategies.
 - Generic waits, change detection, retries, and validation.
 - Descriptor and operation caching.
-- Deterministic workflow replay and granular self-healing.
+- Deterministic operation replay and granular self-healing.
 
 Its public interface remains small:
 
@@ -33,7 +33,7 @@ gui.waitForChange(...)
 
 The library contains no Outlook, Teams, or other application-specific concepts.
 
-### Cached workflows
+### App-specific workflows
 
 App-specific logic lives in short agent-authored workflows composed from the
 generic API. For Outlook email triage, the workflow defines that it must:
@@ -45,9 +45,10 @@ generic API. For Outlook email triage, the workflow defines that it must:
 - Read each current sender, subject, and body.
 - Apply the requested triage rules.
 
-The successful program, its grounded operations, scopes, waits, and validation
-conditions are cached as one replayable workflow. App-specific exceptions stay
-in this artifact; they never become APIs such as `readOutlookEmails()` or
+The workflow remains ordinary caller code. The current library caches each
+grounded UI concept independently; it does not yet serialize or replay a whole
+program. App-specific exceptions stay in capability modules under `examples/`;
+they never become APIs such as `readOutlookEmails()` or
 `waitForOutlookReadingPane()` in `src/`.
 
 ```js
@@ -81,18 +82,29 @@ and validation callbacks. Application meaning remains in capability code.
 ## Runtime behavior
 
 ```text
-load cached workflow
-  → resolve cached operations
-  → replay deterministically
+run workflow code
+  → resolve each operation from its cached descriptor
+  → replay deterministic actions
   → read current app data live
   → validate the result
 ```
 
-If a target descriptor drifts, the library gives its configured grounding
-model a fresh JSON-safe UI snapshot, validates the proposed target/action, and
-updates only that operation. Workflow runners never launch external coding
-agents.
+If a target descriptor drifts, the library grounds only that operation again.
+Without a grounder it uses backend-local deterministic scoring. With a Pi
+grounder it sends bounded structural candidates and sanitized durable tokens,
+then validates one structured `select_element` result and updates the cache.
+The model selects a target only; the caller's action is immutable. Workflow
+runners never launch external coding agents.
+
+Model grounding is fail-closed: unknown candidates, low confidence, generic or
+missing replay identity, changed nodes, failed preconditions, and provider
+errors do not dispatch an action. Once dispatch may have occurred, neither
+backend retries or heals that action.
 
 The cache-hit path therefore uses no model inference. App-specific knowledge
-still exists, but as a concise cached program rather than a large handwritten
-adapter or application logic inside the generic library.
+still exists in concise workflow/capability code rather than a large adapter or
+application logic inside the generic library.
+
+The model integration uses `@earendil-works/pi-ai` directly for provider/model
+configuration and a single structured `select_element` tool call. It does not
+use Pi's TUI, coding agent, or an open-ended autonomous tool loop.
