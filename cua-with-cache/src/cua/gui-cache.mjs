@@ -99,9 +99,11 @@ export class CuaGuiCache {
     if (action.method === 'noop') return { success: true, stale: false, actionRequested: false, actionPerformed: false, actionOutcome: 'not-needed', action: 'noop', message: 'instruction is already satisfied' }
     const fresh = snapshot ?? await this.snapshot({ includeScreenshot: action.target.kind === 'pixel' || action.addressing === 'pixel' })
     let input
+    let targetEvidence = null
     if (action.target.kind === 'element') {
       const resolved = this.resolveDescriptor(action.target.descriptor, fresh)
       if (!resolved.success) return { success: false, stale: true, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', message: resolved.message }
+      targetEvidence = { label: resolved.element.label, value: resolved.element.value }
       if (action.addressing === 'pixel') {
         const point = screenshotPoint(resolved.element.frame, this.window, fresh)
         if (!point) return { success: false, stale: true, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', message: 'compiled pixel action requires a capturable fresh screenshot' }
@@ -125,10 +127,10 @@ export class CuaGuiCache {
     Object.assign(input, { action: 'press', delivery_mode: action.deliveryMode ?? 'background' })
     try {
       const driverResult = await this.driver.call(tool, substitute(input, variables))
-      return { success: true, stale: false, actionRequested: true, actionPerformed: true, actionOutcome: 'accepted', action: action.method, driverResult, message: 'compiled action accepted once; verify via fresh state' }
+      return attachTargetEvidence({ success: true, stale: false, actionRequested: true, actionPerformed: true, actionOutcome: 'accepted', action: action.method, driverResult, message: 'compiled action accepted once; verify via fresh state' }, targetEvidence)
     } catch (error) {
       const rejected = error?.name === 'CuaDriverError' && ['background_unavailable', 'desktop_scope_disabled'].includes(error.code)
-      return { success: false, stale: false, actionRequested: true, actionPerformed: false, actionOutcome: rejected ? 'rejected' : 'unknown', action: action.method, error: error.message, message: 'driver action failed after dispatch was requested; not retried' }
+      return attachTargetEvidence({ success: false, stale: false, actionRequested: true, actionPerformed: false, actionOutcome: rejected ? 'rejected' : 'unknown', action: action.method, error: error.message, message: 'driver action failed after dispatch was requested; not retried' }, targetEvidence)
     }
   }
 
@@ -367,3 +369,4 @@ function substitute(value, variables) {
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, substitute(item, variables)]))
   return value
 }
+function attachTargetEvidence(report, evidence) { if (evidence) Object.defineProperty(report, '_targetEvidence', { value: evidence }); return report }

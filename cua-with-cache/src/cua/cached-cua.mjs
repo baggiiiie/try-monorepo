@@ -70,7 +70,7 @@ export class CachedCuaApp {
     if (cached?.version === 1 && cached.action) {
       let replay
       try { replay = await this.gui.dispatchCompiled(cached.action, { variables }) } catch (error) { return { success: false, stale: false, cacheStatus: 'HIT', instruction, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', safeToRetry: true, message: `cached action preparation failed: ${error.message}` } }
-      if (!replay.stale) return { ...replay, cacheStatus: 'HIT', instruction, compiledAction: cached.action }
+      if (!replay.stale) return withTargetEvidence({ ...replay, cacheStatus: 'HIT', instruction, compiledAction: cached.action }, replay)
     }
 
     let compiled
@@ -86,7 +86,7 @@ export class CachedCuaApp {
     if (result.success && compiled.cacheable !== false) {
       try { await this.storage.write(key, { version: 1, instruction, action: compiled }) } catch (error) { cacheWriteError = error.message }
     }
-    return { ...result, cacheStatus, instruction, compiledAction: compiled, ...(cacheWriteError ? { cacheWriteError } : {}) }
+    return withTargetEvidence({ ...result, cacheStatus, instruction, compiledAction: compiled, ...(cacheWriteError ? { cacheWriteError } : {}) }, result)
   }
 
   async compileAction(instruction) {
@@ -289,6 +289,7 @@ export class CachedCuaAgent {
         let extraction
         if (prepared.success && action.actionRequested) {
           extraction = await this.app.waitForExtractionChange(prepared)
+          if (!extraction.success && targetMatchesExtraction(action._targetEvidence, prepared.data)) extraction = prepared
           if (!extraction.success) return fail({ message: extraction.message })
         } else if (prepared.success) {
           extraction = prepared
@@ -382,6 +383,19 @@ function validateOutput(schema, data) {
 function overallStatus(planStatus, stepStatuses) { return planStatus === 'HIT' && stepStatuses.every((status) => status === 'HIT') ? 'HIT' : planStatus === 'MISS' ? 'MISS' : 'HEALED' }
 function mergeActionState(state, result) { state.requested ||= Boolean(result.actionRequested); state.performed ||= Boolean(result.actionPerformed); if (result.actionOutcome === 'unknown' || !state.outcome) state.outcome = result.actionOutcome ?? state.outcome }
 function workflowFailure({ planCacheStatus, instruction, actions, extracted, schema, stepStatuses, actionState = {}, ...details }) { return { success: false, cacheStatus: overallStatus(planCacheStatus, stepStatuses), planCacheStatus, instruction, actions, data: outputData(schema, extracted), actionRequested: Boolean(actionState.requested), actionPerformed: Boolean(actionState.performed), actionOutcome: actionState.outcome ?? details.actionOutcome ?? null, safeToRetry: !actionState.requested, ...details } }
+function withTargetEvidence(report, source) { if (source?._targetEvidence) Object.defineProperty(report, '_targetEvidence', { value: source._targetEvidence }); return report }
+function targetMatchesExtraction(evidence, data) {
+  if (!evidence || !data || typeof data !== 'object') return false
+  const target = new Set(tokens(`${evidence.label} ${evidence.value}`).filter((token) => token.length > 2))
+  if (target.size < 2) return false
+  const matches = Object.values(data).filter((value) => {
+    const valueTokens = [...new Set(tokens(value).filter((token) => token.length > 2))]
+    if (valueTokens.length === 0) return false
+    const overlap = valueTokens.filter((token) => target.has(token)).length
+    return overlap >= Math.min(2, valueTokens.length) && overlap / Math.min(valueTokens.length, 8) >= 0.25
+  })
+  return matches.length >= Math.min(2, Object.keys(data).length)
+}
 function tokens(value) { return normalize(value).split(/[^a-z0-9]+/).filter((token) => token.length > 1) }
 function normalize(value) { return String(value ?? '').trim().toLowerCase() }
 function normalizeInstruction(value) { const out = String(value ?? '').trim().replace(/\s+/g, ' '); if (!out) throw new Error('instruction is required'); return out }

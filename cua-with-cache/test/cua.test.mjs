@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { CachedCua, CuaDriverCli, CuaDriverError, CuaGuiCache, selectCuaWindow } from '../src/index.mjs'
+import { CachedCua, CachedCuaAgent, CuaDriverCli, CuaDriverError, CuaGuiCache, selectCuaWindow } from '../src/index.mjs'
 
 test('CUA CLI adapter parses JSON and preserves process diagnostics', async () => {
   const cli = new CuaDriverCli({ run: async (_file, args) => ({ stdout: JSON.stringify({ ok: true, args }), stderr: 'warning' }) })
@@ -259,6 +259,23 @@ test('CachedCua agent caches its plan and actions while replaying extraction aga
   assert.equal(second.cacheStatus, 'HIT')
   assert.deepEqual(second.data, { sender: 'Bob', subject: 'Second', body: 'Fresh body' })
   assert.deepEqual(calls, { plan: 1, action: 1, extraction: 1 })
+})
+
+test('CachedCua accepts an unchanged pane only when it matches the clicked row', async () => {
+  const data = { sender: 'Alice Example', subject: 'Quarterly planning notes', body: 'Quarterly planning notes and follow-up details' }
+  const action = { success: true, cacheStatus: 'HIT', actionRequested: true, actionPerformed: true, actionOutcome: 'accepted' }
+  Object.defineProperty(action, '_targetEvidence', { value: { label: 'Alice Example Quarterly planning notes follow-up details', value: null } })
+  const app = {
+    gui: { bundleId: 'test.app', name: 'Test', window: { title: 'Main' } },
+    workflowStorage: { read: async () => ({ version: 1, steps: [{ kind: 'act', instruction: 'open first message' }, { kind: 'extract', instruction: 'read message' }] }) },
+    prepareExtraction: async () => ({ success: true, cacheStatus: 'HIT', instruction: 'read message', data, fingerprint: JSON.stringify(data), recipe: {} }),
+    act: async () => action,
+    waitForExtractionChange: async () => ({ success: false, message: 'unchanged' }),
+  }
+  const result = await new CachedCuaAgent(app).execute({ instruction: 'read first message', schema: { type: 'object', properties: { sender: {}, subject: {}, body: {} } } })
+  assert.equal(result.success, true)
+  assert.deepEqual(result.data, data)
+  assert.equal(JSON.stringify(action).includes('Alice'), false)
 })
 
 async function harness(t, initial = {}) {
