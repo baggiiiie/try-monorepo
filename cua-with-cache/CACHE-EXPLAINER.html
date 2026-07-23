@@ -131,13 +131,15 @@
     </div>
     <div class="code-card">
       <div class="eyebrow">The caller stays small</div>
-      <pre>const gui = openApp('outlook', {
-  // ~/.pi/agent settings + models + auth
-  grounder: await createLocalPiGrounder()
+      <pre>const cua = new CachedCua({
+  piDir: '~/.pi' // optional default
 })
-
-const inbox = await gui.observe('Inbox')
-await gui.act(inbox, 'activate')</pre>
+const outlook = await cua.openApp('Outlook', {
+  bundleId: 'com.microsoft.Outlook'
+})
+const result = await outlook.agent().execute({
+  instruction, schema
+})</pre>
     </div>
   </section>
 
@@ -146,7 +148,7 @@ await gui.act(inbox, 'activate')</pre>
     <div class="grid">
       <div class="card"><span class="tag">No source generation</span><h3>Structured actions, not code</h3><p>Pi selects a bounded target and method. It does not edit scripts, invoke a coding agent, or run Pi's TUI.</p></div>
       <div class="card"><span class="tag">No retry</span><h3>No healing after dispatch</h3><p>If an action may have happened, failure remains visible. Postcondition failure never causes a second click or model repair.</p></div>
-      <div class="card"><span class="tag">No semantics</span><h3>No cached app data</h3><p><code>extract</code> reads a bounded live <code>NodeView</code> through deterministic caller projections. Outlook meaning stays under <code>examples/</code>.</p></div>
+      <div class="card"><span class="tag">No cached data</span><h3>Extraction stays live</h3><p><code>extract</code> replays a compiled structural recipe, then reads current values. Sender, subject, body, screenshots, and ephemeral CUA handles are never persisted.</p></div>
     </div>
   </section>
 

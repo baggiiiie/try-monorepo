@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { CuaDriverCli, CuaDriverError, CuaGuiCache, selectCuaWindow } from '../src/index.mjs'
+import { CachedCua, CuaDriverCli, CuaDriverError, CuaGuiCache, selectCuaWindow } from '../src/index.mjs'
 
 test('CUA CLI adapter parses JSON and preserves process diagnostics', async () => {
   const cli = new CuaDriverCli({ run: async (_file, args) => ({ stdout: JSON.stringify({ ok: true, args }), stderr: 'warning' }) })
@@ -128,6 +128,139 @@ test('CUA pixel addressing converts a fresh AX frame to screenshot coordinates',
   assert.equal(click.input.y, 7.5)
 })
 
+test('CachedCua compiles once, replays without Pi, and persists no screenshot or ephemeral handle', async (t) => {
+  const cacheDir = await mkdtemp(join(tmpdir(), 'cached-cua-test-'))
+  t.after(() => rm(cacheDir, { recursive: true, force: true }))
+  const h = compiledHarness()
+  let inferenceCalls = 0
+  const inference = {
+    resolveAction: async ({ candidates, screenshot }) => {
+      inferenceCalls++
+      assert.equal(screenshot.data, 'privateScreenshot')
+      return { targetType: 'element', candidateId: candidates.find((candidate) => candidate.label === 'Send').id, confidence: 0.95 }
+    },
+  }
+  const runtime = new CachedCua({ cacheDir, driver: h.driver, inference })
+  await runtime.init()
+  const app = await runtime.openApp('Test', { bundleId: 'test.app' })
+
+  assert.equal((await app.act('click Send')).cacheStatus, 'MISS')
+  assert.equal((await app.act('click Send')).cacheStatus, 'HIT')
+  assert.equal(inferenceCalls, 1)
+  assert.equal(h.calls.filter((call) => call.tool === 'click').length, 2)
+
+  const cache = await readFile(app.storage.pathForKey(app.actionKey('click Send')), 'utf8')
+  for (const forbidden of ['privateScreenshot', 'fresh-', 'element_index', 'element_token']) assert.equal(cache.includes(forbidden), false)
+
+  const coldRuntime = new CachedCua({ cacheDir, driver: h.driver, inferenceFactory: async () => assert.fail('Pi must stay lazy on a cache hit') })
+  const coldApp = await coldRuntime.openApp('Test', { bundleId: 'test.app' })
+  assert.equal((await coldApp.act('click Send')).cacheStatus, 'HIT')
+})
+
+test('CachedCua scopes positional replay to a durable container without caching row labels', async (t) => {
+  const cacheDir = await mkdtemp(join(tmpdir(), 'cached-cua-position-test-'))
+  t.after(() => rm(cacheDir, { recursive: true, force: true }))
+  const gui = new CuaGuiCache({ name: 'Test', driver: {}, pid: 1, window: { window_id: 2, title: 'Main' }, cacheDir })
+  const snapshot = { elements: [
+    { element_index: 0, role: 'AXList', label: 'Message List', identifier: '', help: '', actions: [] },
+    { element_index: 1, parent_index: 0, role: 'AXGroup', label: 'Alice private message subject', identifier: '', help: '', actions: [] },
+    { element_index: 2, parent_index: 1, role: 'AXRow', label: 'Alice Private subject', identifier: '', help: '', actions: [] },
+    { element_index: 3, parent_index: 0, role: 'AXGroup', label: 'Bob other private message subject', identifier: '', help: '', actions: [] },
+    { element_index: 4, parent_index: 3, role: 'AXRow', label: 'Bob Other private subject', identifier: '', help: '', actions: [] },
+  ] }
+  const descriptor = gui.descriptorForElement(snapshot.elements[2], 'open the first message', snapshot)
+  assert.equal(descriptor.scopeOrdinal, 0)
+  assert.equal(descriptor.scope.stableUniqueContainer, true)
+  assert.deepEqual(descriptor.labelTokens, [])
+  assert.equal(JSON.stringify(descriptor).includes('alice'), false)
+  assert.equal(JSON.stringify(descriptor).includes('private'), false)
+  assert.equal(gui.resolveDescriptor(descriptor, snapshot).element.element_index, 2)
+})
+
+test('CachedCua treats cache persistence after dispatch as best effort', async (t) => {
+  const cacheDir = await mkdtemp(join(tmpdir(), 'cached-cua-write-test-'))
+  t.after(() => rm(cacheDir, { recursive: true, force: true }))
+  const h = compiledHarness()
+  const runtime = new CachedCua({ cacheDir, driver: h.driver, inference: { resolveAction: async () => ({ targetType: 'element', candidateId: 0, confidence: 0.95 }) } })
+  const app = await runtime.openApp('Test', { bundleId: 'test.app' })
+  app.storage.write = async () => { throw new Error('disk full') }
+  const result = await app.act('click Send')
+  assert.equal(result.success, true)
+  assert.equal(result.actionRequested, true)
+  assert.equal(result.actionOutcome, 'accepted')
+  assert.equal(result.cacheWriteError, 'disk full')
+  assert.equal(h.calls.filter((call) => call.tool === 'click').length, 1)
+})
+
+test('CachedCua heals a stale action before dispatch and never retries an uncertain dispatch', async (t) => {
+  const cacheDir = await mkdtemp(join(tmpdir(), 'cached-cua-heal-test-'))
+  t.after(() => rm(cacheDir, { recursive: true, force: true }))
+  const h = compiledHarness()
+  let calls = 0
+  const runtime = new CachedCua({ cacheDir, driver: h.driver, inference: { resolveAction: async ({ screenshot }) => {
+    calls++
+    return calls === 1
+      ? { targetType: 'element', candidateId: 0, confidence: 0.9 }
+      : { targetType: 'pixel', x: screenshot.width / 2, y: screenshot.height / 2, confidence: 0.9 }
+  } } })
+  const app = await runtime.openApp('Test', { bundleId: 'test.app' })
+  assert.equal((await app.act('click Send')).success, true)
+  h.label = 'Submit'
+  assert.equal((await app.act('click Send')).cacheStatus, 'HEALED')
+  assert.equal(calls, 2)
+
+  h.failAction = true
+  const failed = await app.act('click Send')
+  assert.equal(failed.actionOutcome, 'unknown')
+  assert.equal(calls, 3)
+  assert.equal(h.calls.filter((call) => call.tool === 'click').length, 3)
+})
+
+test('CachedCua agent caches its plan and actions while replaying extraction against live data', async (t) => {
+  const cacheDir = await mkdtemp(join(tmpdir(), 'cached-cua-agent-test-'))
+  t.after(() => rm(cacheDir, { recursive: true, force: true }))
+  const h = compiledHarness({ withMail: true })
+  const calls = { plan: 0, action: 0, extraction: 0 }
+  const inference = {
+    planWorkflow: async () => {
+      calls.plan++
+      return [
+        { kind: 'act', instruction: 'click Send' },
+        { kind: 'extract', instruction: 'read sender subject and body from Reading Pane' },
+      ]
+    },
+    resolveAction: async () => { calls.action++; return { targetType: 'element', candidateId: 0, confidence: 0.95 } },
+    resolveExtraction: async () => {
+      calls.extraction++
+      return {
+        rootCandidateId: 1,
+        fields: [
+          { name: 'sender', candidateId: 2, source: 'value' },
+          { name: 'subject', candidateId: 3, source: 'value' },
+          { name: 'body', candidateId: 4, source: 'value' },
+        ],
+        confidence: 0.95,
+      }
+    },
+  }
+  const runtime = new CachedCua({ cacheDir, driver: h.driver, inference })
+  const app = await runtime.openApp('Test', { bundleId: 'test.app' })
+  const schema = { type: 'object', properties: { sender: { type: 'string' }, subject: { type: 'string' }, body: { type: 'string' } } }
+  const request = { instruction: 'read the open email', schema }
+
+  h.nextMail = { sender: 'Alice', subject: 'First', body: 'Initial body' }
+  const first = await app.agent().execute(request)
+  assert.equal(first.success, true)
+  assert.deepEqual(first.data, { sender: 'Alice', subject: 'First', body: 'Initial body' })
+  const persisted = (await Promise.all((await readdir(cacheDir, { recursive: true })).filter((path) => path.endsWith('.json')).map((path) => readFile(join(cacheDir, path), 'utf8')))).join('\n')
+  for (const forbidden of ['Alice', 'First', 'Initial body', 'privateScreenshot', 'fresh-', 'element_index', 'element_token']) assert.equal(persisted.includes(forbidden), false)
+  h.nextMail = { sender: 'Bob', subject: 'Second', body: 'Fresh body' }
+  const second = await app.agent().execute(request)
+  assert.equal(second.cacheStatus, 'HIT')
+  assert.deepEqual(second.data, { sender: 'Bob', subject: 'Second', body: 'Fresh body' })
+  assert.deepEqual(calls, { plan: 1, action: 1, extraction: 1 })
+})
+
 async function harness(t, initial = {}) {
   const cacheDir = await mkdtemp(join(tmpdir(), 'cua-cache-test-'))
   t.after(() => rm(cacheDir, { recursive: true, force: true }))
@@ -142,5 +275,32 @@ async function harness(t, initial = {}) {
     return { ok: true }
   } }
   state.gui = new CuaGuiCache({ name: 'Test', driver, pid: 1, window: { window_id: 2, title: initial.windowTitle ?? 'Main', bounds: { x: 0, y: 0, width: 200, height: 100 } }, cacheDir, minScore: 3, grounder: initial.grounder })
+  return state
+}
+
+function compiledHarness({ withMail = false } = {}) {
+  const state = { calls: [], label: 'Send', failAction: false, mail: { sender: 'Before', subject: 'Previous', body: 'Previous body' }, nextMail: null }
+  state.driver = { call: async (tool, input) => {
+    state.calls.push({ tool, input })
+    if (tool === 'launch_app') return { pid: 1, windows: [{ window_id: 2, title: 'Main', is_on_screen: true, bounds: { x: 0, y: 0, width: 200, height: 100 } }] }
+    if (tool === 'get_window_state') return {
+      screenshot_width: input.include_screenshot ? 100 : null,
+      screenshot_height: input.include_screenshot ? 50 : null,
+      screenshot_mime_type: input.include_screenshot ? 'image/png' : null,
+      screenshot_png_b64: input.include_screenshot ? 'privateScreenshot' : null,
+      elements: [
+        { element_index: 0, element_token: `fresh-${state.calls.length}`, role: 'AXButton', label: state.label, actions: ['AXPress'], frame: { x: 0, y: 0, w: 100, h: 30 } },
+        ...(withMail ? [
+          { element_index: 1, element_token: 'pane', role: 'AXGroup', label: 'Reading Pane', actions: [], frame: { x: 0, y: 30, w: 200, h: 70 } },
+          { element_index: 2, element_token: 'sender', parent_index: 1, role: 'AXStaticText', label: 'Sender', value: state.mail.sender, actions: [], frame: { x: 10, y: 35, w: 80, h: 10 } },
+          { element_index: 3, element_token: 'subject', parent_index: 1, role: 'AXStaticText', label: 'Subject', value: state.mail.subject, actions: [], frame: { x: 10, y: 45, w: 80, h: 10 } },
+          { element_index: 4, element_token: 'body', parent_index: 1, role: 'AXStaticText', label: 'Body', value: state.mail.body, actions: [], frame: { x: 10, y: 55, w: 160, h: 30 } },
+        ] : []),
+      ],
+    }
+    if (state.failAction) throw new Error('uncertain failure')
+    if (tool === 'click' && state.nextMail) { state.mail = state.nextMail; state.nextMail = null }
+    return { ok: true }
+  } }
   return state
 }

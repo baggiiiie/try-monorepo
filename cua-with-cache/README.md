@@ -10,13 +10,13 @@ available but is not being removed or given a duplicate Outlook workflow.
 
 - `src/` is the library: cache keys, descriptor matching, storage, and the
   `observe`/`act` replay + self-heal engine. It is app-agnostic.
-- `examples/outlook-check.mjs` is a cache-backed Outlook email-triage demo.
+- `examples/outlook-cua-check.mjs` is the thin CUA Outlook email-triage demo.
 
-> **Current status:** the library currently caches element descriptors, not
-> complete actions or workflow replay steps. Pi can select structural AX
-> candidates, but cannot yet ground from CUA screenshots. The Outlook demo is a
-> prototype and still encounters CUA's intermittent recursive menu-only AX
-> snapshots. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the intended design.
+> **Current status:** `CachedCua` compiles and caches semantic actions,
+> extraction recipes, and workflow plans. It supplies Pi with bounded AX data
+> plus a screenshot on misses, and keeps Pi lazy on replay hits. Live Outlook
+> runs can still encounter CUA's intermittent recursive menu-only AX snapshot;
+> that is reported as a failure rather than hidden by blind input.
 
 ## API
 
@@ -121,48 +121,51 @@ npm run check:outlook
 npm run check:outlook:cua
 ```
 
-The demo grounds stable Outlook controls through the cache, then reads the top
-three emails live from the accessibility tree and prints a JSON report. The
-runner executes the workflow once and reports failures; it never launches a
-coding agent. Today, cache misses are grounded deterministically with
-Simulang's `scoredSearch` unless a Pi grounder is configured. With a grounder,
-misses and stale descriptors make one in-process model turn with a structured
-`select_element` tool, validate the selection, and store the resulting durable
-descriptor. The cache stores only reusable UI grounding and never caches
-returned app content.
+`check:outlook` preserves the older Simulang demo. `check:outlook:cua` uses the
+new Stagehand-shaped API: the runner opens Outlook, provides one instruction and
+one result schema, executes the cached workflow, and prints the report. It does
+not contain Outlook traversal helpers or launch a coding agent.
 
-The model receives bounded structural candidate data and sanitized durable
-tokens—not screenshots, live values, descendants, sender/subject/body text,
-window titles, CUA indices, or CUA element tokens. It may select only one
-offered candidate and cannot change the caller's action. Low confidence,
-unknown IDs, generic identities, provider errors, and target drift are refused.
+The CUA resolver receives bounded structural candidate data and the current
+screenshot; screenshots remain transient and are never cached. It may select
+only one offered candidate or a single current-run visual point and cannot
+change the caller's action. Low confidence, unknown IDs, generic replay
+identity, provider errors, and stale structure are refused.
 
-By default, the Outlook demos load Pi's local defaults and credentials from
-`~/.pi/agent/{settings,models,auth}.json`. Set `GUI_CACHE_MODEL=0` to run with
-deterministic grounding only, or override the local selection with
-`GUI_CACHE_MODEL_PROVIDER` and `GUI_CACHE_MODEL_ID`.
+By default, the CUA demo loads Pi's local defaults and credentials from
+`~/.pi/agent/{settings,models,auth}.json`. Override the directory with `PI_DIR`
+or the model with `GUI_CACHE_MODEL=provider/model`. Pi initializes lazily, so a
+complete warm cache can replay even if local Pi is unavailable.
 
 Library callers can use the same local configuration:
 
 ```js
-import { createLocalPiGrounder, openApp } from 'gui-cache'
+import { CachedCua } from 'gui-cache'
 
-const gui = openApp('outlook', {
-  grounder: await createLocalPiGrounder(),
+const cua = new CachedCua({ piDir: '~/.pi' })
+const outlook = await cua.openApp('Outlook', {
+  bundleId: 'com.microsoft.Outlook',
+  windowTitle: 'Inbox',
 })
+
+const result = await outlook.agent().execute({ instruction, schema })
 ```
 
-`createPiGrounder(...)` remains available for explicit application-owned model
-runtimes or environment-based provider authentication.
+On a workflow miss, Pi first produces only semantic `act`/`extract` steps. Each
+missing action is then resolved against a bounded current CUA snapshot, checked,
+and compiled. Screenshot-only points may be dispatched for that miss but are
+not persisted because they have no durable replay identity. Extraction recipes
+store paths and stable endpoint structure, then read all values live.
 
 The alternate CUA command uses the host-native `cua-driver` CLI. Unlike the
 Simulang backend (live accessibility nodes and `scoredSearch`), the CUA backend
 normalizes each CLI snapshot and re-resolves a durable descriptor to a fresh
 ephemeral element token/index before every action. Outlook message rows expose
-no AX action, so this example explicitly converts their fresh AX frames to
-screenshot coordinates and uses CUA's foreground pixel delivery; CUA briefly
-fronts Outlook, clicks once, and restores the prior app. Both backends cache
-only grounding and read returned data live. See
+no AX action, so durable element actions convert a fresh AX frame to screenshot
+coordinates and use CUA's foreground pixel delivery; CUA briefly fronts
+Outlook, clicks once, and restores the prior app. The workflow verifies live
+extraction changes between repeated selections, requires exactly three
+non-duplicate messages, and never retries uncertain dispatch. See
 [`CUA-LEARNINGS.md`](CUA-LEARNINGS.md) for the intermittent recursive Outlook
 AX-tree limitation. The command requires a running Cua Driver daemon with macOS
 Accessibility and Screen Recording permission.

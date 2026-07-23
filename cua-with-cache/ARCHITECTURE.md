@@ -53,10 +53,11 @@ The library owns reusable automation mechanics:
 Its target public interface remains small:
 
 ```js
-openApp(...)
-gui.act('semantic instruction')
-gui.extract('semantic instruction', schema)
-gui.run('workflow key', input)
+const cua = new CachedCua({ piDir: '~/.pi', model: 'provider/model' })
+const app = await cua.openApp('Outlook', { bundleId: 'com.microsoft.Outlook' })
+await app.act('semantic instruction')
+await app.extract('semantic instruction', schema)
+await app.agent().execute({ instruction, schema })
 ```
 
 The library contains no Outlook, Teams, or other application-specific concepts.
@@ -78,9 +79,8 @@ These semantics belong in one concise workflow definition. CUA traversal,
 physical input, coordinate conversion, waiting, and stale-target repair belong
 in the generic library, not Outlook-specific helpers.
 
-```js
-const result = await gui.run('triage-inbox', { count: 3 })
-```
+The current Outlook runner expresses this as one instruction plus an exact
+three-item schema passed to `app.agent().execute(...)`.
 
 ### Live application data
 
@@ -121,10 +121,16 @@ large adapter or application logic inside `src/`.
 Pi's local model/auth/settings configuration supplies inference. It does not
 use Pi's TUI or launch a coding agent.
 
-## Current implementation gap
+## Current implementation
 
-Today the library caches individual element descriptors and Pi selects only
-from structural AX candidates. It does not yet compile complete CUA actions,
-use screenshot grounding, expose schema-based semantic extraction, or cache and
-replay a workflow-step sequence. The existing Outlook capability is therefore
-a prototype, not evidence that the target architecture is complete.
+`CachedCua` now implements this boundary for CUA: lazy local-Pi initialization,
+semantic workflow planning, AX-plus-screenshot action grounding, compiled
+action replay, schema-based live extraction recipes, stale-step healing, and
+workflow cache reporting. Visual points without durable AX identity are
+single-run fallbacks and are deliberately not cached.
+
+The remaining live limitation is below this layer: Outlook/CUA can
+intermittently return a recursive menu-only accessibility tree with no Message
+List or Reading Pane. The cache cannot compile a durable action or extraction
+recipe from absent structure, so it fails visibly. A healthy snapshot is still
+required to establish durable replay artifacts.

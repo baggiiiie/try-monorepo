@@ -50,6 +50,85 @@ export class CuaGuiCache {
       truncated: Boolean(data.truncated || source.length >= this.maxElements),
       screenshotWidth: Number(data.screenshot_width ?? 0) || null,
       screenshotHeight: Number(data.screenshot_height ?? 0) || null,
+      screenshot: includeScreenshot ? String(data.screenshot_png_b64 ?? '') || null : null,
+      screenshotMimeType: includeScreenshot ? String(data.screenshot_mime_type ?? 'image/png') : null,
+    }
+  }
+
+  descriptorForElement(element, instruction, snapshot) {
+    const descriptor = descriptorFor(element, instruction, { query: instruction }, snapshot.elements)
+    const positionalInstruction = /\b(?:first|second|third|fourth|fifth|top|bottom|next|previous|last|[1-9](?:st|nd|rd|th))\b/i.test(instruction)
+    if (descriptorIdentity(descriptor) && !positionalInstruction) {
+      const peers = descriptorPeers(snapshot.elements, descriptor)
+      return { ...descriptor, roleOrdinal: peers.findIndex((candidate) => candidate.element_index === element.element_index) }
+    }
+    const scopeElement = [...ancestors(element, snapshot.elements)].reverse().find((ancestor) => /(?:List|Table|Outline|ScrollArea|WebArea)$/i.test(ancestor.role) && (
+      descriptorIdentity(descriptorFor(ancestor, instruction, { query: instruction }, snapshot.elements)) || snapshot.elements.filter((candidate) => candidate.role === ancestor.role).length === 1
+    ))
+    if (!scopeElement) return descriptor
+    const candidateScope = descriptorFor(scopeElement, instruction, { query: instruction }, snapshot.elements)
+    const scope = descriptorIdentity(candidateScope)
+      ? { ...candidateScope, concept: 'stable action scope', query: null }
+      : { concept: 'stable action scope', query: null, role: scopeElement.role, labelTokens: [], identifierTokens: [], helpTokens: [], stableUniqueContainer: true }
+    const peers = snapshot.elements.filter((candidate) => candidate.role === element.role && descendant(candidate, scopeElement, snapshot.elements))
+    return { ...descriptor, labelTokens: [], identifierTokens: [], helpTokens: [], scope, scopeOrdinal: peers.findIndex((candidate) => candidate.element_index === element.element_index) }
+  }
+
+  resolveDescriptor(descriptor, snapshot) {
+    if (descriptor.stableUniqueContainer) {
+      const matches = snapshot.elements.filter((candidate) => candidate.role === descriptor.role)
+      return matches.length === 1 ? { success: true, element: matches[0] } : { success: false, message: 'stable container is no longer unique' }
+    }
+    if (descriptor.scope && Number.isInteger(descriptor.scopeOrdinal) && descriptor.scopeOrdinal >= 0) {
+      const scope = this.resolveDescriptor(descriptor.scope, snapshot)
+      if (!scope.success) return scope
+      const element = snapshot.elements.filter((candidate) => candidate.role === descriptor.role && descendant(candidate, scope.element, snapshot.elements))[descriptor.scopeOrdinal]
+      return element ? { success: true, element } : { success: false, message: 'scoped position is no longer resolvable' }
+    }
+    if (Number.isInteger(descriptor.roleOrdinal) && descriptor.roleOrdinal >= 0) {
+      const element = descriptorPeers(snapshot.elements, descriptor)[descriptor.roleOrdinal]
+      if (element && descriptorIdentity(descriptor) && identityMatches(element, descriptor)) return { success: true, element }
+    }
+    const match = resolve(snapshot.elements, descriptor, { requireIdentity: true }, this)
+    return match.status === 'unique'
+      ? { success: true, element: match.element }
+      : { success: false, message: `fresh resolution ${match.status}` }
+  }
+
+  async dispatchCompiled(action, { variables = {}, snapshot } = {}) {
+    if (action.method === 'noop') return { success: true, stale: false, actionRequested: false, actionPerformed: false, actionOutcome: 'not-needed', action: 'noop', message: 'instruction is already satisfied' }
+    const fresh = snapshot ?? await this.snapshot({ includeScreenshot: action.target.kind === 'pixel' || action.addressing === 'pixel' })
+    let input
+    if (action.target.kind === 'element') {
+      const resolved = this.resolveDescriptor(action.target.descriptor, fresh)
+      if (!resolved.success) return { success: false, stale: true, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', message: resolved.message }
+      if (action.addressing === 'pixel') {
+        const point = screenshotPoint(resolved.element.frame, this.window, fresh)
+        if (!point) return { success: false, stale: true, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', message: 'compiled pixel action requires a capturable fresh screenshot' }
+        input = { pid: this.pid, window_id: this.windowId, ...point }
+      } else {
+        input = { pid: this.pid, window_id: this.windowId, ...(resolved.element.element_token ? { element_token: resolved.element.element_token } : { element_index: resolved.element.element_index }) }
+      }
+    } else if (action.target.kind === 'pixel') {
+      if (!fresh.screenshotWidth || !fresh.screenshotHeight) return { success: false, stale: true, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', message: 'compiled visual action requires a capturable fresh screenshot' }
+      input = {
+        pid: this.pid,
+        window_id: this.windowId,
+        x: action.target.xRatio * fresh.screenshotWidth,
+        y: action.target.yRatio * fresh.screenshotHeight,
+      }
+    } else {
+      return { success: false, stale: true, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', message: 'compiled action has an invalid target' }
+    }
+    const tool = action.method === 'click' ? 'click' : action.method
+    if (tool !== 'click') return { success: false, stale: true, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', message: `unsupported compiled CUA method: ${action.method}` }
+    Object.assign(input, { action: 'press', delivery_mode: action.deliveryMode ?? 'background' })
+    try {
+      const driverResult = await this.driver.call(tool, substitute(input, variables))
+      return { success: true, stale: false, actionRequested: true, actionPerformed: true, actionOutcome: 'accepted', action: action.method, driverResult, message: 'compiled action accepted once; verify via fresh state' }
+    } catch (error) {
+      const rejected = error?.name === 'CuaDriverError' && ['background_unavailable', 'desktop_scope_disabled'].includes(error.code)
+      return { success: false, stale: false, actionRequested: true, actionPerformed: false, actionOutcome: rejected ? 'rejected' : 'unknown', action: action.method, error: error.message, message: 'driver action failed after dispatch was requested; not retried' }
     }
   }
 
@@ -212,6 +291,10 @@ function identityMatches(e, d) {
   return expected.length > 0 && expected.every((token) => actual.has(token))
 }
 function descriptorIdentity(d) { return durableIdentityTokens([...(d.labelTokens ?? []), ...(d.identifierTokens ?? []), ...(d.helpTokens ?? [])]).length > 0 }
+function descriptorPeers(elements, descriptor) {
+  return elements.filter((element) => element.role === descriptor.role && suffixMatches(ancestors(element, elements).map((ancestor) => ancestor.role).filter(Boolean), descriptor.ancestorRoles ?? []))
+}
+function suffixMatches(actual, expected) { return expected.length === 0 || expected.every((role, index) => actual[actual.length - expected.length + index] === role) }
 function score(e, d, all) { let s = e.role && e.role === d.role ? 3 : 0; s += overlap(tokens(e.label), d.labelTokens) * 4; s += overlap(tokens(e.identifier), d.identifierTokens) * 3; s += overlap(tokens(e.help), d.helpTokens) * 2; s += overlap(e.actions, d.actions); s += overlap(ancestors(e, all).map((x) => x.role), d.ancestorRoles); if (d.relativeFrame && e.frame) s += Math.max(0, 1 - distance(relative(e.frame, boundsFromElements(all)), d.relativeFrame)); return s }
 function structural(e, o = {}) { return (!o.role || e.role === o.role) && (!o.actions || o.actions.every((a) => e.actions.includes(a))) && (!o.frame || Object.entries(o.frame).every(([k, v]) => e.frame && Number(e.frame[k]) === Number(v))) }
 function ancestors(e, all) { const out = []; let p = e.parent_index; const map = new Map(all.map((x) => [x.element_index, x])); while (p != null && map.has(p) && out.length < 20) { const x = map.get(p); out.unshift(x); p = x.parent_index } return out }
@@ -275,3 +358,12 @@ function area(b) { return b ? b.w * b.h : 0 }
 function visible(w) { return w.visible !== false && w.is_visible !== false && w.on_screen !== false && w.is_on_screen !== false && !w.minimized }
 function norm(s) { return String(s ?? '').trim().toLowerCase() }
 function slug(s) { return norm(s).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') }
+function substitute(value, variables) {
+  if (typeof value === 'string') return value.replace(/%([^%]+)%/g, (_match, key) => {
+    if (!(key in variables)) throw new Error(`missing action variable: ${key}`)
+    return String(variables[key])
+  })
+  if (Array.isArray(value)) return value.map((item) => substitute(item, variables))
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, substitute(item, variables)]))
+  return value
+}

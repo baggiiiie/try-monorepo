@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createLocalPiGrounder, createPiGrounder } from '../src/index.mjs'
+import { createLocalPiGrounder, createPiCuaInference, createPiGrounder } from '../src/index.mjs'
 
 test('Pi grounder requests and validates one structured element selection', async () => {
   let context
@@ -78,4 +78,39 @@ test('local Pi grounder uses configured model and reasoning defaults', async () 
   await grounder.ground({ target: 'Search', candidates: [{ id: 0, view: { role: 'button' } }] })
   assert.deepEqual(calls[0].model, { providerId: 'openai-codex', id: 'gpt-local' })
   assert.equal(calls[0].options.reasoning, 'high')
+})
+
+test('Pi CUA inference resolves an action from bounded AX plus screenshot context', async () => {
+  let context
+  const models = { completeSimple: async (_model, value) => {
+    context = value
+    return { stopReason: 'toolUse', content: [{ type: 'toolCall', id: 'call-1', name: 'resolve_action', arguments: { targetType: 'element', candidateId: 4, confidence: 0.94 } }] }
+  } }
+  const inference = createPiCuaInference({ models, model: {} })
+  const result = await inference.resolveAction({
+    instruction: 'click Search',
+    app: 'Test',
+    candidates: [{ id: 4, role: 'AXButton', label: 'Search', actions: ['AXPress'], frame: { x: 1, y: 2, w: 3, h: 4 } }],
+    screenshot: { data: 'pngBytes', mimeType: 'image/png', width: 100, height: 50 },
+  })
+  assert.deepEqual(result, { targetType: 'element', candidateId: 4, confidence: 0.94 })
+  assert.equal(context.tools[0].name, 'resolve_action')
+  assert.deepEqual(context.messages[0].content[1], { type: 'image', data: 'pngBytes', mimeType: 'image/png' })
+})
+
+test('Pi CUA inference validates workflow and extraction tool results', async () => {
+  const models = { completeSimple: async (_model, context) => {
+    const name = context.tools[0].name
+    const arguments_ = name === 'plan_workflow'
+      ? { steps: [{ kind: 'act', instruction: ' click Send ' }, { kind: 'extract', instruction: 'read result' }] }
+      : { rootCandidateId: 0, fields: [{ name: 'body', candidateId: 1, source: 'value' }], confidence: 0.9 }
+    return { stopReason: 'toolUse', content: [{ type: 'toolCall', id: 'call-1', name, arguments: arguments_ }] }
+  } }
+  const inference = createPiCuaInference({ models, model: {} })
+  const candidates = [{ id: 0, role: 'AXGroup', label: 'Reading Pane' }, { id: 1, role: 'AXStaticText', value: 'live' }]
+  assert.deepEqual(await inference.planWorkflow({ instruction: 'do it', app: 'Test', schema: { body: {} }, candidates }), [
+    { kind: 'act', instruction: 'click Send' },
+    { kind: 'extract', instruction: 'read result' },
+  ])
+  assert.equal((await inference.resolveExtraction({ instruction: 'read', schema: { body: {} }, app: 'Test', candidates })).fields[0].name, 'body')
 })
