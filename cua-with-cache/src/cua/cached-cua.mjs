@@ -58,6 +58,51 @@ export class CachedCuaApp {
 
   agent() { return new CachedCuaAgent(this) }
 
+  async pressKey(key, { deliveryMode = 'background' } = {}) {
+    key = normalizeInstruction(key).toLowerCase()
+    this.runtime.log('action', `Pressing ${key}`)
+    try {
+      const driverResult = await this.gui.driver.call('press_key', {
+        pid: this.gui.pid,
+        window_id: this.gui.windowId,
+        key,
+        delivery_mode: deliveryMode,
+      })
+      return { success: true, actionRequested: true, actionPerformed: true, actionOutcome: 'accepted', driverResult }
+    } catch (error) {
+      return { success: false, actionRequested: true, actionPerformed: false, actionOutcome: 'unknown', message: `key press failed after dispatch was requested: ${error.message}` }
+    }
+  }
+
+  async collect({ startInstruction, nextKey = 'down', extractionInstruction, schema, maxItems = 1000, timeoutMs = 5000, pollMs = 150, settlePolls = 2 }) {
+    if (!Number.isInteger(maxItems) || maxItems < 1) throw new Error('collect maxItems must be a positive integer')
+    const start = await this.act(startInstruction)
+    if (!start.success) return { success: false, complete: false, data: [], message: start.message }
+
+    const prepared = await this.prepareExtraction(extractionInstruction, schema)
+    if (!prepared.success) return { success: false, complete: false, data: [], message: prepared.message }
+    const data = [prepared.data]
+    let current = prepared
+
+    while (true) {
+      const next = await this.pressKey(nextKey)
+      if (!next.success) return { success: false, complete: false, data, message: next.message }
+      const changed = await this.waitForExtractionChange(current, { timeoutMs, pollMs, settlePolls })
+      if (!changed.success) {
+        this.runtime.log('collect', `Reached the end after ${data.length} item(s)`)
+        return { success: true, complete: true, data }
+      }
+      const nextFingerprint = fingerprint(changed.data)
+      if (data.length >= maxItems) {
+        this.runtime.log('collect', `Stopped at the ${maxItems}-item safety limit before reaching the end`)
+        return { success: false, complete: false, truncated: true, data, message: `Reached maxItems (${maxItems}) before the end of the collection` }
+      }
+      data.push(changed.data)
+      current = { ...current, data: changed.data, fingerprint: nextFingerprint }
+      this.runtime.log('extract', `Read live collection item ${data.length}: ${extractionInstruction}`)
+    }
+  }
+
   actionKey(instruction, variables = {}) {
     return cacheKey({
       target: instruction,
@@ -184,11 +229,20 @@ export class CachedCuaApp {
     }
   }
 
-  async waitForExtractionChange(prepared, { timeoutMs = 5000, pollMs = 150 } = {}) {
+  async waitForExtractionChange(prepared, { timeoutMs = 5000, pollMs = 150, settlePolls = 1 } = {}) {
     const deadline = Date.now() + timeoutMs
+    let candidateFingerprint = null
+    let stablePolls = 0
     do {
       const current = await this.applyExtraction(prepared.recipe)
-      if (current.success && fingerprint(current.data) !== prepared.fingerprint) return current
+      if (current.success) {
+        const currentFingerprint = fingerprint(current.data)
+        if (currentFingerprint !== prepared.fingerprint) {
+          stablePolls = currentFingerprint === candidateFingerprint ? stablePolls + 1 : 1
+          candidateFingerprint = currentFingerprint
+          if (stablePolls >= settlePolls) return current
+        }
+      }
       await new Promise((resolve) => setTimeout(resolve, pollMs))
     } while (Date.now() <= deadline)
     return { success: false, stale: false, message: 'live extraction did not change after the action' }

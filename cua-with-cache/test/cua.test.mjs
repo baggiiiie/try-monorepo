@@ -261,6 +261,50 @@ test('CachedCua agent caches its plan and actions while replaying extraction aga
   assert.deepEqual(calls, { plan: 1, action: 1, extraction: 1 })
 })
 
+test('CachedCua collects live items with one cached start action and extraction recipe', async (t) => {
+  const cacheDir = await mkdtemp(join(tmpdir(), 'cached-cua-collect-test-'))
+  t.after(() => rm(cacheDir, { recursive: true, force: true }))
+  const h = compiledHarness({ withMail: true })
+  const originalCall = h.driver.call
+  const remaining = [
+    { sender: 'Bob', subject: 'Second', body: 'Second body' },
+    { sender: 'Carol', subject: 'Third', body: 'Third body' },
+  ]
+  h.driver.call = async (tool, input) => {
+    if (tool === 'press_key') {
+      if (remaining.length) h.mail = remaining.shift()
+      return { ok: true }
+    }
+    return originalCall(tool, input)
+  }
+  const inference = {
+    resolveAction: async () => ({ targetType: 'element', candidateId: 0, confidence: 0.95 }),
+    resolveExtraction: async () => ({
+      rootCandidateId: 1,
+      fields: [
+        { name: 'sender', candidateId: 2, source: 'value' },
+        { name: 'subject', candidateId: 3, source: 'value' },
+        { name: 'body', candidateId: 4, source: 'value' },
+      ],
+      confidence: 0.95,
+    }),
+  }
+  const runtime = new CachedCua({ cacheDir, driver: h.driver, inference, logger: false })
+  const app = await runtime.openApp('Test', { bundleId: 'test.app' })
+  h.nextMail = { sender: 'Alice', subject: 'First', body: 'First body' }
+  const result = await app.collect({
+    startInstruction: 'open first message',
+    extractionInstruction: 'read sender subject and body from Reading Pane',
+    schema: { type: 'object', properties: { sender: {}, subject: {}, body: {} } },
+    timeoutMs: 10,
+    pollMs: 1,
+  })
+  assert.equal(result.success, true)
+  assert.equal(result.complete, true)
+  assert.deepEqual(result.data.map((item) => item.sender), ['Alice', 'Bob', 'Carol'])
+  assert.equal(h.calls.filter((call) => call.tool === 'click').length, 1)
+})
+
 test('CachedCua accepts an unchanged pane only when it matches the clicked row', async () => {
   const data = { sender: 'Alice Example', subject: 'Quarterly planning notes', body: 'Quarterly planning notes and follow-up details' }
   const action = { success: true, cacheStatus: 'HIT', actionRequested: true, actionPerformed: true, actionOutcome: 'accepted' }

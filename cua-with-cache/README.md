@@ -119,12 +119,18 @@ of the cache-hit, miss, and self-healing paths.
 ```sh
 npm run check:outlook
 npm run check:outlook:cua
+npm run check:outlook:cua:all
 ```
 
 `check:outlook` preserves the older Simulang demo. `check:outlook:cua` uses the
 new Stagehand-shaped API: the runner opens Outlook, provides one instruction and
 one result schema, executes the cached workflow, and prints the report. It does
 not contain Outlook traversal helpers or launch a coding agent.
+
+`check:outlook:cua:all` opens the first Inbox message, reuses one cached live
+extraction recipe, and advances with the deterministic Down key until the
+Reading Pane stops changing. It defaults to a 1,000-message safety limit;
+override it with `OUTLOOK_MAX_EMAILS`.
 
 The CUA resolver receives bounded structural candidate data and the current
 screenshot; screenshots remain transient and are never cached. It may select
