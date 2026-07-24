@@ -112,7 +112,10 @@ the report is `REFUSED` with `actionPerformed: true`; self-healing will not
 retry the action.
 
 See [`CACHE-EXPLAINER.html`](CACHE-EXPLAINER.html) for an interactive overview
-of the cache-hit, miss, and self-healing paths.
+of the cache-hit, miss, and self-healing paths. See
+[`ARCHITECTURE.md`](ARCHITECTURE.md#what-the-cache-contains) for the concrete
+Stagehand-versus-CUA cache representation and what is deliberately never
+cached.
 
 ## Run the demos
 

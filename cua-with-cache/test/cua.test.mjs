@@ -177,6 +177,17 @@ test('CachedCua scopes positional replay to a durable container without caching 
   assert.equal(gui.resolveDescriptor(descriptor, snapshot).element.element_index, 2)
 })
 
+test('CUA descriptors replay sanitized email identity tokens', async (t) => {
+  const cacheDir = await mkdtemp(join(tmpdir(), 'cached-cua-email-identity-test-'))
+  t.after(() => rm(cacheDir, { recursive: true, force: true }))
+  const gui = new CuaGuiCache({ name: 'Outlook', driver: {}, pid: 1, window: { window_id: 2, title: 'Inbox' }, cacheDir })
+  const element = { element_index: 0, role: 'AXWindow', label: 'Inbox • first@example.com', identifier: '', help: '', actions: [] }
+  const descriptor = gui.descriptorForElement(element, 'Read email from the Inbox', { elements: [element] })
+  assert.deepEqual(descriptor.labelTokens, ['inbox', 'email'])
+  const fresh = { elements: [{ ...element, label: 'Inbox • second@example.com' }] }
+  assert.equal(gui.resolveDescriptor(descriptor, fresh).success, true)
+})
+
 test('CachedCua treats cache persistence after dispatch as best effort', async (t) => {
   const cacheDir = await mkdtemp(join(tmpdir(), 'cached-cua-write-test-'))
   t.after(() => rm(cacheDir, { recursive: true, force: true }))

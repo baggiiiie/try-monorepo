@@ -96,7 +96,8 @@ export function createPiCuaInference({ models, model, apiKey, reasoning = 'low',
       const { result, offered } = await run({
         systemPrompt: [
           'Resolve one native GUI instruction from the supplied current-window accessibility candidates and screenshot.',
-          'Prefer an element candidate when it represents the target. Use a pixel only when accessibility is absent or actionless.',
+          'Prefer an element candidate when it represents the target and has a frame; the runtime can pixel-click actionless accessibility elements.',
+          'Use a raw screenshot pixel only when the target is absent from the accessibility candidates.',
           'Use noop only when the screenshot clearly shows that the requested state is already satisfied.',
           'For pixel targets, x and y are screenshot pixels. Do not invent a candidate ID.',
           'Use resolve_action exactly once. The only supported method is a single left click.',

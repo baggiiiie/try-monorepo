@@ -74,7 +74,7 @@ export class CachedCuaApp {
     }
   }
 
-  async collect({ startInstruction, nextKey = 'down', extractionInstruction, schema, maxItems = 1000, timeoutMs = 5000, pollMs = 150, settlePolls = 2 }) {
+  async collect({ startInstruction, nextKey = 'down', nextDeliveryMode = 'background', extractionInstruction, schema, maxItems = 1000, timeoutMs = 5000, pollMs = 150, settlePolls = 2 }) {
     if (!Number.isInteger(maxItems) || maxItems < 1) throw new Error('collect maxItems must be a positive integer')
     const start = await this.act(startInstruction)
     if (!start.success) return { success: false, complete: false, data: [], message: start.message }
@@ -85,7 +85,7 @@ export class CachedCuaApp {
     let current = prepared
 
     while (true) {
-      const next = await this.pressKey(nextKey)
+      const next = await this.pressKey(nextKey, { deliveryMode: nextDeliveryMode })
       if (!next.success) return { success: false, complete: false, data, message: next.message }
       const changed = await this.waitForExtractionChange(current, { timeoutMs, pollMs, settlePolls })
       if (!changed.success) {

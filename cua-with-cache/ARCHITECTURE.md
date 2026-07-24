@@ -35,6 +35,72 @@ This is equivalent to Stagehand's replayable
 `Action { selector, description, method, arguments }`: structured intermediate
 data interpreted by a generic dispatcher, not generated JavaScript.
 
+## What the cache contains
+
+The Stagehand mental model mostly applies here. On a miss, Stagehand asks a
+model to resolve an instruction against the current DOM and stores a structured
+browser action containing a selector, method, and arguments. It does **not**
+cache literal model-generated source code. On a hit, it resolves that selector
+to a current DOM node and executes the method without another model turn.
+
+Native GUI automation has no CSS or XPath. Its closest equivalent is a durable
+accessibility descriptor:
+
+```js
+{
+  method: 'click',
+  target: {
+    kind: 'element',
+    descriptor: {
+      role: 'AXCell',
+      scope: { role: 'AXTable', labelTokens: ['message', 'list'] },
+      scopeOrdinal: 2,
+    },
+  },
+  addressing: 'pixel',
+  deliveryMode: 'foreground',
+}
+```
+
+CUA element indices and tokens identify only one snapshot, so they are never
+cached. The descriptor instead combines stable evidence such as the app and
+window, containing element, accessibility role, structural position, and label,
+identifier, or help tokens. On replay, the library takes a fresh AX snapshot,
+resolves the descriptor to a current element and frame, and dispatches the
+stored operation. If resolution or validation fails, Pi can re-ground the step
+and replace the stale descriptor.
+
+The CUA implementation has three cache levels under
+`.gui-cache/<bundle-id>/`:
+
+1. **Workflow cache:** semantic `act` and `extract` steps, so Pi does not have
+   to plan the same workflow again.
+2. **Action cache:** a supported operation plus its durable target descriptor,
+   so a hit can execute without Pi.
+3. **Extraction cache:** a root descriptor and validated structural paths to
+   fields. A hit follows those paths and reads the current values without Pi.
+
+For example, an Outlook extraction recipe can remember that `sender` is the
+value of an `AXButton` at a validated path and `body` is the subtree text of an
+`AXWebArea`. It never stores the sender, subject, body, screenshot, live AX
+node, token, or process/window ID. Returned application content is always read
+live.
+
+| Concern | Stagehand | Native CUA cache |
+| --- | --- | --- |
+| Miss resolution | Model examines the DOM | Pi examines AX data and a screenshot |
+| Cached action | Selector + method + arguments | Descriptor + method + addressing mode |
+| Replay target | Current DOM node | Current AX element/frame |
+| Stale cache | Re-resolve the locator | Re-ground the descriptor or extraction recipe |
+| Extraction | Usually model-backed per call | Cached structural recipe, live values |
+| Returned content cached | No | No |
+| Workflow plan cached here | No | Yes |
+
+This native representation is less readable and can be more brittle than a
+good CSS or ARIA selector: values such as `scopeOrdinal: 2` and paths such as
+`[36]` depend on current UI structure. Strict replay validation and granular
+self-healing contain that brittleness; they do not eliminate it.
+
 ## Ownership boundaries
 
 ### Generic library (`src/`)

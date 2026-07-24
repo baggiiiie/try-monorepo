@@ -10,8 +10,9 @@ await cua.init()
 try {
   const outlook = await cua.openApp('Outlook', { bundleId: 'com.microsoft.Outlook', windowTitle: 'Inbox' })
   const result = await outlook.collect({
-    startInstruction: 'Open the first individual email in the Inbox message list.',
+    startInstruction: 'Click the first individual email row in the Inbox message list, even if it is already open, so keyboard focus is on that row.',
     nextKey: 'down',
+    nextDeliveryMode: 'foreground',
     extractionInstruction: 'Read the sender, subject, and body from the currently open email in the Reading Pane.',
     schema: {
       type: 'object',

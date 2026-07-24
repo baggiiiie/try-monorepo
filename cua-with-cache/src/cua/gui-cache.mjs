@@ -1,5 +1,5 @@
 import { cacheKey } from '../core/key.mjs'
-import { durableIdentityTokens, sanitizedTokens } from '../core/descriptor.mjs'
+import { durableIdentityTokens, sanitizedTokens, tokenize } from '../core/descriptor.mjs'
 import { selectModelCandidate } from '../core/pi-grounder.mjs'
 import { JsonCacheStorage } from '../core/storage.mjs'
 import { CuaDriverCli } from './driver.mjs'
@@ -289,7 +289,7 @@ function resolve(elements, d, options, gui) {
 }
 function identityMatches(e, d) {
   const expected = durableIdentityTokens([...(d.labelTokens ?? []), ...(d.identifierTokens ?? []), ...(d.helpTokens ?? [])])
-  const actual = new Set([...tokens(e.label), ...tokens(e.identifier), ...tokens(e.help)])
+  const actual = new Set([...tokenize(e.label), ...tokenize(e.identifier), ...tokenize(e.help)])
   return expected.length > 0 && expected.every((token) => actual.has(token))
 }
 function descriptorIdentity(d) { return durableIdentityTokens([...(d.labelTokens ?? []), ...(d.identifierTokens ?? []), ...(d.helpTokens ?? [])]).length > 0 }
