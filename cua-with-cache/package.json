@@ -10,11 +10,14 @@
   "scripts": {
     "test": "node --test",
     "check:outlook": "simulang run examples/outlook-check.mjs",
-    "check:outlook:cua": "node examples/outlook-cua-check.mjs"
+    "check:outlook:cua": "node examples/outlook-cua-check.mjs",
+    "check:outlook:stagehand": "node examples/outlook-stagehand-check.mjs"
   },
   "dependencies": {
+    "@browserbasehq/stagehand": "^3.7.1",
     "@earendil-works/pi-ai": "0.81.1",
     "@earendil-works/pi-coding-agent": "0.81.1",
-    "@simular-ai/simulang-js": "6.0.1"
+    "@simular-ai/simulang-js": "6.0.1",
+    "zod": "^4.4.3"
   }
 }

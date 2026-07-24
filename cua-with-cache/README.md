@@ -151,6 +151,10 @@ const outlook = await cua.openApp('Outlook', {
 const result = await outlook.agent().execute({ instruction, schema })
 ```
 
+`CachedCua` logs app startup, cache hits and misses, Pi resolution, extraction,
+and self-healing to the terminal by default. Pass `logger: false` to silence it
+or `logger: (line) => { ... }` to route the same status lines elsewhere.
+
 On a workflow miss, Pi first produces only semantic `act`/`extract` steps. Each
 missing action is then resolved against a bounded current CUA snapshot, checked,
 and compiled. Screenshot-only points may be dispatched for that miss but are

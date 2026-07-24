@@ -7,7 +7,7 @@ import { openCuaApp } from './gui-cache.mjs'
 import { createLocalPiCuaInference } from './pi-inference.mjs'
 
 export class CachedCua {
-  constructor({ piDir, model, reasoning, cacheDir = '.gui-cache', cacheMode = 'auto', driver, driverOptions, inference, inferenceFactory, maxCandidates = 500 } = {}) {
+  constructor({ piDir, model, reasoning, cacheDir = '.gui-cache', cacheMode = 'auto', driver, driverOptions, inference, inferenceFactory, maxCandidates = 500, logger = console.log } = {}) {
     this.piDir = piDir
     this.model = model
     this.reasoning = reasoning
@@ -18,9 +18,12 @@ export class CachedCua {
     this.inferenceFactory = inferenceFactory ?? createLocalPiCuaInference
     this.inferencePromise = null
     this.maxCandidates = maxCandidates
+    this.logger = logger === false ? null : logger
   }
 
   async init() { return this }
+
+  log(category, message) { this.logger?.(`[${category}] ${message}`) }
 
   async inference() {
     if (this.suppliedInference) return this.suppliedInference
@@ -29,6 +32,7 @@ export class CachedCua {
   }
 
   async openApp(name, options = {}) {
+    this.log('app', `Opening ${name}`)
     const appSlug = slug(options.bundleId ?? name)
     const gui = await openCuaApp(name, {
       ...options,
@@ -37,6 +41,7 @@ export class CachedCua {
       cacheDir: join(this.cacheDir, appSlug, 'descriptors'),
       grounder: null,
     })
+    this.log('app', `${name} is ready${gui.window?.title ? ` (${gui.window.title})` : ''}`)
     return new CachedCuaApp({ runtime: this, gui, cacheDir: join(this.cacheDir, appSlug) })
   }
 }
@@ -66,17 +71,26 @@ export class CachedCuaApp {
   async act(instruction, { variables = {} } = {}) {
     instruction = normalizeInstruction(instruction)
     const key = this.actionKey(instruction, variables)
+    this.runtime.log('cache', `Checking action: ${instruction}`)
     const cached = await this.storage.read(key)
     if (cached?.version === 1 && cached.action) {
       let replay
       try { replay = await this.gui.dispatchCompiled(cached.action, { variables }) } catch (error) { return { success: false, stale: false, cacheStatus: 'HIT', instruction, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', safeToRetry: true, message: `cached action preparation failed: ${error.message}` } }
-      if (!replay.stale) return withTargetEvidence({ ...replay, cacheStatus: 'HIT', instruction, compiledAction: cached.action }, replay)
+      if (!replay.stale) {
+        this.runtime.log('cache', `HIT — replayed action: ${instruction}`)
+        return withTargetEvidence({ ...replay, cacheStatus: 'HIT', instruction, compiledAction: cached.action }, replay)
+      }
+      this.runtime.log('self-heal', `Cached action is stale — asking Pi to re-ground: ${instruction}`)
+    } else {
+      this.runtime.log('cache', `MISS — no cached action: ${instruction}`)
     }
 
     let compiled
     try {
+      this.runtime.log('llm', `Resolving action with Pi: ${instruction}`)
       compiled = await this.compileAction(instruction)
     } catch (error) {
+      this.runtime.log('error', `Pi could not resolve action: ${error.message}`)
       return { success: false, cacheStatus: cached ? 'HEALED' : 'MISS', instruction, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', safeToRetry: true, message: `Pi action resolution failed: ${error.message}` }
     }
     const cacheStatus = cached ? 'HEALED' : 'MISS'
@@ -86,6 +100,7 @@ export class CachedCuaApp {
     if (result.success && compiled.cacheable !== false) {
       try { await this.storage.write(key, { version: 1, instruction, action: compiled }) } catch (error) { cacheWriteError = error.message }
     }
+    if (result.success) this.runtime.log(cacheStatus === 'HEALED' ? 'self-heal' : 'cache', `${cacheStatus === 'HEALED' ? 'Updated cached' : compiled.cacheable === false ? 'Resolved non-cacheable' : 'Resolved and cached'} action: ${instruction}`)
     return withTargetEvidence({ ...result, cacheStatus, instruction, compiledAction: compiled, ...(cacheWriteError ? { cacheWriteError } : {}) }, result)
   }
 
@@ -142,19 +157,29 @@ export class CachedCuaApp {
   async prepareExtraction(instruction, schema) {
     instruction = normalizeInstruction(instruction)
     const key = this.extractionKey(instruction, schema)
+    this.runtime.log('cache', `Checking extraction recipe: ${instruction}`)
     const cached = await this.extractionStorage.read(key)
     if (cached?.version === 1 && cached.recipe) {
       const replay = await this.applyExtraction(cached.recipe)
-      if (replay.success) return { ...replay, recipe: cached.recipe, key, schema, cacheStatus: 'HIT', instruction, fingerprint: fingerprint(replay.data) }
+      if (replay.success) {
+        this.runtime.log('cache', `HIT — read live data with cached extraction recipe: ${instruction}`)
+        return { ...replay, recipe: cached.recipe, key, schema, cacheStatus: 'HIT', instruction, fingerprint: fingerprint(replay.data) }
+      }
+      this.runtime.log('self-heal', `Cached extraction recipe is stale — asking Pi to re-ground: ${instruction}`)
+    } else {
+      this.runtime.log('cache', `MISS — no cached extraction recipe: ${instruction}`)
     }
     try {
+      this.runtime.log('llm', `Resolving extraction recipe with Pi: ${instruction}`)
       const recipe = await this.compileExtraction(instruction, schema)
       const result = await this.applyExtraction(recipe)
       let cacheWriteError
       try { await this.extractionStorage.write(key, { version: 1, instruction, schema, recipe }) } catch (error) { cacheWriteError = error.message }
       if (!result.success) return { ...result, recipe, key, schema, cacheStatus: cached ? 'HEALED' : 'MISS', instruction, fingerprint: null, ...(cacheWriteError ? { cacheWriteError } : {}) }
+      this.runtime.log(cached ? 'self-heal' : 'cache', `${cached ? 'Updated cached' : 'Resolved and cached'} extraction recipe: ${instruction}`)
       return { ...result, recipe, key, schema, cacheStatus: cached ? 'HEALED' : 'MISS', instruction, fingerprint: fingerprint(result.data), ...(cacheWriteError ? { cacheWriteError } : {}) }
     } catch (error) {
+      this.runtime.log('error', `Pi could not resolve extraction recipe: ${error.message}`)
       return { success: false, key, schema, cacheStatus: cached ? 'HEALED' : 'MISS', instruction, message: `Pi extraction resolution failed: ${error.message}` }
     }
   }
@@ -247,11 +272,14 @@ export class CachedCuaAgent {
       routeKey: `window:${normalize(this.app.gui.window.title ?? this.app.gui.window.name)}`,
       operationKind: 'cua-workflow',
     })
+    this.app.runtime?.log?.('cache', `Checking workflow plan: ${instruction}`)
     const cached = await this.app.workflowStorage.read(key)
     let steps = cached?.version === 1 ? cached.steps : null
     const planCacheStatus = steps ? 'HIT' : 'MISS'
+    this.app.runtime?.log?.('cache', steps ? `HIT — replaying workflow plan: ${instruction}` : `MISS — no cached workflow plan: ${instruction}`)
     if (!steps) {
       try {
+        this.app.runtime?.log?.('llm', `Planning workflow with Pi: ${instruction}`)
         steps = await (await this.app.runtime.inference()).planWorkflow({
           instruction,
           schema,
@@ -260,7 +288,9 @@ export class CachedCuaAgent {
           screenshot: null,
         })
         steps = normalizeWorkflowSteps(steps, schema)
+        this.app.runtime?.log?.('llm', `Planned ${steps.length / 2} action/extraction pair(s)`)
       } catch (error) {
+        this.app.runtime?.log?.('error', `Pi could not plan workflow: ${error.message}`)
         return { success: false, cacheStatus: planCacheStatus, planCacheStatus, instruction, actionRequested: false, safeToRetry: true, message: `Pi workflow planning failed: ${error.message}` }
       }
     }
@@ -298,6 +328,7 @@ export class CachedCuaAgent {
           if (!extraction.success) return fail({ message: extraction.message })
         }
         extracted.push(extraction.data)
+        this.app.runtime?.log?.('extract', `Read live data: ${extractionStep.instruction}`)
       }
     } catch (error) {
       return fail({ message: `workflow execution failed: ${error.message}` })
@@ -308,6 +339,8 @@ export class CachedCuaAgent {
     let cacheWriteError
     if (!cached) { try { await this.app.workflowStorage.write(key, { version: 1, instruction, schema, steps }) } catch (error) { cacheWriteError = error.message } }
     const cacheStatus = overallStatus(planCacheStatus, stepStatuses)
+    if (!cached && !cacheWriteError) this.app.runtime?.log?.('cache', `Stored workflow plan: ${instruction}`)
+    this.app.runtime?.log?.('workflow', `Completed with cache status ${cacheStatus}`)
     return { success: true, cacheStatus, planCacheStatus, instruction, actions, data, actionRequested: actionState.requested, actionPerformed: actionState.performed, actionOutcome: actionState.outcome, safeToRetry: !actionState.requested, ...(cacheWriteError ? { cacheWriteError } : {}) }
   }
 }
