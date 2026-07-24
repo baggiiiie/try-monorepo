@@ -70,15 +70,16 @@ resolves the descriptor to a current element and frame, and dispatches the
 stored operation. If resolution or validation fails, Pi can re-ground the step
 and replace the stale descriptor.
 
-The CUA implementation has three cache levels under
-`.gui-cache/<bundle-id>/`:
+The imperative CUA API primarily uses two cache levels. Actions and extractions
+live under `.gui-cache/<bundle-id>/`. The optional autonomous `execute()` API
+adds scope-qualified plans under `.gui-cache/workflows/`:
 
-1. **Workflow cache:** semantic `act` and `extract` steps, so Pi does not have
-   to plan the same workflow again.
-2. **Action cache:** a supported operation plus its durable target descriptor,
+1. **Action cache:** a supported operation plus its durable target descriptor,
    so a hit can execute without Pi.
-3. **Extraction cache:** a root descriptor and validated structural paths to
+2. **Extraction cache:** a root descriptor and validated structural paths to
    fields. A hit follows those paths and reads the current values without Pi.
+3. **Optional workflow cache:** semantic `act` and `extract` steps used only by
+   `execute()`, so Pi does not plan the same autonomous workflow again.
 
 For example, an Outlook extraction recipe can remember that `sender` is the
 value of an `AXButton` at a validated path and `body` is the subtree text of an
@@ -94,7 +95,7 @@ live.
 | Stale cache | Re-resolve the locator | Re-ground the descriptor or extraction recipe |
 | Extraction | Usually model-backed per call | Cached structural recipe, live values |
 | Returned content cached | No | No |
-| Workflow plan cached here | No | Yes |
+| Workflow plan cached here | Agent only | Optional `execute()` only |
 
 This native representation is less readable and can be more brittle than a
 good CSS or ARIA selector: values such as `scopeOrdinal: 2` and paths such as
@@ -111,19 +112,20 @@ The library owns reusable automation mechanics:
 - Grounding one element or a collection of elements.
 - Scoped observation and extraction.
 - Actions with accessibility and physical-input strategies.
-- Generic waits, change detection, retries, and validation.
+- Low-level polling, replay validation, and safe pre-dispatch recovery.
 - Compiling model-grounded choices into validated actions.
-- Action and workflow-step caching.
+- Action and extraction caching, plus optional autonomous-plan caching.
 - Deterministic replay and granular self-healing.
 
 Its target public interface remains small:
 
 ```js
 const cua = new CachedCua({ piDir: '~/.pi', model: 'provider/model' })
-const app = await cua.openApp('Outlook', { bundleId: 'com.microsoft.Outlook' })
-await app.act('semantic instruction')
-await app.extract('semantic instruction', schema)
-await app.agent().execute({ instruction, schema })
+const outlook = await cua.openApp('Outlook', { bundleId: 'com.microsoft.Outlook' })
+const actions = await cua.observe('find a semantic target', { scope: outlook })
+await cua.act(actions[0])
+await cua.act('semantic instruction', { scope: outlook })
+await cua.extract('semantic instruction', { scope: outlook, schema })
 ```
 
 The library contains no Outlook, Teams, or other application-specific concepts.
@@ -141,12 +143,15 @@ Outlook email triage, the workflow defines that it must:
 - Read each current sender, subject, and body.
 - Apply the requested triage rules.
 
-These semantics belong in one concise workflow definition. CUA traversal,
-physical input, coordinate conversion, waiting, and stale-target repair belong
-in the generic library, not Outlook-specific helpers.
+These semantics belong in concise imperative workflow code. CUA traversal,
+physical input, coordinate conversion, and stale-target repair belong in the
+generic library. Application-level loops, waits, and success conditions stay
+visible to the workflow author.
 
-The current Outlook runner expresses this as one instruction plus an exact
-three-item schema passed to `app.agent().execute(...)`.
+The current Outlook runner expresses this as sequential `act`, `extract`, and
+keyboard operations plus an ordinary JavaScript loop. The optional
+`cua.execute(...)` interface remains available for deliberately autonomous,
+model-planned workflows.
 
 ### Live application data
 
@@ -190,13 +195,16 @@ use Pi's TUI or launch a coding agent.
 ## Current implementation
 
 `CachedCua` now implements this boundary for CUA: lazy local-Pi initialization,
-semantic workflow planning, AX-plus-screenshot action grounding, compiled
-action replay, schema-based live extraction recipes, stale-step healing, and
-workflow cache reporting. Visual points without durable AX identity are
-single-run fallbacks and are deliberately not cached.
+AX-plus-screenshot action grounding, `observe()` without dispatch, compiled
+action replay, schema-based live extraction recipes, and stale-operation
+healing. Optional semantic workflow planning remains available through
+`execute()`. Visual points without durable AX identity are single-run fallbacks
+and are deliberately not cached.
 
 The remaining live limitation is below this layer: Outlook/CUA can
 intermittently return a recursive menu-only accessibility tree with no Message
 List or Reading Pane. The cache cannot compile a durable action or extraction
 recipe from absent structure, so it fails visibly. A healthy snapshot is still
-required to establish durable replay artifacts.
+required to establish durable replay artifacts. See
+[`BACKEND-LIMITATIONS.md`](BACKEND-LIMITATIONS.md) for the canonical CUA Driver
+and Simulang limitation record and reproduction commands.

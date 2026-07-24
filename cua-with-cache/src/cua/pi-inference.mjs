@@ -15,17 +15,6 @@ const resolveActionTool = {
   }),
 }
 
-const planWorkflowTool = {
-  name: 'plan_workflow',
-  description: 'Return a short ordered workflow using only semantic act and live extract steps.',
-  parameters: Type.Object({
-    steps: Type.Array(Type.Union([
-      Type.Object({ kind: Type.Literal('act'), instruction: Type.String({ minLength: 1 }) }),
-      Type.Object({ kind: Type.Literal('extract'), instruction: Type.String({ minLength: 1 }) }),
-    ]), { minItems: 1, maxItems: 30 }),
-  }),
-}
-
 const resolveExtractionTool = {
   name: 'resolve_extraction',
   description: 'Select a stable container and one descendant for every requested live output field.',
@@ -117,22 +106,29 @@ export function createPiCuaInference({ models, model, apiKey, reasoning = 'low',
       return { targetType: 'pixel', x: result.x, y: result.y, confidence: result.confidence }
     },
 
-    async planWorkflow({ instruction, app, schema, candidates, screenshot }) {
+    async planWorkflow({ instruction, scopes, schema, candidates, screenshot }) {
+      const scopeNames = scopes.map(({ name }) => name)
+      const pairCount = workflowPairCount(schema)
+      const tool = planWorkflowTool(scopeNames, pairCount)
       const { result } = await run({
         systemPrompt: [
-          'Plan a short native GUI workflow for the current app.',
+          'Plan a short native GUI workflow using only the supplied named application scopes.',
+          'Every step must name exactly one supplied scope.',
           'Use act steps for one concrete interaction each and extract steps whenever current application data must be returned.',
           'Honor the requested output cardinality exactly. For repeated items, emit one position-specific act followed by one extract for each item.',
           'Keep step instructions semantic and reusable; never copy current candidate labels, screenshot text, or extracted application data into them.',
           'Do not include navigation or parsing code. Use plan_workflow exactly once.',
         ].join(' '),
-        request: { instruction, app, outputFields: schemaFields(schema), outputCardinality: cardinality(schema) },
+        request: { instruction, scopes, outputFields: schemaFields(schema), outputCardinality: cardinality(schema) },
         candidates,
         screenshot,
-        tool: planWorkflowTool,
+        tool,
         maxTokens: 2000,
       })
-      return result.steps.map((step) => ({ kind: step.kind, instruction: normalizeInstruction(step.instruction) }))
+      return result.pairs.flatMap(({ act, extract }) => [
+        { kind: 'act', scope: normalizeInstruction(act.scope), instruction: normalizeInstruction(act.instruction) },
+        { kind: 'extract', scope: normalizeInstruction(extract.scope), instruction: normalizeInstruction(extract.instruction) },
+      ])
     },
 
     async resolveExtraction({ instruction, schema, app, candidates, screenshot }) {
@@ -157,6 +153,21 @@ export function createPiCuaInference({ models, model, apiKey, reasoning = 'low',
       if (JSON.stringify(actual) !== JSON.stringify([...expected].sort())) throw new Error('Pi extraction fields do not match the requested schema')
       return result
     },
+  }
+}
+
+function planWorkflowTool(scopeNames, pairCount) {
+  if (!Array.isArray(scopeNames) || scopeNames.length === 0) throw new Error('workflow planning requires at least one declared scope')
+  const scope = Type.Union(scopeNames.map((name) => Type.Literal(name)))
+  return {
+    name: 'plan_workflow',
+    description: 'Return exact ordered act/live-extract pairs using only declared scopes.',
+    parameters: Type.Object({
+      pairs: Type.Array(Type.Object({
+        act: Type.Object({ scope, instruction: Type.String({ minLength: 1 }) }),
+        extract: Type.Object({ scope, instruction: Type.String({ minLength: 1 }) }),
+      }), { minItems: pairCount, maxItems: pairCount }),
+    }),
   }
 }
 
@@ -187,6 +198,11 @@ function schemaFields(schema) {
   return fields
 }
 function cardinality(schema) { return schema?.type === 'array' ? { minItems: schema.minItems ?? null, maxItems: schema.maxItems ?? null } : { minItems: 1, maxItems: 1 } }
+function workflowPairCount(schema) {
+  if (schema?.type !== 'array') return 1
+  if (!Number.isInteger(schema.minItems) || schema.minItems < 1 || schema.minItems !== schema.maxItems) throw new Error('array workflow schemas require equal positive integer minItems and maxItems')
+  return schema.minItems
+}
 function clean(value, max) { return value == null ? null : String(value).replace(/\s+/g, ' ').trim().slice(0, max) }
 function requireConfidence(value, minimum) { if (value < minimum) throw new Error(`Pi confidence ${value} is below ${minimum}`) }
 function normalizeInstruction(value) { return String(value).trim().replace(/\s+/g, ' ') }

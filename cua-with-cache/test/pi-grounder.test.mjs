@@ -102,15 +102,15 @@ test('Pi CUA inference validates workflow and extraction tool results', async ()
   const models = { completeSimple: async (_model, context) => {
     const name = context.tools[0].name
     const arguments_ = name === 'plan_workflow'
-      ? { steps: [{ kind: 'act', instruction: ' click Send ' }, { kind: 'extract', instruction: 'read result' }] }
+      ? { pairs: [{ act: { scope: 'test', instruction: ' click Send ' }, extract: { scope: 'test', instruction: 'read result' } }] }
       : { rootCandidateId: 0, fields: [{ name: 'body', candidateId: 1, source: 'value' }], confidence: 0.9 }
     return { stopReason: 'toolUse', content: [{ type: 'toolCall', id: 'call-1', name, arguments: arguments_ }] }
   } }
   const inference = createPiCuaInference({ models, model: {} })
   const candidates = [{ id: 0, role: 'AXGroup', label: 'Reading Pane' }, { id: 1, role: 'AXStaticText', value: 'live' }]
-  assert.deepEqual(await inference.planWorkflow({ instruction: 'do it', app: 'Test', schema: { body: {} }, candidates }), [
-    { kind: 'act', instruction: 'click Send' },
-    { kind: 'extract', instruction: 'read result' },
+  assert.deepEqual(await inference.planWorkflow({ instruction: 'do it', scopes: [{ name: 'test', app: 'Test' }], schema: { body: {} }, candidates }), [
+    { kind: 'act', scope: 'test', instruction: 'click Send' },
+    { kind: 'extract', scope: 'test', instruction: 'read result' },
   ])
   assert.equal((await inference.resolveExtraction({ instruction: 'read', schema: { body: {} }, app: 'Test', candidates })).fields[0].name, 'body')
 })

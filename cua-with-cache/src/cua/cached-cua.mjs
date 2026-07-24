@@ -6,6 +6,9 @@ import { CuaDriverCli } from './driver.mjs'
 import { openCuaApp } from './gui-cache.mjs'
 import { createLocalPiCuaInference } from './pi-inference.mjs'
 
+const scopeContexts = new WeakMap()
+const observedActions = new WeakMap()
+
 export class CachedCua {
   constructor({ piDir, model, reasoning, cacheDir = '.gui-cache', cacheMode = 'auto', driver, driverOptions, inference, inferenceFactory, maxCandidates = 500, logger = console.log } = {}) {
     this.piDir = piDir
@@ -19,6 +22,7 @@ export class CachedCua {
     this.inferencePromise = null
     this.maxCandidates = maxCandidates
     this.logger = logger === false ? null : logger
+    this.workflowStorage = new JsonCacheStorage({ cacheDir: join(cacheDir, 'workflows'), cacheMode })
   }
 
   async init() { return this }
@@ -42,21 +46,74 @@ export class CachedCua {
       grounder: null,
     })
     this.log('app', `${name} is ready${gui.window?.title ? ` (${gui.window.title})` : ''}`)
-    return new CachedCuaApp({ runtime: this, gui, cacheDir: join(this.cacheDir, appSlug) })
+    const scope = Object.freeze({ name: gui.name })
+    scopeContexts.set(scope, new CachedCuaScopeContext({ runtime: this, gui, cacheDir: join(this.cacheDir, appSlug) }))
+    return scope
+  }
+
+  async observe(instructionOrRequest, options = {}) {
+    const { scope, instruction, variables = {} } = typeof instructionOrRequest === 'string'
+      ? { ...options, instruction: instructionOrRequest }
+      : instructionOrRequest ?? {}
+    const context = this.#requireScope(scope)
+    const prepared = await context.prepareAction(instruction, { variables })
+    if (!prepared.success) throw new Error(prepared.message)
+    if (prepared.compiledAction.method === 'noop') return []
+    const action = deepFreeze({
+      description: prepared.instruction,
+      method: prepared.compiledAction.method,
+      target: structuredClone(prepared.compiledAction.target),
+      cacheStatus: prepared.cacheStatus,
+    })
+    observedActions.set(action, { runtime: this, context, prepared })
+    return [action]
+  }
+
+  async act(actionOrRequest, options = {}) {
+    const observed = observedActions.get(actionOrRequest)
+    if (observed) {
+      if (observed.runtime !== this) throw new Error('action must be returned by this CachedCua instance')
+      return observed.context.dispatchAction(observed.prepared, { variables: options.variables ?? {} })
+    }
+    const { scope, instruction, variables = {} } = typeof actionOrRequest === 'string'
+      ? { ...options, instruction: actionOrRequest }
+      : actionOrRequest ?? {}
+    return this.#requireScope(scope).act(instruction, { variables })
+  }
+
+  async extract(instructionOrRequest, options = {}) {
+    const { scope, instruction, schema } = typeof instructionOrRequest === 'string'
+      ? { ...options, instruction: instructionOrRequest }
+      : instructionOrRequest ?? {}
+    return this.#requireScope(scope).extract(instruction, schema)
+  }
+
+  async pressKey({ scope, key, deliveryMode = 'background' }) {
+    return this.#requireScope(scope).pressKey(key, { deliveryMode })
+  }
+
+  async execute({ scopes, instruction, schema }) {
+    return new CachedCuaExecution({
+      runtime: this,
+      scopes: normalizeScopes(scopes, (scope) => this.#requireScope(scope)),
+    }).execute({ instruction, schema })
+  }
+
+  #requireScope(scope) {
+    const context = scopeContexts.get(scope)
+    if (!context || context.runtime !== this) throw new Error('scope must be returned by this CachedCua instance')
+    return context
   }
 }
 
-export class CachedCuaApp {
+class CachedCuaScopeContext {
   constructor({ runtime, gui, cacheDir }) {
     this.runtime = runtime
     this.gui = gui
     this.name = gui.name
     this.storage = new JsonCacheStorage({ cacheDir: join(cacheDir, 'actions'), cacheMode: runtime.cacheMode })
     this.extractionStorage = new JsonCacheStorage({ cacheDir: join(cacheDir, 'extractions'), cacheMode: runtime.cacheMode })
-    this.workflowStorage = new JsonCacheStorage({ cacheDir: join(cacheDir, 'workflows'), cacheMode: runtime.cacheMode })
   }
-
-  agent() { return new CachedCuaAgent(this) }
 
   async pressKey(key, { deliveryMode = 'background' } = {}) {
     key = normalizeInstruction(key).toLowerCase()
@@ -68,38 +125,9 @@ export class CachedCuaApp {
         key,
         delivery_mode: deliveryMode,
       })
-      return { success: true, actionRequested: true, actionPerformed: true, actionOutcome: 'accepted', driverResult }
+      return { success: true, actionRequested: true, actionPerformed: true, actionOutcome: 'accepted', safeToRetry: false, driverResult }
     } catch (error) {
-      return { success: false, actionRequested: true, actionPerformed: false, actionOutcome: 'unknown', message: `key press failed after dispatch was requested: ${error.message}` }
-    }
-  }
-
-  async collect({ startInstruction, nextKey = 'down', nextDeliveryMode = 'background', extractionInstruction, schema, maxItems = 1000, timeoutMs = 5000, pollMs = 150, settlePolls = 2 }) {
-    if (!Number.isInteger(maxItems) || maxItems < 1) throw new Error('collect maxItems must be a positive integer')
-    const start = await this.act(startInstruction)
-    if (!start.success) return { success: false, complete: false, data: [], message: start.message }
-
-    const prepared = await this.prepareExtraction(extractionInstruction, schema)
-    if (!prepared.success) return { success: false, complete: false, data: [], message: prepared.message }
-    const data = [prepared.data]
-    let current = prepared
-
-    while (true) {
-      const next = await this.pressKey(nextKey, { deliveryMode: nextDeliveryMode })
-      if (!next.success) return { success: false, complete: false, data, message: next.message }
-      const changed = await this.waitForExtractionChange(current, { timeoutMs, pollMs, settlePolls })
-      if (!changed.success) {
-        this.runtime.log('collect', `Reached the end after ${data.length} item(s)`)
-        return { success: true, complete: true, data }
-      }
-      const nextFingerprint = fingerprint(changed.data)
-      if (data.length >= maxItems) {
-        this.runtime.log('collect', `Stopped at the ${maxItems}-item safety limit before reaching the end`)
-        return { success: false, complete: false, truncated: true, data, message: `Reached maxItems (${maxItems}) before the end of the collection` }
-      }
-      data.push(changed.data)
-      current = { ...current, data: changed.data, fingerprint: nextFingerprint }
-      this.runtime.log('extract', `Read live collection item ${data.length}: ${extractionInstruction}`)
+      return { success: false, actionRequested: true, actionPerformed: false, actionOutcome: 'unknown', safeToRetry: false, message: `key press failed after dispatch was requested: ${error.message}` }
     }
   }
 
@@ -114,16 +142,22 @@ export class CachedCuaApp {
   }
 
   async act(instruction, { variables = {} } = {}) {
+    const prepared = await this.prepareAction(instruction, { variables })
+    if (!prepared.success) return prepared
+    return this.dispatchAction(prepared, { variables })
+  }
+
+  async prepareAction(instruction, { variables = {} } = {}) {
     instruction = normalizeInstruction(instruction)
     const key = this.actionKey(instruction, variables)
     this.runtime.log('cache', `Checking action: ${instruction}`)
     const cached = await this.storage.read(key)
     if (cached?.version === 1 && cached.action) {
-      let replay
-      try { replay = await this.gui.dispatchCompiled(cached.action, { variables }) } catch (error) { return { success: false, stale: false, cacheStatus: 'HIT', instruction, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', safeToRetry: true, message: `cached action preparation failed: ${error.message}` } }
-      if (!replay.stale) {
-        this.runtime.log('cache', `HIT — replayed action: ${instruction}`)
-        return withTargetEvidence({ ...replay, cacheStatus: 'HIT', instruction, compiledAction: cached.action }, replay)
+      let validation
+      try { validation = await this.validateCompiledAction(cached.action) } catch (error) { return { success: false, stale: false, cacheStatus: 'HIT', instruction, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', safeToRetry: true, message: `cached action preparation failed: ${error.message}` } }
+      if (validation.success) {
+        this.runtime.log('cache', `HIT — resolved cached action: ${instruction}`)
+        return { success: true, stale: false, cacheStatus: 'HIT', instruction, key, compiledAction: cached.action }
       }
       this.runtime.log('self-heal', `Cached action is stale — asking Pi to re-ground: ${instruction}`)
     } else {
@@ -139,14 +173,46 @@ export class CachedCuaApp {
       return { success: false, cacheStatus: cached ? 'HEALED' : 'MISS', instruction, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', safeToRetry: true, message: `Pi action resolution failed: ${error.message}` }
     }
     const cacheStatus = cached ? 'HEALED' : 'MISS'
+    return { success: true, stale: false, cacheStatus, instruction, key, compiledAction: compiled }
+  }
+
+  async validateCompiledAction(action) {
+    if (action?.method === 'noop') return { success: true }
+    if (action?.target?.kind !== 'element') return { success: false }
+    const snapshot = await this.gui.snapshot({ includeScreenshot: action.addressing === 'pixel' })
+    const resolved = this.gui.resolveDescriptor(action.target.descriptor, snapshot)
+    if (!resolved.success) return resolved
+    if (action.addressing === 'pixel' && (!snapshot.screenshotWidth || !snapshot.screenshotHeight || !resolved.element.frame)) return { success: false }
+    return { success: true }
+  }
+
+  async dispatchAction(prepared, { variables = {} } = {}) {
+    let { cacheStatus, instruction, key, compiledAction: compiled } = prepared
     let result
     try { result = await this.gui.dispatchCompiled(compiled, { variables }) } catch (error) { return { success: false, stale: false, cacheStatus, instruction, compiledAction: compiled, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', safeToRetry: true, message: `compiled action preparation failed: ${error.message}` } }
+    if (result.stale && !result.actionRequested) {
+      try {
+        this.runtime.log('self-heal', `Prepared action became stale — asking Pi to re-ground: ${instruction}`)
+        compiled = await this.compileAction(instruction)
+        cacheStatus = 'HEALED'
+        result = await this.gui.dispatchCompiled(compiled, { variables })
+      } catch (error) {
+        return { success: false, stale: true, cacheStatus, instruction, compiledAction: compiled, actionRequested: false, actionPerformed: false, actionOutcome: 'rejected', safeToRetry: true, message: `Pi action resolution failed: ${error.message}` }
+      }
+    }
     let cacheWriteError
     if (result.success && compiled.cacheable !== false) {
       try { await this.storage.write(key, { version: 1, instruction, action: compiled }) } catch (error) { cacheWriteError = error.message }
     }
-    if (result.success) this.runtime.log(cacheStatus === 'HEALED' ? 'self-heal' : 'cache', `${cacheStatus === 'HEALED' ? 'Updated cached' : compiled.cacheable === false ? 'Resolved non-cacheable' : 'Resolved and cached'} action: ${instruction}`)
-    return withTargetEvidence({ ...result, cacheStatus, instruction, compiledAction: compiled, ...(cacheWriteError ? { cacheWriteError } : {}) }, result)
+    if (result.success) {
+      const message = cacheStatus === 'HIT'
+        ? 'Replayed cached'
+        : compiled.cacheable === false
+          ? cacheStatus === 'HEALED' ? 'Resolved non-cacheable replacement; stale cache unchanged for' : 'Resolved non-cacheable'
+          : cacheStatus === 'HEALED' ? 'Updated cached' : 'Resolved and cached'
+      this.runtime.log(cacheStatus === 'HEALED' ? 'self-heal' : 'cache', `${message} action: ${instruction}`)
+    }
+    return withTargetEvidence({ ...result, cacheStatus, instruction, compiledAction: structuredClone(compiled), safeToRetry: !result.actionRequested, ...(cacheWriteError ? { cacheWriteError } : {}) }, result)
   }
 
   async compileAction(instruction) {
@@ -287,7 +353,7 @@ export class CachedCuaApp {
       const parent = snapshot.elements.find((candidate) => candidate.element_index === element.parent_index)
       const siblings = snapshot.elements.filter((candidate) => candidate.parent_index === element.parent_index && candidate.role === element.role)
       if (!parent) throw new Error(`field ${field.name} has no structural parent`)
-      return { name: field.name, path, source: field.source, role: element.role, identityTokens, roleOrdinal: siblings.findIndex((candidate) => candidate.element_index === element.element_index), expectedRoleCount: siblings.length }
+      return { name: field.name, path, source: field.source, role: element.role, identityTokens, roleOrdinal: siblings.findIndex((candidate) => candidate.element_index === element.element_index) }
     })
     return { version: 1, root: rootDescriptor, fields }
   }
@@ -305,7 +371,7 @@ export class CachedCuaApp {
       const parentPath = field.path.slice(0, -1)
       const parent = followPath(resolved.element, parentPath, children)
       const roleSiblings = parent ? (children.get(parent.element_index) ?? []).filter((candidate) => candidate.role === field.role) : []
-      if (!parent || roleSiblings.length !== field.expectedRoleCount || roleSiblings[field.roleOrdinal]?.element_index !== element.element_index) return { success: false, stale: true, message: `extraction field ${field.name} structural position changed` }
+      if (!parent || roleSiblings[field.roleOrdinal]?.element_index !== element.element_index) return { success: false, stale: true, message: `extraction field ${field.name} structural position changed` }
       if (element.role !== field.role || (identityTokens.length > 0 && !identityTokens.every((token) => tokens(`${element.label} ${element.identifier} ${element.help}`).includes(token)))) return { success: false, stale: true, message: `extraction field ${field.name} no longer matches its compiled endpoint` }
       data[field.name] = readSource(element, field.source, children)
       if (!String(data[field.name] ?? '').trim()) return { success: false, stale: true, message: `extraction field ${field.name} is empty` }
@@ -314,42 +380,50 @@ export class CachedCuaApp {
   }
 }
 
-export class CachedCuaAgent {
-  constructor(app) { this.app = app }
+class CachedCuaExecution {
+  constructor({ runtime, scopes }) {
+    this.runtime = runtime
+    this.scopes = scopes
+  }
 
   async execute({ instruction, schema }) {
     instruction = normalizeInstruction(instruction)
+    workflowPairCount(schema)
+    const scopeContext = Object.fromEntries(Object.entries(this.scopes).map(([name, scope]) => [name, {
+      app: scope.gui.bundleId ?? scope.gui.name,
+      route: normalize(scope.gui.window.title ?? scope.gui.window.name),
+    }]))
     const key = cacheKey({
       target: instruction,
-      match: schema,
-      stableAppId: this.app.gui.bundleId ?? this.app.gui.name,
-      routeKey: `window:${normalize(this.app.gui.window.title ?? this.app.gui.window.name)}`,
+      match: { schema, scopes: scopeContext },
+      stableAppId: 'cached-cua',
+      routeKey: 'declared-scopes',
       operationKind: 'cua-workflow',
     })
-    this.app.runtime?.log?.('cache', `Checking workflow plan: ${instruction}`)
-    const cached = await this.app.workflowStorage.read(key)
+    this.runtime.log('cache', `Checking workflow plan: ${instruction}`)
+    const cached = await this.runtime.workflowStorage.read(key)
     let steps = cached?.version === 1 ? cached.steps : null
     const planCacheStatus = steps ? 'HIT' : 'MISS'
-    this.app.runtime?.log?.('cache', steps ? `HIT — replaying workflow plan: ${instruction}` : `MISS — no cached workflow plan: ${instruction}`)
+    this.runtime.log('cache', steps ? `HIT — replaying workflow plan: ${instruction}` : `MISS — no cached workflow plan: ${instruction}`)
     if (!steps) {
       try {
-        this.app.runtime?.log?.('llm', `Planning workflow with Pi: ${instruction}`)
-        steps = await (await this.app.runtime.inference()).planWorkflow({
+        this.runtime.log('llm', `Planning workflow with Pi: ${instruction}`)
+        steps = await (await this.runtime.inference()).planWorkflow({
           instruction,
           schema,
-          app: this.app.gui.bundleId ?? this.app.gui.name,
+          scopes: Object.entries(scopeContext).map(([name, context]) => ({ name, app: context.app, route: context.route })),
           candidates: [],
           screenshot: null,
         })
-        steps = normalizeWorkflowSteps(steps, schema)
-        this.app.runtime?.log?.('llm', `Planned ${steps.length / 2} action/extraction pair(s)`)
+        steps = normalizeWorkflowSteps(steps, schema, Object.keys(this.scopes))
+        this.runtime.log('llm', `Planned ${steps.length / 2} action/extraction pair(s)`)
       } catch (error) {
-        this.app.runtime?.log?.('error', `Pi could not plan workflow: ${error.message}`)
+        this.runtime.log('error', `Pi could not plan workflow: ${error.message}`)
         return { success: false, cacheStatus: planCacheStatus, planCacheStatus, instruction, actionRequested: false, safeToRetry: true, message: `Pi workflow planning failed: ${error.message}` }
       }
     }
     if (steps) {
-      try { steps = normalizeWorkflowSteps(steps, schema) } catch (error) { return { success: false, cacheStatus: planCacheStatus, planCacheStatus, instruction, actionRequested: false, safeToRetry: true, message: `Invalid cached workflow: ${error.message}` } }
+      try { steps = normalizeWorkflowSteps(steps, schema, Object.keys(this.scopes)) } catch (error) { return { success: false, cacheStatus: planCacheStatus, planCacheStatus, instruction, actionRequested: false, safeToRetry: true, message: `Invalid cached workflow: ${error.message}` } }
     }
 
     const actions = []
@@ -361,28 +435,36 @@ export class CachedCuaAgent {
       for (let index = 0; index < steps.length; index += 2) {
         const actionStep = steps[index]
         const extractionStep = steps[index + 1]
-        const prepared = await this.app.prepareExtraction(extractionStep.instruction, itemSchema(schema))
-        stepStatuses.push(prepared.cacheStatus)
+        const actionScope = this.scopes[actionStep.scope]
+        const extractionScope = this.scopes[extractionStep.scope]
+        const sameScope = actionScope === extractionScope
+        const preparedBeforeAction = sameScope
+          ? await extractionScope.prepareExtraction(extractionStep.instruction, itemSchema(schema))
+          : null
+        if (preparedBeforeAction) stepStatuses.push(preparedBeforeAction.cacheStatus)
 
-        const action = await this.app.act(actionStep.instruction)
-        actions.push({ instruction: actionStep.instruction, cacheStatus: action.cacheStatus, success: action.success })
+        const action = await actionScope.act(actionStep.instruction)
+        actions.push({ scope: actionStep.scope, instruction: actionStep.instruction, cacheStatus: action.cacheStatus, success: action.success })
         stepStatuses.push(action.cacheStatus)
         mergeActionState(actionState, action)
         if (!action.success) return fail({ actionOutcome: action.actionOutcome, message: action.message })
 
+        const prepared = preparedBeforeAction
+          ?? await extractionScope.prepareExtraction(extractionStep.instruction, itemSchema(schema))
+        if (!preparedBeforeAction) stepStatuses.push(prepared.cacheStatus)
         let extraction
-        if (prepared.success && action.actionRequested) {
-          extraction = await this.app.waitForExtractionChange(prepared)
+        if (sameScope && prepared.success && action.actionRequested) {
+          extraction = await extractionScope.waitForExtractionChange(prepared)
           if (!extraction.success && targetMatchesExtraction(action._targetEvidence, prepared.data)) extraction = prepared
           if (!extraction.success) return fail({ message: extraction.message })
         } else if (prepared.success) {
           extraction = prepared
         } else {
-          extraction = await this.app.waitForExtractionAvailable(prepared)
+          extraction = await extractionScope.waitForExtractionAvailable(prepared)
           if (!extraction.success) return fail({ message: extraction.message })
         }
         extracted.push(extraction.data)
-        this.app.runtime?.log?.('extract', `Read live data: ${extractionStep.instruction}`)
+        this.runtime.log('extract', `Read live data from ${extractionStep.scope}: ${extractionStep.instruction}`)
       }
     } catch (error) {
       return fail({ message: `workflow execution failed: ${error.message}` })
@@ -391,10 +473,10 @@ export class CachedCuaAgent {
     const validation = validateOutput(schema, data)
     if (!validation.success) return fail({ message: validation.message })
     let cacheWriteError
-    if (!cached) { try { await this.app.workflowStorage.write(key, { version: 1, instruction, schema, steps }) } catch (error) { cacheWriteError = error.message } }
+    if (!cached) { try { await this.runtime.workflowStorage.write(key, { version: 1, instruction, schema, scopes: scopeContext, steps }) } catch (error) { cacheWriteError = error.message } }
     const cacheStatus = overallStatus(planCacheStatus, stepStatuses)
-    if (!cached && !cacheWriteError) this.app.runtime?.log?.('cache', `Stored workflow plan: ${instruction}`)
-    this.app.runtime?.log?.('workflow', `Completed with cache status ${cacheStatus}`)
+    if (!cached && !cacheWriteError) this.runtime.log('cache', `Stored workflow plan: ${instruction}`)
+    this.runtime.log('workflow', `Completed with cache status ${cacheStatus}`)
     return { success: true, cacheStatus, planCacheStatus, instruction, actions, data, actionRequested: actionState.requested, actionPerformed: actionState.performed, actionOutcome: actionState.outcome, safeToRetry: !actionState.requested, ...(cacheWriteError ? { cacheWriteError } : {}) }
   }
 }
@@ -440,19 +522,39 @@ function itemSchema(schema) { return schema?.type === 'array' ? schema.items : s
 function outputData(schema, values) { return schema?.type === 'array' ? values : values.at(-1) ?? null }
 function fieldIdentity(element, fieldName) { const wanted = new Set(tokens(fieldName)); return tokens(`${element.label} ${element.identifier} ${element.help}`).filter((token) => wanted.has(token)) }
 function fingerprint(value) { return JSON.stringify(value) }
-function normalizeSteps(steps) {
+function normalizeSteps(steps, scopeNames) {
   if (!Array.isArray(steps) || steps.length === 0 || steps.length > 30) throw new Error('workflow plan must contain 1-30 steps')
+  const allowed = new Set(scopeNames)
   return steps.map((step) => {
     if (!['act', 'extract'].includes(step?.kind)) throw new Error(`unsupported workflow step: ${step?.kind}`)
-    return { kind: step.kind, instruction: normalizeInstruction(step.instruction) }
+    const scope = normalizeInstruction(step.scope)
+    if (!allowed.has(scope)) throw new Error(`workflow step selected undeclared scope: ${scope}`)
+    return { kind: step.kind, scope, instruction: normalizeInstruction(step.instruction) }
   })
 }
-function normalizeWorkflowSteps(steps, schema) {
-  const normalized = normalizeSteps(steps)
-  const expected = schema?.type === 'array' && schema.minItems === schema.maxItems ? schema.minItems : 1
-  if (!Number.isInteger(expected) || expected < 1 || normalized.length !== expected * 2) throw new Error(`workflow must contain exactly ${expected} act/extract pairs`)
+function normalizeWorkflowSteps(steps, schema, scopeNames) {
+  const normalized = normalizeSteps(steps, scopeNames)
+  const expected = workflowPairCount(schema)
+  if (normalized.length !== expected * 2) throw new Error(`workflow must contain exactly ${expected} act/extract pairs`)
   for (let index = 0; index < normalized.length; index += 2) if (normalized[index].kind !== 'act' || normalized[index + 1].kind !== 'extract') throw new Error('workflow steps must alternate act then extract')
   return normalized
+}
+function normalizeScopes(scopes, resolveScope) {
+  if (!scopes || Array.isArray(scopes) || typeof scopes !== 'object') throw new Error('execute scopes must be a non-empty named object')
+  const entries = Object.entries(scopes)
+  if (entries.length === 0) throw new Error('execute scopes must be a non-empty named object')
+  const normalized = {}
+  for (const [name, scope] of entries) {
+    const normalizedName = normalizeInstruction(name)
+    if (Object.hasOwn(normalized, normalizedName)) throw new Error(`duplicate normalized scope name: ${normalizedName}`)
+    normalized[normalizedName] = resolveScope(scope)
+  }
+  return normalized
+}
+function workflowPairCount(schema) {
+  if (schema?.type !== 'array') return 1
+  if (!Number.isInteger(schema.minItems) || schema.minItems < 1 || schema.minItems !== schema.maxItems) throw new Error('array workflow schemas require equal positive integer minItems and maxItems')
+  return schema.minItems
 }
 function validateOutput(schema, data) {
   if (schema?.type === 'array') {
@@ -487,3 +589,4 @@ function tokens(value) { return normalize(value).split(/[^a-z0-9]+/).filter((tok
 function normalize(value) { return String(value ?? '').trim().toLowerCase() }
 function normalizeInstruction(value) { const out = String(value ?? '').trim().replace(/\s+/g, ' '); if (!out) throw new Error('instruction is required'); return out }
 function slug(value) { return normalize(value).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') }
+function deepFreeze(value) { if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value; for (const child of Object.values(value)) deepFreeze(child); return Object.freeze(value) }

@@ -1,5 +1,8 @@
 # Cua Driver learnings
 
+The canonical cross-backend limitation record, including reproduction commands
+and issue ownership, is [`BACKEND-LIMITATIONS.md`](BACKEND-LIMITATIONS.md).
+
 - Cua Driver 0.10.0 is a host-native macOS driver, not a VM. `launch_app` attaches/launches without intentionally fronting the app, and accessibility actions default to background delivery.
 - `get_window_state` is authoritative for each action turn. Its `element_index` and `element_token` are ephemeral and replaced by a fresh snapshot; neither is cached.
 - The cache stores only durable grounding: concept/query, role, sanitized distinctive UI tokens, actions, ancestor roles, and relative geometry, keyed by app, window, scope, and structural match. It never stores pid/window IDs, snapshots/screenshots, ephemeral handles, live values, or extracted data.

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { CachedCua, CachedCuaAgent, CuaDriverCli, CuaDriverError, CuaGuiCache, selectCuaWindow } from '../src/index.mjs'
+import { CachedCua, CuaDriverCli, CuaDriverError, CuaGuiCache, selectCuaWindow } from '../src/index.mjs'
 
 test('CUA CLI adapter parses JSON and preserves process diagnostics', async () => {
   const cli = new CuaDriverCli({ run: async (_file, args) => ({ stdout: JSON.stringify({ ok: true, args }), stderr: 'warning' }) })
@@ -144,17 +144,18 @@ test('CachedCua compiles once, replays without Pi, and persists no screenshot or
   await runtime.init()
   const app = await runtime.openApp('Test', { bundleId: 'test.app' })
 
-  assert.equal((await app.act('click Send')).cacheStatus, 'MISS')
-  assert.equal((await app.act('click Send')).cacheStatus, 'HIT')
+  assert.equal((await runtime.act({ scope: app, instruction: 'click Send' })).cacheStatus, 'MISS')
+  assert.equal((await runtime.act({ scope: app, instruction: 'click Send' })).cacheStatus, 'HIT')
   assert.equal(inferenceCalls, 1)
   assert.equal(h.calls.filter((call) => call.tool === 'click').length, 2)
 
-  const cache = await readFile(app.storage.pathForKey(app.actionKey('click Send')), 'utf8')
+  const actionFile = (await readdir(join(cacheDir, 'test-app', 'actions'))).find((path) => path.endsWith('.json'))
+  const cache = await readFile(join(cacheDir, 'test-app', 'actions', actionFile), 'utf8')
   for (const forbidden of ['privateScreenshot', 'fresh-', 'element_index', 'element_token']) assert.equal(cache.includes(forbidden), false)
 
   const coldRuntime = new CachedCua({ cacheDir, driver: h.driver, inferenceFactory: async () => assert.fail('Pi must stay lazy on a cache hit') })
   const coldApp = await coldRuntime.openApp('Test', { bundleId: 'test.app' })
-  assert.equal((await coldApp.act('click Send')).cacheStatus, 'HIT')
+  assert.equal((await coldRuntime.act({ scope: coldApp, instruction: 'click Send' })).cacheStatus, 'HIT')
 })
 
 test('CachedCua scopes positional replay to a durable container without caching row labels', async (t) => {
@@ -194,12 +195,22 @@ test('CachedCua treats cache persistence after dispatch as best effort', async (
   const h = compiledHarness()
   const runtime = new CachedCua({ cacheDir, driver: h.driver, inference: { resolveAction: async () => ({ targetType: 'element', candidateId: 0, confidence: 0.95 }) } })
   const app = await runtime.openApp('Test', { bundleId: 'test.app' })
-  app.storage.write = async () => { throw new Error('disk full') }
-  const result = await app.act('click Send')
+  const actionsDir = join(cacheDir, 'test-app', 'actions')
+  await mkdir(actionsDir, { recursive: true })
+  const call = h.driver.call
+  h.driver.call = async (tool, input) => {
+    const result = await call(tool, input)
+    if (tool === 'click') {
+      await rm(actionsDir, { recursive: true })
+      await writeFile(actionsDir, 'not a directory')
+    }
+    return result
+  }
+  const result = await runtime.act({ scope: app, instruction: 'click Send' })
   assert.equal(result.success, true)
   assert.equal(result.actionRequested, true)
   assert.equal(result.actionOutcome, 'accepted')
-  assert.equal(result.cacheWriteError, 'disk full')
+  assert.match(result.cacheWriteError, /not a directory|ENOTDIR|EEXIST/)
   assert.equal(h.calls.filter((call) => call.tool === 'click').length, 1)
 })
 
@@ -215,19 +226,20 @@ test('CachedCua heals a stale action before dispatch and never retries an uncert
       : { targetType: 'pixel', x: screenshot.width / 2, y: screenshot.height / 2, confidence: 0.9 }
   } } })
   const app = await runtime.openApp('Test', { bundleId: 'test.app' })
-  assert.equal((await app.act('click Send')).success, true)
+  assert.equal((await runtime.act({ scope: app, instruction: 'click Send' })).success, true)
   h.label = 'Submit'
-  assert.equal((await app.act('click Send')).cacheStatus, 'HEALED')
+  assert.equal((await runtime.act({ scope: app, instruction: 'click Send' })).cacheStatus, 'HEALED')
   assert.equal(calls, 2)
 
   h.failAction = true
-  const failed = await app.act('click Send')
+  const failed = await runtime.act({ scope: app, instruction: 'click Send' })
   assert.equal(failed.actionOutcome, 'unknown')
+  assert.equal(failed.safeToRetry, false)
   assert.equal(calls, 3)
   assert.equal(h.calls.filter((call) => call.tool === 'click').length, 3)
 })
 
-test('CachedCua agent caches its plan and actions while replaying extraction against live data', async (t) => {
+test('CachedCua execute caches its plan and actions while replaying extraction against live data', async (t) => {
   const cacheDir = await mkdtemp(join(tmpdir(), 'cached-cua-agent-test-'))
   t.after(() => rm(cacheDir, { recursive: true, force: true }))
   const h = compiledHarness({ withMail: true })
@@ -236,8 +248,8 @@ test('CachedCua agent caches its plan and actions while replaying extraction aga
     planWorkflow: async () => {
       calls.plan++
       return [
-        { kind: 'act', instruction: 'click Send' },
-        { kind: 'extract', instruction: 'read sender subject and body from Reading Pane' },
+        { kind: 'act', scope: 'test', instruction: 'click Send' },
+        { kind: 'extract', scope: 'test', instruction: 'read sender subject and body from Reading Pane' },
       ]
     },
     resolveAction: async () => { calls.action++; return { targetType: 'element', candidateId: 0, confidence: 0.95 } },
@@ -260,77 +272,182 @@ test('CachedCua agent caches its plan and actions while replaying extraction aga
   const request = { instruction: 'read the open email', schema }
 
   h.nextMail = { sender: 'Alice', subject: 'First', body: 'Initial body' }
-  const first = await app.agent().execute(request)
+  const first = await runtime.execute({ scopes: { test: app }, ...request })
   assert.equal(first.success, true)
   assert.deepEqual(first.data, { sender: 'Alice', subject: 'First', body: 'Initial body' })
   const persisted = (await Promise.all((await readdir(cacheDir, { recursive: true })).filter((path) => path.endsWith('.json')).map((path) => readFile(join(cacheDir, path), 'utf8')))).join('\n')
   for (const forbidden of ['Alice', 'First', 'Initial body', 'privateScreenshot', 'fresh-', 'element_index', 'element_token']) assert.equal(persisted.includes(forbidden), false)
   h.nextMail = { sender: 'Bob', subject: 'Second', body: 'Fresh body' }
-  const second = await app.agent().execute(request)
+  const second = await runtime.execute({ scopes: { test: app }, ...request })
   assert.equal(second.cacheStatus, 'HIT')
   assert.deepEqual(second.data, { sender: 'Bob', subject: 'Second', body: 'Fresh body' })
   assert.deepEqual(calls, { plan: 1, action: 1, extraction: 1 })
 })
 
-test('CachedCua collects live items with one cached start action and extraction recipe', async (t) => {
-  const cacheDir = await mkdtemp(join(tmpdir(), 'cached-cua-collect-test-'))
+test('CachedCua execute routes each planned step only to its declared scope', async (t) => {
+  const cacheDir = await mkdtemp(join(tmpdir(), 'cached-cua-scopes-test-'))
   t.after(() => rm(cacheDir, { recursive: true, force: true }))
-  const h = compiledHarness({ withMail: true })
-  const originalCall = h.driver.call
-  const remaining = [
-    { sender: 'Bob', subject: 'Second', body: 'Second body' },
-    { sender: 'Carol', subject: 'Third', body: 'Third body' },
-  ]
-  h.driver.call = async (tool, input) => {
-    if (tool === 'press_key') {
-      if (remaining.length) h.mail = remaining.shift()
-      return { ok: true }
+  const calls = []
+  const driver = { call: async (tool, input) => {
+    calls.push({ tool, input })
+    if (tool === 'launch_app') {
+      const outlook = input.bundle_id === 'test.outlook'
+      return { pid: outlook ? 1 : 2, windows: [{ window_id: outlook ? 11 : 22, title: 'Main', is_on_screen: true, bounds: { x: 0, y: 0, width: 200, height: 100 } }] }
     }
-    return originalCall(tool, input)
-  }
-  const inference = {
+    if (tool === 'get_window_state' && input.pid === 1) return { screenshot_width: 100, screenshot_height: 50, screenshot_png_b64: 'privateScreenshot', elements: [
+      { element_index: 0, element_token: 'outlook-action', role: 'AXButton', label: 'Open report email', actions: ['AXPress'], frame: { x: 0, y: 0, w: 100, h: 30 } },
+    ] }
+    if (tool === 'get_window_state' && input.pid === 2) return { elements: [
+      { element_index: 0, element_token: 'workbook', role: 'AXGroup', label: 'Workbook', actions: [] },
+      { element_index: 1, element_token: 'status', parent_index: 0, role: 'AXStaticText', label: 'Status', value: 'ready', actions: [] },
+    ] }
+    return { ok: true }
+  } }
+  const runtime = new CachedCua({ cacheDir, driver, inference: {
+    planWorkflow: async ({ scopes }) => {
+      assert.deepEqual(scopes.map(({ name }) => name), ['outlook', 'excel'])
+      return [
+        { kind: 'act', scope: 'outlook', instruction: 'open the report email' },
+        { kind: 'extract', scope: 'excel', instruction: 'read the current workbook status' },
+      ]
+    },
     resolveAction: async () => ({ targetType: 'element', candidateId: 0, confidence: 0.95 }),
-    resolveExtraction: async () => ({
-      rootCandidateId: 1,
-      fields: [
-        { name: 'sender', candidateId: 2, source: 'value' },
-        { name: 'subject', candidateId: 3, source: 'value' },
-        { name: 'body', candidateId: 4, source: 'value' },
-      ],
-      confidence: 0.95,
-    }),
-  }
+    resolveExtraction: async () => ({ rootCandidateId: 0, fields: [{ name: 'status', candidateId: 1, source: 'value' }], confidence: 0.95 }),
+  }, logger: false })
+  const outlook = await runtime.openApp('Outlook', { bundleId: 'test.outlook' })
+  const excel = await runtime.openApp('Excel', { bundleId: 'test.excel' })
+
+  const result = await runtime.execute({
+    scopes: { outlook, excel },
+    instruction: 'Read an Outlook report and verify the Excel workbook',
+    schema: { type: 'object', properties: { status: {} }, required: ['status'] },
+  })
+
+  assert.equal(result.success, true)
+  assert.deepEqual(result.data, { status: 'ready' })
+  const clickIndex = calls.findIndex(({ tool }) => tool === 'click')
+  const excelReadIndex = calls.findIndex(({ tool, input }) => tool === 'get_window_state' && input.pid === 2)
+  assert.equal(calls[clickIndex].input.pid, 1)
+  assert.ok(clickIndex < excelReadIndex, 'cross-scope extraction must happen after dispatching the action')
+})
+
+test('CachedCua returns passive runtime-owned scopes and rejects ambiguous names', async (t) => {
+  const cacheDir = await mkdtemp(join(tmpdir(), 'cached-cua-passive-scope-test-'))
+  t.after(() => rm(cacheDir, { recursive: true, force: true }))
+  const h = compiledHarness()
+  const first = new CachedCua({ cacheDir, driver: h.driver, inference: {}, logger: false })
+  const second = new CachedCua({ cacheDir, driver: h.driver, inference: {}, logger: false })
+  const scope = await first.openApp('Test', { bundleId: 'test.app' })
+
+  assert.deepEqual(Object.keys(scope), ['name'])
+  assert.equal(Object.isFrozen(scope), true)
+  await assert.rejects(() => second.extract({ scope, instruction: 'read', schema: { type: 'object', properties: { value: {} } } }), /returned by this CachedCua instance/)
+  await assert.rejects(() => first.execute({ scopes: { test: scope, ' test ': scope }, instruction: 'read', schema: { type: 'object', properties: { value: {} } } }), /duplicate normalized scope name/)
+})
+
+test('CachedCua execute refuses workflow steps outside declared scopes', async (t) => {
+  const cacheDir = await mkdtemp(join(tmpdir(), 'cached-cua-scope-refusal-test-'))
+  t.after(() => rm(cacheDir, { recursive: true, force: true }))
+  const h = compiledHarness()
+  const runtime = new CachedCua({ cacheDir, driver: h.driver, inference: {
+    planWorkflow: async () => [
+      { kind: 'act', scope: 'teams', instruction: 'send message' },
+      { kind: 'extract', scope: 'teams', instruction: 'read confirmation' },
+    ],
+  }, logger: false })
+  const outlook = await runtime.openApp('Outlook', { bundleId: 'test.outlook' })
+
+  const result = await runtime.execute({
+    scopes: { outlook },
+    instruction: 'send a message',
+    schema: { type: 'object', properties: { status: {} } },
+  })
+
+  assert.equal(result.success, false)
+  assert.match(result.message, /undeclared scope: teams/)
+})
+
+test('CachedCua observe resolves without dispatch and act replays the returned action', async (t) => {
+  const cacheDir = await mkdtemp(join(tmpdir(), 'cached-cua-observe-test-'))
+  t.after(() => rm(cacheDir, { recursive: true, force: true }))
+  const h = compiledHarness()
+  let inferenceCalls = 0
+  const inference = { resolveAction: async () => { inferenceCalls++; return { targetType: 'element', candidateId: 0, confidence: 0.95 } } }
   const runtime = new CachedCua({ cacheDir, driver: h.driver, inference, logger: false })
   const app = await runtime.openApp('Test', { bundleId: 'test.app' })
-  h.nextMail = { sender: 'Alice', subject: 'First', body: 'First body' }
-  const result = await app.collect({
-    startInstruction: 'open first message',
-    extractionInstruction: 'read sender subject and body from Reading Pane',
-    schema: { type: 'object', properties: { sender: {}, subject: {}, body: {} } },
-    timeoutMs: 10,
-    pollMs: 1,
-  })
+
+  const [action] = await runtime.observe({ scope: app, instruction: 'click Send' })
+  assert.equal(action.method, 'click')
+  assert.equal(action.cacheStatus, 'MISS')
+  assert.equal(Object.isFrozen(action), true)
+  assert.equal(JSON.stringify(action).includes('fresh-'), false)
+  assert.equal(h.calls.filter((call) => call.tool === 'click').length, 0)
+  await assert.rejects(() => readdir(join(cacheDir, 'test-app', 'actions')), (error) => error.code === 'ENOENT')
+
+  const acted = await runtime.act(action)
+  assert.equal(acted.success, true)
+  assert.equal(acted.safeToRetry, false)
+  assert.equal(h.calls.filter((call) => call.tool === 'click').length, 1)
+  const [cachedAction] = await runtime.observe({ scope: app, instruction: 'click Send' })
+  assert.equal(cachedAction.cacheStatus, 'HIT')
+  assert.equal(inferenceCalls, 1)
+  assert.equal((await runtime.act(cachedAction)).success, true)
+  assert.equal(h.calls.filter((call) => call.tool === 'click').length, 2)
+})
+
+test('CachedCua heals an observed action that becomes stale before dispatch', async (t) => {
+  const cacheDir = await mkdtemp(join(tmpdir(), 'cached-cua-observe-heal-test-'))
+  t.after(() => rm(cacheDir, { recursive: true, force: true }))
+  const h = compiledHarness()
+  let inferenceCalls = 0
+  const runtime = new CachedCua({ cacheDir, driver: h.driver, inference: { resolveAction: async ({ screenshot }) => {
+    inferenceCalls++
+    return inferenceCalls === 1
+      ? { targetType: 'element', candidateId: 0, confidence: 0.95 }
+      : { targetType: 'pixel', x: screenshot.width / 2, y: screenshot.height / 2, confidence: 0.95 }
+  } }, logger: false })
+  const app = await runtime.openApp('Test', { bundleId: 'test.app' })
+  const [action] = await runtime.observe('click Send', { scope: app })
+  h.label = 'Submit'
+
+  const result = await runtime.act(action)
+
   assert.equal(result.success, true)
-  assert.equal(result.complete, true)
-  assert.deepEqual(result.data.map((item) => item.sender), ['Alice', 'Bob', 'Carol'])
+  assert.equal(result.cacheStatus, 'HEALED')
+  assert.equal(result.safeToRetry, false)
+  assert.equal(inferenceCalls, 2)
   assert.equal(h.calls.filter((call) => call.tool === 'click').length, 1)
 })
 
-test('CachedCua accepts an unchanged pane only when it matches the clicked row', async () => {
-  const data = { sender: 'Alice Example', subject: 'Quarterly planning notes', body: 'Quarterly planning notes and follow-up details' }
-  const action = { success: true, cacheStatus: 'HIT', actionRequested: true, actionPerformed: true, actionOutcome: 'accepted' }
-  Object.defineProperty(action, '_targetEvidence', { value: { label: 'Alice Example Quarterly planning notes follow-up details', value: null } })
-  const app = {
-    gui: { bundleId: 'test.app', name: 'Test', window: { title: 'Main' } },
-    workflowStorage: { read: async () => ({ version: 1, steps: [{ kind: 'act', instruction: 'open first message' }, { kind: 'extract', instruction: 'read message' }] }) },
-    prepareExtraction: async () => ({ success: true, cacheStatus: 'HIT', instruction: 'read message', data, fingerprint: JSON.stringify(data), recipe: {} }),
-    act: async () => action,
-    waitForExtractionChange: async () => ({ success: false, message: 'unchanged' }),
+test('CachedCua extraction ignores unrelated same-role siblings added after a compiled field', async (t) => {
+  const cacheDir = await mkdtemp(join(tmpdir(), 'cached-cua-extraction-drift-test-'))
+  t.after(() => rm(cacheDir, { recursive: true, force: true }))
+  const h = compiledHarness({ withMail: true })
+  const inference = {
+    resolveExtraction: async () => {
+      h.extraMailElements.push({ element_index: 5, element_token: 'status', parent_index: 1, role: 'AXStaticText', label: 'Status', value: 'Connected', actions: [], frame: { x: 10, y: 85, w: 80, h: 10 } })
+      return {
+        rootCandidateId: 1,
+        fields: [
+          { name: 'sender', candidateId: 2, source: 'value' },
+          { name: 'subject', candidateId: 3, source: 'value' },
+          { name: 'body', candidateId: 4, source: 'value' },
+        ],
+        confidence: 0.95,
+      }
+    },
   }
-  const result = await new CachedCuaAgent(app).execute({ instruction: 'read first message', schema: { type: 'object', properties: { sender: {}, subject: {}, body: {} } } })
-  assert.equal(result.success, true)
-  assert.deepEqual(result.data, data)
-  assert.equal(JSON.stringify(action).includes('Alice'), false)
+  const runtime = new CachedCua({ cacheDir, driver: h.driver, inference, logger: false })
+  const app = await runtime.openApp('Test', { bundleId: 'test.app' })
+  h.mail = { sender: 'Alice', subject: 'First', body: 'First body' }
+
+  const result = await runtime.extract({ scope: app, instruction: 'read sender subject and body from Reading Pane', schema: {
+    type: 'object',
+    properties: { sender: {}, subject: {}, body: {} },
+  } })
+
+  assert.equal(result.success, true, result.message)
+  assert.deepEqual(result.data, h.mail)
 })
 
 async function harness(t, initial = {}) {
@@ -351,7 +468,7 @@ async function harness(t, initial = {}) {
 }
 
 function compiledHarness({ withMail = false } = {}) {
-  const state = { calls: [], label: 'Send', failAction: false, mail: { sender: 'Before', subject: 'Previous', body: 'Previous body' }, nextMail: null }
+  const state = { calls: [], label: 'Send', failAction: false, mail: { sender: 'Before', subject: 'Previous', body: 'Previous body' }, nextMail: null, extraMailElements: [] }
   state.driver = { call: async (tool, input) => {
     state.calls.push({ tool, input })
     if (tool === 'launch_app') return { pid: 1, windows: [{ window_id: 2, title: 'Main', is_on_screen: true, bounds: { x: 0, y: 0, width: 200, height: 100 } }] }
@@ -367,6 +484,7 @@ function compiledHarness({ withMail = false } = {}) {
           { element_index: 2, element_token: 'sender', parent_index: 1, role: 'AXStaticText', label: 'Sender', value: state.mail.sender, actions: [], frame: { x: 10, y: 35, w: 80, h: 10 } },
           { element_index: 3, element_token: 'subject', parent_index: 1, role: 'AXStaticText', label: 'Subject', value: state.mail.subject, actions: [], frame: { x: 10, y: 45, w: 80, h: 10 } },
           { element_index: 4, element_token: 'body', parent_index: 1, role: 'AXStaticText', label: 'Body', value: state.mail.body, actions: [], frame: { x: 10, y: 55, w: 160, h: 30 } },
+          ...state.extraMailElements,
         ] : []),
       ],
     }

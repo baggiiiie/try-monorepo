@@ -12,9 +12,10 @@ available but is not being removed or given a duplicate Outlook workflow.
   `observe`/`act` replay + self-heal engine. It is app-agnostic.
 - `examples/outlook-cua-check.mjs` is the thin CUA Outlook email-triage demo.
 
-> **Current status:** `CachedCua` compiles and caches semantic actions,
-> extraction recipes, and workflow plans. It supplies Pi with bounded AX data
-> plus a screenshot on misses, and keeps Pi lazy on replay hits. Live Outlook
+> **Current status:** `CachedCua` compiles and caches semantic actions and
+> extraction recipes; its optional autonomous `execute()` API also caches
+> workflow plans. It supplies Pi with bounded AX data plus a screenshot on
+> misses, and keeps Pi lazy on replay hits. Live Outlook
 > runs can still encounter CUA's intermittent recursive menu-only AX snapshot;
 > that is reported as a failure rather than hidden by blind input.
 
@@ -112,28 +113,33 @@ the report is `REFUSED` with `actionPerformed: true`; self-healing will not
 retry the action.
 
 See [`CACHE-EXPLAINER.html`](CACHE-EXPLAINER.html) for an interactive overview
-of the cache-hit, miss, and self-healing paths. See
+of the cache-hit, miss, and self-healing paths, or
+[`PROJECT-OVERVIEW.html`](PROJECT-OVERVIEW.html) for the complete product
+vision, Stagehand influence, runtime architecture, backend tradeoffs, and
+roadmap. See
 [`ARCHITECTURE.md`](ARCHITECTURE.md#what-the-cache-contains) for the concrete
 Stagehand-versus-CUA cache representation and what is deliberately never
-cached.
+cached. See [`BACKEND-LIMITATIONS.md`](BACKEND-LIMITATIONS.md) for the
+canonical, reproducible Simulang and CUA Driver constraints.
 
 ## Run the demos
 
 ```sh
 npm run check:outlook
+npm run probe:outlook:trees
 npm run check:outlook:cua
 npm run check:outlook:cua:all
 ```
 
 `check:outlook` preserves the older Simulang demo. `check:outlook:cua` uses the
-new Stagehand-shaped API: the runner opens Outlook, provides one instruction and
-one result schema, executes the cached workflow, and prints the report. It does
-not contain Outlook traversal helpers or launch a coding agent.
+Stagehand-shaped API as an imperative workflow: open Outlook, perform one cached
+action, read live data with one cached extraction recipe, move to the next
+message, and repeat. It never launches a coding agent.
 
-`check:outlook:cua:all` opens the first Inbox message, reuses one cached live
-extraction recipe, and advances with the deterministic Down key until the
-Reading Pane stops changing. It defaults to a 1,000-message safety limit;
-override it with `OUTLOOK_MAX_EMAILS`.
+`check:outlook:cua:all` exposes the same loop rather than hiding it inside a
+`collect()` method. It defaults to a 1,000-message safety limit; override it
+with `OUTLOOK_MAX_EMAILS`. A stopped Reading Pane is reported as an unproven
+boundary rather than falsely claiming that the whole Inbox was read.
 
 The CUA resolver receives bounded structural candidate data and the current
 screenshot; screenshots remain transient and are never cached. It may select
@@ -143,8 +149,9 @@ identity, provider errors, and stale structure are refused.
 
 By default, the CUA demo loads Pi's local defaults and credentials from
 `~/.pi/agent/{settings,models,auth}.json`. Override the directory with `PI_DIR`
-or the model with `GUI_CACHE_MODEL=provider/model`. Pi initializes lazily, so a
-complete warm cache can replay even if local Pi is unavailable.
+or the model with `GUI_CACHE_MODEL_PROVIDER` and `GUI_CACHE_MODEL_ID`. Pi
+initializes lazily, so a complete warm cache can replay even if local Pi is
+unavailable.
 
 Library callers can use the same local configuration:
 
@@ -157,18 +164,33 @@ const outlook = await cua.openApp('Outlook', {
   windowTitle: 'Inbox',
 })
 
-const result = await outlook.agent().execute({ instruction, schema })
+await cua.act('Open the topmost individual email in Inbox', { scope: outlook })
+
+const email = await cua.extract('Read the currently open email', {
+  scope: outlook,
+  schema: emailSchema,
+})
 ```
+
+`CachedCua` owns execution. Values returned by `openApp()` are lightweight,
+explicit scopes—not actors with `act()` or `agent()` methods. Workflow ordering,
+loops, branches, and live-result handling remain ordinary JavaScript. Use
+`cua.observe(instruction, { scope })` to resolve an action without dispatching
+it, then pass the returned action to `cua.act(action)` without another grounding
+turn. The current CUA resolver returns zero actions for a model-selected noop or
+one action for a selected target; returning multiple useful candidates remains
+future work. `cua.execute({ scopes, instruction, schema })` remains an optional
+model-planned interface rather than the default workflow-authoring style.
 
 `CachedCua` logs app startup, cache hits and misses, Pi resolution, extraction,
 and self-healing to the terminal by default. Pass `logger: false` to silence it
 or `logger: (line) => { ... }` to route the same status lines elsewhere.
 
-On a workflow miss, Pi first produces only semantic `act`/`extract` steps. Each
-missing action is then resolved against a bounded current CUA snapshot, checked,
-and compiled. Screenshot-only points may be dispatched for that miss but are
-not persisted because they have no durable replay identity. Extraction recipes
-store paths and stable endpoint structure, then read all values live.
+On an operation miss, Pi resolves one semantic action against a bounded current
+CUA snapshot, and the library compiles it into replay data. Screenshot-only
+points may be dispatched for that miss but are not persisted because they have
+no durable replay identity. Extraction recipes store paths and stable endpoint
+structure, then read all values live.
 
 The alternate CUA command uses the host-native `cua-driver` CLI. Unlike the
 Simulang backend (live accessibility nodes and `scoredSearch`), the CUA backend

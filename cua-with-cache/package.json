@@ -10,6 +10,7 @@
   "scripts": {
     "test": "node --test",
     "check:outlook": "simulang run examples/outlook-check.mjs",
+    "probe:outlook:trees": "simulang run examples/outlook-backend-tree-probe.mjs",
     "check:outlook:cua": "node examples/outlook-cua-check.mjs",
     "check:outlook:cua:all": "node examples/outlook-cua-all.mjs",
     "check:outlook:stagehand": "node examples/outlook-stagehand-check.mjs"

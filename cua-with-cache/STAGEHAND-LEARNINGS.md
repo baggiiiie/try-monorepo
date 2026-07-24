@@ -30,18 +30,18 @@ as current page content; that data must be extracted live.
 
 ## Implications for this project
 
-Our current cache stores individual Simulang or CUA element descriptors, which
-is one level below Stagehand's action artifact. We should compile a Pi-grounded
-CUA choice into `{ target, method, arguments, addressing, deliveryMode }`, then
-cache and replay that structured action. Simulang remains available, but the
-first complete path will focus on CUA.
+The CUA path now follows this boundary. It compiles a Pi-grounded choice into
+`{ target, method, addressing, deliveryMode }`, caches that structured action
+after successful dispatch, and replays it against fresh AX. Simulang remains
+available, while current Outlook development focuses on CUA.
 
 Remaining directions:
 
-1. **Compile and cache CUA actions.** Resolve semantic instructions with Pi,
-   validate the target and method, and persist a replayable action artifact.
-2. **Cache workflow replay steps.** A successful multi-step run should bypass
-   planning on later runs while healing only stale steps.
+1. **Broaden `observe()`.** It currently returns zero actions for a noop or one
+   resolved action; Stagehand can return multiple useful candidates.
+2. **Keep autonomous planning optional.** Imperative workflows need no plan
+   cache. `cua.execute()` may cache plans only when callers deliberately
+   delegate ordering to Pi.
 3. **Broaden durable native-GUI identity carefully.** Preserve replay safety
    without leaking dynamic content or relying on ephemeral element handles.
 4. **Ground from AX plus screenshots.** Add cycle-safe, window-rooted traversal
@@ -49,27 +49,30 @@ Remaining directions:
 5. **Never cache live app content.** Cache how to reach and read email data,
    but read sender, subject, body, and state on every run.
 
-The target top-level workflow should remain declarative:
+The target top-level workflow should remain small and imperative:
 
 ```js
-await gui.act('Inbox', 'activate')
-const messages = await gui.observeMany('first three messages', {
-  within: 'Message list',
-})
+const outlook = await cua.openApp('Outlook', options)
+await cua.act('Open the topmost Inbox email', { scope: outlook })
 
-for (const message of messages) {
-  const before = await gui.extract('Reading pane', { project: parseEmail })
-  await gui.act(message, 'activate')
-  yield await gui.waitForChange('Reading pane', { from: before, project: parseEmail })
+const emails = []
+while (emails.length < 3) {
+  const email = await cua.extract('Read the open email', {
+    scope: outlook,
+    schema: emailSchema,
+  })
+  emails.push(email.data)
+  if (emails.length < 3) await cua.pressKey({ scope: outlook, key: 'down' })
 }
 ```
 
 The Outlook meaning belongs in concise instructions, schemas, and workflow
 ordering—not in `src/` and not in a family of backend-specific adapters.
 
-Unlike an LLM-backed schema extractor, this project's `extract` only serializes
-a bounded `NodeView` and invokes explicit projection and validation callbacks.
-It makes no natural-language or schema inference claims.
+The preserved Simulang `extract` path serializes bounded `NodeView` values and
+uses explicit projections. The current CUA path instead uses Pi on a recipe
+miss to compile a schema-constrained structural extraction recipe, then reads
+live values without Pi on a valid hit.
 
 ## References
 

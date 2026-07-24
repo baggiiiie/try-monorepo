@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CUA Driver vs Simulang</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --panel: #131a2e;
+      --line: #2b3657;
+      --text: #edf2ff;
+      --muted: #aeb9d7;
+      --cua: #6ee7b7;
+      --simulang: #93c5fd;
+      --warning: #fbbf24;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #17203b 0, var(--bg) 38rem);
+      color: var(--text);
+      font: 16px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+    }
+    main { width: min(1040px, calc(100% - 32px)); margin: 0 auto; padding: 56px 0 72px; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { max-width: 780px; font-size: clamp(2.3rem, 6vw, 4.6rem); line-height: .98; letter-spacing: -.055em; }
+    h2 { margin-top: 48px; font-size: 1.55rem; }
+    h3 { font-size: 1.05rem; }
+    .eyebrow { color: var(--cua); font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+    .lead { max-width: 760px; color: var(--muted); font-size: 1.16rem; }
+    .verdict {
+      margin: 32px 0;
+      padding: 24px;
+      border: 1px solid color-mix(in srgb, var(--cua) 45%, var(--line));
+      border-radius: 18px;
+      background: color-mix(in srgb, var(--cua) 8%, var(--panel));
+    }
+    .verdict strong { color: var(--cua); }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .card { padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: color-mix(in srgb, var(--panel) 94%, transparent); }
+    .card.cua { border-top: 4px solid var(--cua); }
+    .card.simulang { border-top: 4px solid var(--simulang); }
+    .tag { display: inline-block; margin-bottom: 14px; padding: 4px 10px; border-radius: 999px; background: #202a47; color: var(--muted); font-size: .8rem; font-weight: 700; }
+    ul { margin: 0; padding-left: 1.2rem; }
+    li + li { margin-top: 9px; }
+    .flow { display: flex; align-items: stretch; gap: 10px; overflow-x: auto; padding: 4px 0 10px; }
+    .step { min-width: 150px; flex: 1; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+    .step b { display: block; margin-bottom: 5px; }
+    .arrow { align-self: center; color: var(--cua); font-size: 1.6rem; }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+    th, td { padding: 14px 16px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: .82rem; letter-spacing: .06em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+    .yes { color: var(--cua); font-weight: 700; }
+    .maybe { color: var(--warning); font-weight: 700; }
+    .note { color: var(--muted); }
+    footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); }
+    code { padding: 2px 6px; border-radius: 6px; background: #202a47; color: #d8e3ff; }
+    @media (max-width: 720px) {
+      main { padding-top: 36px; }
+      .grid { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); }
+      .flow { flex-direction: column; }
+      .step { min-width: 0; }
+      table { font-size: .9rem; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">Backend decision · Outlook triage</p>
+    <h1>Prefer CUA Driver today. Preserve Simulang.</h1>
+    <p class="lead">Both backends can support the same cached API. CUA Driver is currently the practical choice because it has completed bounded live Outlook extraction and gives Pi both AX structure and screenshot context. All-Inbox completion remains unproven.</p>
+
+    <section class="verdict">
+      <strong>Recommendation:</strong> continue the first complete Outlook workflow on CUA Driver. Keep Simulang as an experimental backend for applications whose accessibility trees it can see reliably.
+    </section>
+
+    <section class="grid" aria-label="Backend comparison">
+      <article class="card cua">
+        <span class="tag">PRIMARY NOW</span>
+        <h2 style="margin-top:0">CUA Driver</h2>
+        <ul>
+          <li>Has opened and extracted real Outlook messages.</li>
+          <li>Provides serializable AX snapshots for bounded Pi grounding.</li>
+          <li>Can include a screenshot when AX structure is incomplete.</li>
+          <li>Fits the Stagehand-style compile-and-replay boundary.</li>
+        </ul>
+      </article>
+      <article class="card simulang">
+        <span class="tag">PRESERVE</span>
+        <h2 style="margin-top:0">Simulang</h2>
+        <ul>
+          <li>Offers elegant node methods such as <code>activate()</code>.</li>
+          <li>Has useful native primitives such as <code>scoredSearch</code>.</li>
+          <li>Can perform clean accessibility actions when the AX tree is healthy.</li>
+          <li>Can see Outlook's message list, but DFS can cycle before reaching it; breadth-first traversal works.</li>
+        </ul>
+      </article>
+    </section>
+
+    <h2>How the preferred CUA path works</h2>
+    <section class="flow" aria-label="CUA cache workflow">
+      <div class="step"><b>1 · Instruction</b><span class="note">“Open the first Inbox email”</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>2 · Cache lookup</b><span class="note">Find a compiled action or extraction recipe.</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>3 · Resolve</b><span class="note">Hit: fresh AX match. Miss: Pi sees bounded AX + screenshot.</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>4 · Replay</b><span class="note">Dispatch the validated operation and read live content.</span></div>
+    </section>
+
+    <h2>Practical tradeoffs</h2>
+    <table>
+      <thead><tr><th>Concern</th><th>CUA Driver</th><th>Simulang</th></tr></thead>
+      <tbody>
+        <tr><td>Outlook workflow today</td><td class="yes">Working path</td><td class="maybe">Needs breadth-first traversal and duplicate protection</td></tr>
+        <tr><td>Model grounding context</td><td>AX snapshot + screenshot</td><td>Accessible nodes / scored search</td></tr>
+        <tr><td>Replay representation</td><td>Durable descriptor + operation</td><td>Cached node descriptor + action</td></tr>
+        <tr><td>Background interaction</td><td>AX when supported; pixel clicks need foreground</td><td>AX actions can avoid focus; physical input cannot</td></tr>
+        <tr><td>Main weakness</td><td>Brittle AX structure and occasional malformed snapshots</td><td>DFS can revisit duplicate AX nodes and exhaust its node budget</td></tr>
+      </tbody>
+    </table>
+
+    <h2>The architecture should stay backend-independent</h2>
+    <p class="lead">Agent-authored workflows should only call the small cached API. CUA descriptors, Simulang nodes, physical input, retries, and self-healing stay inside the library. That lets us improve or replace the backend without rewriting the Outlook workflow.</p>
+
+    <footer>Current decision: CUA-first product development, Simulang preserved—not removed.</footer>
+  </main>
+</body>
+</html>
