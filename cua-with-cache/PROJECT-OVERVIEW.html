@@ -1,329 +1,1129 @@
 <!doctype html>
 <html lang="en">
+
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="The vision, architecture, backend lessons, and roadmap for gui-cache.">
-  <title>gui-cache · Project overview</title>
-  <style>
-    :root {
-      --night: #101815; --ink: #17221e; --muted: #63706a;
-      --paper: #f3f0e7; --paper-2: #ebe6da; --card: #fffdf7;
-      --line: #d8d2c4; --green: #176c50; --green-2: #0e4f3b;
-      --lime: #b9e769; --blue: #4a8fa1; --amber: #dd9c21;
-      --red: #b84d40; --shadow: 0 20px 55px rgba(23,34,30,.09);
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      --serif: Iowan Old Style, Palatino Linotype, Book Antiqua, Georgia, serif;
-      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
-    body {
-      margin: 0; color: var(--ink); font: 15px/1.55 var(--sans);
-      background:
-        radial-gradient(circle at 10% 0%, rgba(185,231,105,.22), transparent 25rem),
-        radial-gradient(circle at 95% 22%, rgba(74,143,161,.12), transparent 28rem),
-        var(--paper);
-    }
-    body::after { content:""; position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.28; background-image:radial-gradient(rgba(23,108,80,.22) .8px,transparent .8px); background-size:24px 24px; }
-    main { width:min(1180px,calc(100% - 38px)); margin:auto; padding:30px 0 80px; }
-    p { margin:0; color:var(--muted); }
-    a { color:inherit; } code, pre { font-family:var(--mono); }
-    code { padding:.12rem .36rem; border-radius:5px; background:rgba(23,34,30,.07); font-size:.9em; }
-    nav { display:flex; justify-content:space-between; align-items:center; gap:18px; padding:12px 0 44px; color:var(--muted); font:700 12px/1 var(--mono); letter-spacing:.05em; text-transform:uppercase; }
-    nav .mark { display:flex; gap:9px; align-items:center; color:var(--ink); text-decoration:none; }
-    nav .mark::before { content:""; width:11px; height:11px; border-radius:3px; background:var(--green); box-shadow:7px 7px 0 var(--lime); }
-    .nav-links { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:18px; }
-    .nav-links a { text-decoration:none; }
-    .hero { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(260px,.65fr); gap:50px; align-items:end; padding:30px 0 62px; }
-    .eyebrow,.label { color:var(--green); font:800 11px/1.25 var(--mono); letter-spacing:.11em; text-transform:uppercase; }
-    h1 { max-width:900px; margin:14px 0 20px; font:750 clamp(48px,8vw,94px)/.91 var(--serif); letter-spacing:-.055em; }
-    h2 { margin:8px 0 0; font:740 clamp(30px,4vw,48px)/1 var(--serif); letter-spacing:-.035em; }
-    h3 { margin:0 0 8px; font-size:17px; line-height:1.25; }
-    .lede { max-width:720px; font-size:18px; }
-    .hero-aside { padding:22px; border-left:3px solid var(--lime); background:rgba(255,255,255,.34); }
-    .hero-aside strong { display:block; margin-bottom:7px; font:700 20px/1.2 var(--serif); }
-    .metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
-    .metric { min-height:114px; padding:18px; border:1px solid var(--line); border-radius:14px; background:rgba(255,253,247,.8); box-shadow:var(--shadow); }
-    .metric b { display:block; margin-bottom:7px; font:750 27px/1 var(--serif); }
-    section { margin-top:84px; scroll-margin-top:22px; }
-    .section-head { display:flex; justify-content:space-between; align-items:end; gap:36px; margin-bottom:24px; }
-    .section-head > p { max-width:540px; }
-    .panel { border:1px solid var(--line); border-radius:18px; background:rgba(255,253,247,.9); box-shadow:var(--shadow); overflow:hidden; }
-    .three { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
-    .card { padding:24px; border:1px solid var(--line); border-radius:16px; background:rgba(255,253,247,.9); box-shadow:var(--shadow); }
-    .card.primary { border-top:4px solid var(--green); } .card.warn { border-top:4px solid var(--amber); } .card.info { border-top:4px solid var(--blue); }
-    .icon { display:grid; place-items:center; width:38px; height:38px; margin-bottom:28px; border-radius:10px; background:var(--lime); font-weight:850; }
-    .quote { margin-top:18px; padding:18px; border-left:3px solid var(--green); color:var(--green-2); background:rgba(185,231,105,.13); font:700 18px/1.45 var(--serif); }
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="The vision, architecture, backend lessons, and roadmap for gui-cache.">
+    <title>gui-cache · Project overview</title>
+    <style>
+        :root {
+            --night: #101815;
+            --ink: #17221e;
+            --muted: #63706a;
+            --paper: #f3f0e7;
+            --paper-2: #ebe6da;
+            --card: #fffdf7;
+            --line: #d8d2c4;
+            --green: #176c50;
+            --green-2: #0e4f3b;
+            --lime: #b9e769;
+            --blue: #4a8fa1;
+            --amber: #dd9c21;
+            --red: #b84d40;
+            --shadow: 0 20px 55px rgba(23, 34, 30, .09);
+            --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            --serif: Iowan Old Style, Palatino Linotype, Book Antiqua, Georgia, serif;
+            --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
 
-    /* Vision */
-    .code-layout { display:grid; grid-template-columns:.82fr 1.18fr; }
-    .copy { padding:28px; border-right:1px solid var(--line); }
-    .copy ul { margin:20px 0 0; padding-left:20px; color:var(--muted); }
-    .copy li + li { margin-top:10px; }
-    .code-pane { min-width:0; padding:27px; background:var(--night); color:#e7f0eb; }
-    .code-pane .label { color:var(--lime); }
-    pre { margin:14px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; font:13px/1.62 var(--mono); }
-    .accent { color:var(--lime); } .dim { color:#8fa39a; }
+        * {
+            box-sizing: border-box;
+        }
 
-    /* Stagehand bridge */
-    .bridge { display:grid; grid-template-columns:1fr 76px 1fr; align-items:stretch; }
-    .bridge-side { padding:28px; }
-    .bridge-middle { display:grid; place-items:center; color:var(--green); background:var(--paper-2); font:900 28px var(--serif); }
-    .artifact { margin-top:18px; padding:15px; border-radius:10px; color:#dfeae5; background:var(--night); font:12px/1.55 var(--mono); }
+        html {
+            scroll-behavior: smooth;
+        }
 
-    /* Runtime */
-    .run-picker,.tabs { display:flex; flex-wrap:wrap; gap:6px; padding:6px; border-bottom:1px solid var(--line); background:var(--paper-2); }
-    button { font:inherit; }
-    .run-picker button,.tabs button { border:0; border-radius:9px; padding:10px 15px; color:var(--muted); background:transparent; cursor:pointer; font-weight:750; }
-    .run-picker button.active,.tabs button.active { color:white; background:var(--green); }
-    .run-view { padding:24px; }
-    .flow-wrap { overflow-x:auto; padding-bottom:6px; }
-    .flow { display:grid; grid-template-columns:repeat(6,1fr); gap:24px; min-width:940px; }
-    .step { position:relative; min-height:168px; padding:17px; border:1px solid var(--line); border-radius:12px; background:var(--card); transition:opacity .2s,transform .2s,border-color .2s; }
-    .step::after { content:"→"; position:absolute; top:43%; right:-20px; z-index:2; color:var(--green); font-size:23px; font-weight:900; }
-    .step:last-child::after { content:none; }
-    .step .num { display:grid; place-items:center; width:27px; height:27px; margin-bottom:20px; border-radius:50%; color:white; background:var(--green); font:800 12px var(--mono); }
-    .step p { font-size:13px; } .step.model { border-color:var(--amber); } .step.model .num { color:var(--night); background:var(--amber); }
-    .step.skipped { opacity:.28; border-style:dashed; transform:scale(.97); }
-    .step.heal { border-color:var(--red); }
-    .run-summary { display:flex; gap:10px; align-items:center; margin-top:18px; padding-top:17px; border-top:1px solid var(--line); }
-    .badge { display:inline-block; padding:5px 9px; border-radius:999px; color:white; background:var(--green); font:800 11px var(--mono); }
-    .badge.miss { background:var(--blue); } .badge.healed { color:var(--night); background:var(--amber); }
+        body {
+            margin: 0;
+            color: var(--ink);
+            font: 15px/1.55 var(--sans);
+            background:
+                radial-gradient(circle at 10% 0%, rgba(185, 231, 105, .22), transparent 25rem),
+                radial-gradient(circle at 95% 22%, rgba(74, 143, 161, .12), transparent 28rem),
+                var(--paper);
+        }
 
-    /* Cache layers */
-    .cache-panel { display:none; grid-template-columns:.8fr 1.2fr; }
-    .cache-panel.active { display:grid; }
-    .cache-copy { padding:28px; border-right:1px solid var(--line); }
-    .cache-copy ul { margin:20px 0 0; padding:0; list-style:none; }
-    .cache-copy li { padding:10px 0; border-top:1px solid var(--line); color:var(--muted); }
-    .json { min-width:0; padding:25px; color:#deebe5; background:var(--night); }
+        body::after {
+            content: "";
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            pointer-events: none;
+            opacity: .28;
+            background-image: radial-gradient(rgba(23, 108, 80, .22) .8px, transparent .8px);
+            background-size: 24px 24px;
+        }
 
-    /* Backend section */
-    .backend-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-    .backend { padding:26px; border:1px solid var(--line); border-radius:16px; background:var(--card); box-shadow:var(--shadow); }
-    .backend.cua { border-top:5px solid var(--green); } .backend.simulang { border-top:5px solid var(--blue); }
-    .status { display:inline-block; margin-bottom:15px; padding:5px 9px; border-radius:999px; color:white; background:var(--green); font:800 10px var(--mono); letter-spacing:.05em; }
-    .status.preserve { background:var(--blue); }
-    .evidence { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:20px 0; }
-    .evidence div { padding:12px; border-radius:9px; background:var(--paper-2); }
-    .evidence b { display:block; font:750 22px/1 var(--serif); }
-    .limits { margin:18px 0 0; padding-left:20px; color:var(--muted); }
-    .limits li + li { margin-top:8px; }
-    .callout { margin-top:14px; padding:15px; border-radius:10px; background:rgba(221,156,33,.12); color:#79530b; }
+        main {
+            width: min(1180px, calc(100% - 38px));
+            margin: auto;
+            padding: 30px 0 80px;
+        }
 
-    /* Safety and TODO */
-    .safety { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
-    .rule { padding:18px; border:1px solid var(--line); border-radius:12px; background:var(--card); }
-    .rule b { display:block; margin-bottom:6px; }
-    .todo-list { display:grid; gap:12px; padding:24px; }
-    .todo { display:grid; grid-template-columns:38px 1fr; gap:14px; padding:18px; border:1px solid var(--line); border-radius:12px; background:var(--card); }
-    .todo-num { display:grid; place-items:center; width:32px; height:32px; border-radius:9px; color:white; background:var(--green); font:800 11px var(--mono); }
-    .todo ul { margin:10px 0 0; padding-left:18px; color:var(--muted); }
-    footer { display:flex; justify-content:space-between; gap:20px; margin-top:80px; padding-top:20px; border-top:1px solid var(--line); color:var(--muted); font-size:13px; }
-    :focus-visible { outline:3px solid var(--lime); outline-offset:2px; }
-    @media (max-width:850px) {
-      .hero,.code-layout,.cache-panel.active { grid-template-columns:1fr; }
-      .copy,.cache-copy { border-right:0; border-bottom:1px solid var(--line); }
-      .metrics,.three { grid-template-columns:1fr 1fr; }
-      .bridge { grid-template-columns:1fr; } .bridge-middle { min-height:60px; }
-      .backend-grid { grid-template-columns:1fr; } .section-head { display:block; } .section-head > p { margin-top:14px; }
-    }
-    @media (max-width:620px) {
-      main { width:min(100% - 22px,1180px); } .nav-links { display:none; }
-      .metrics,.three,.safety,.evidence { grid-template-columns:1fr; }
-      section { margin-top:64px; } .run-view,.copy,.code-pane,.cache-copy,.json { padding:18px; }
-      footer { display:block; } footer span { display:block; margin-top:5px; }
-    }
-  </style>
+        p {
+            margin: 0;
+            color: var(--muted);
+        }
+
+        a {
+            color: inherit;
+        }
+
+        code,
+        pre {
+            font-family: var(--mono);
+        }
+
+        code {
+            padding: .12rem .36rem;
+            border-radius: 5px;
+            background: rgba(23, 34, 30, .07);
+            font-size: .9em;
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 18px;
+            padding: 12px 0 44px;
+            color: var(--muted);
+            font: 700 12px/1 var(--mono);
+            letter-spacing: .05em;
+            text-transform: uppercase;
+        }
+
+        nav .mark {
+            display: flex;
+            gap: 9px;
+            align-items: center;
+            color: var(--ink);
+            text-decoration: none;
+        }
+
+        nav .mark::before {
+            content: "";
+            width: 11px;
+            height: 11px;
+            border-radius: 3px;
+            background: var(--green);
+            box-shadow: 7px 7px 0 var(--lime);
+        }
+
+        .nav-links {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 18px;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+        }
+
+        .hero {
+            display: grid;
+            grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr);
+            gap: 50px;
+            align-items: end;
+            padding: 30px 0 62px;
+        }
+
+        .eyebrow,
+        .label {
+            color: var(--green);
+            font: 800 11px/1.25 var(--mono);
+            letter-spacing: .11em;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            max-width: 900px;
+            margin: 14px 0 20px;
+            font: 750 clamp(48px, 8vw, 94px)/.91 var(--serif);
+            letter-spacing: -.055em;
+        }
+
+        h2 {
+            margin: 8px 0 0;
+            font: 740 clamp(30px, 4vw, 48px)/1 var(--serif);
+            letter-spacing: -.035em;
+        }
+
+        h3 {
+            margin: 0 0 8px;
+            font-size: 17px;
+            line-height: 1.25;
+        }
+
+        .lede {
+            max-width: 720px;
+            font-size: 18px;
+        }
+
+        .hero-aside {
+            padding: 22px;
+            border-left: 3px solid var(--lime);
+            background: rgba(255, 255, 255, .34);
+        }
+
+        .hero-aside strong {
+            display: block;
+            margin-bottom: 7px;
+            font: 700 20px/1.2 var(--serif);
+        }
+
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+
+        .metric {
+            min-height: 114px;
+            padding: 18px;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: rgba(255, 253, 247, .8);
+            box-shadow: var(--shadow);
+        }
+
+        .metric b {
+            display: block;
+            margin-bottom: 7px;
+            font: 750 27px/1 var(--serif);
+        }
+
+        section {
+            margin-top: 84px;
+            scroll-margin-top: 22px;
+        }
+
+        .section-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: end;
+            gap: 36px;
+            margin-bottom: 24px;
+        }
+
+        .section-head>p {
+            max-width: 540px;
+        }
+
+        .panel {
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: rgba(255, 253, 247, .9);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .three {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+        }
+
+        .card {
+            padding: 24px;
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            background: rgba(255, 253, 247, .9);
+            box-shadow: var(--shadow);
+        }
+
+        .card.primary {
+            border-top: 4px solid var(--green);
+        }
+
+        .card.warn {
+            border-top: 4px solid var(--amber);
+        }
+
+        .card.info {
+            border-top: 4px solid var(--blue);
+        }
+
+        .icon {
+            display: grid;
+            place-items: center;
+            width: 38px;
+            height: 38px;
+            margin-bottom: 28px;
+            border-radius: 10px;
+            background: var(--lime);
+            font-weight: 850;
+        }
+
+        .quote {
+            margin-top: 18px;
+            padding: 18px;
+            border-left: 3px solid var(--green);
+            color: var(--green-2);
+            background: rgba(185, 231, 105, .13);
+            font: 700 18px/1.45 var(--serif);
+        }
+
+        /* Vision */
+        .code-layout {
+            display: grid;
+            grid-template-columns: .82fr 1.18fr;
+        }
+
+        .copy {
+            padding: 28px;
+            border-right: 1px solid var(--line);
+        }
+
+        .copy ul {
+            margin: 20px 0 0;
+            padding-left: 20px;
+            color: var(--muted);
+        }
+
+        .copy li+li {
+            margin-top: 10px;
+        }
+
+        .code-pane {
+            min-width: 0;
+            padding: 27px;
+            background: var(--night);
+            color: #e7f0eb;
+        }
+
+        .code-pane .label {
+            color: var(--lime);
+        }
+
+        pre {
+            margin: 14px 0 0;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            font: 13px/1.62 var(--mono);
+        }
+
+        .accent {
+            color: var(--lime);
+        }
+
+        .dim {
+            color: #8fa39a;
+        }
+
+        /* Stagehand bridge */
+        .bridge {
+            display: grid;
+            grid-template-columns: 1fr 76px 1fr;
+            align-items: stretch;
+        }
+
+        .bridge-side {
+            padding: 28px;
+        }
+
+        .bridge-middle {
+            display: grid;
+            place-items: center;
+            color: var(--green);
+            background: var(--paper-2);
+            font: 900 28px var(--serif);
+        }
+
+        .artifact {
+            margin-top: 18px;
+            padding: 15px;
+            border-radius: 10px;
+            color: #dfeae5;
+            background: var(--night);
+            font: 12px/1.55 var(--mono);
+        }
+
+        /* Runtime */
+        .run-picker,
+        .tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 6px;
+            border-bottom: 1px solid var(--line);
+            background: var(--paper-2);
+        }
+
+        button {
+            font: inherit;
+        }
+
+        .run-picker button,
+        .tabs button {
+            border: 0;
+            border-radius: 9px;
+            padding: 10px 15px;
+            color: var(--muted);
+            background: transparent;
+            cursor: pointer;
+            font-weight: 750;
+        }
+
+        .run-picker button.active,
+        .tabs button.active {
+            color: white;
+            background: var(--green);
+        }
+
+        .run-view {
+            padding: 24px;
+        }
+
+        .flow-wrap {
+            overflow-x: auto;
+            padding-bottom: 6px;
+        }
+
+        .flow {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 24px;
+            min-width: 940px;
+        }
+
+        .step {
+            position: relative;
+            min-height: 168px;
+            padding: 17px;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: var(--card);
+            transition: opacity .2s, transform .2s, border-color .2s;
+        }
+
+        .step::after {
+            content: "→";
+            position: absolute;
+            top: 43%;
+            right: -20px;
+            z-index: 2;
+            color: var(--green);
+            font-size: 23px;
+            font-weight: 900;
+        }
+
+        .step:last-child::after {
+            content: none;
+        }
+
+        .step .num {
+            display: grid;
+            place-items: center;
+            width: 27px;
+            height: 27px;
+            margin-bottom: 20px;
+            border-radius: 50%;
+            color: white;
+            background: var(--green);
+            font: 800 12px var(--mono);
+        }
+
+        .step p {
+            font-size: 13px;
+        }
+
+        .step.model {
+            border-color: var(--amber);
+        }
+
+        .step.model .num {
+            color: var(--night);
+            background: var(--amber);
+        }
+
+        .failure-branches {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+
+        .failure-path {
+            padding: 22px;
+            border: 1px solid var(--line);
+            border-top: 5px solid var(--red);
+            border-radius: 14px;
+            background: var(--card);
+        }
+
+        .failure-path.expected {
+            border-top-color: var(--green);
+        }
+
+        .failure-path h3 {
+            margin-bottom: 16px;
+        }
+
+        .failure-node {
+            padding: 12px 14px;
+            border-radius: 9px;
+            background: var(--paper-2);
+        }
+
+        .failure-node code {
+            font-size: 12px;
+        }
+
+        .failure-arrow {
+            padding: 5px 0;
+            color: var(--green);
+            text-align: center;
+            font-weight: 900;
+        }
+
+        .failure-path.bad .failure-arrow {
+            color: var(--red);
+        }
+
+        .failure-verdict {
+            display: inline-block;
+            margin-top: 14px;
+            padding: 6px 9px;
+            border-radius: 999px;
+            color: white;
+            background: var(--red);
+            font: 800 11px var(--mono);
+        }
+
+        .failure-path.expected .failure-verdict {
+            background: var(--green);
+        }
+
+        .step.skipped {
+            opacity: .28;
+            border-style: dashed;
+            transform: scale(.97);
+        }
+
+        .step.heal {
+            border-color: var(--red);
+        }
+
+        .run-summary {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-top: 18px;
+            padding-top: 17px;
+            border-top: 1px solid var(--line);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 5px 9px;
+            border-radius: 999px;
+            color: white;
+            background: var(--green);
+            font: 800 11px var(--mono);
+        }
+
+        .badge.miss {
+            background: var(--blue);
+        }
+
+        .badge.healed {
+            color: var(--night);
+            background: var(--amber);
+        }
+
+        .badge.failure {
+            background: var(--red);
+        }
+
+        /* Cache mechanism */
+        .cache-mechanism {
+            display: grid;
+            grid-template-columns: .8fr 1.2fr;
+        }
+
+        .cache-copy {
+            padding: 28px;
+            border-right: 1px solid var(--line);
+        }
+
+        .cache-copy ul {
+            margin: 20px 0 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .cache-copy li {
+            padding: 10px 0;
+            border-top: 1px solid var(--line);
+            color: var(--muted);
+        }
+
+        .json {
+            min-width: 0;
+            padding: 25px;
+            color: #deebe5;
+            background: var(--night);
+        }
+
+        .cache-replay {
+            padding: 24px 28px;
+            border-top: 1px solid var(--line);
+        }
+
+        .replay-steps {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-top: 14px;
+        }
+
+        .replay-steps div {
+            padding: 14px;
+            border-radius: 10px;
+            background: var(--paper-2);
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .replay-steps b {
+            display: block;
+            margin-bottom: 4px;
+            color: var(--ink);
+        }
+
+        /* Backend section */
+        .backend-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+
+        .backend {
+            padding: 26px;
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            background: var(--card);
+            box-shadow: var(--shadow);
+        }
+
+        .backend.cua {
+            border-top: 5px solid var(--green);
+        }
+
+        .backend.simulang {
+            border-top: 5px solid var(--blue);
+        }
+
+        .status {
+            display: inline-block;
+            margin-bottom: 15px;
+            padding: 5px 9px;
+            border-radius: 999px;
+            color: white;
+            background: var(--green);
+            font: 800 10px var(--mono);
+            letter-spacing: .05em;
+        }
+
+        .status.preserve {
+            background: var(--blue);
+        }
+
+        .evidence {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin: 20px 0;
+        }
+
+        .evidence div {
+            padding: 12px;
+            border-radius: 9px;
+            background: var(--paper-2);
+        }
+
+        .evidence b {
+            display: block;
+            font: 750 22px/1 var(--serif);
+        }
+
+        .limits {
+            margin: 18px 0 0;
+            padding-left: 20px;
+            color: var(--muted);
+        }
+
+        .limits li+li {
+            margin-top: 8px;
+        }
+
+        .callout {
+            margin-top: 14px;
+            padding: 15px;
+            border-radius: 10px;
+            background: rgba(221, 156, 33, .12);
+            color: #79530b;
+        }
+
+        /* Safety and TODO */
+        .safety {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .rule {
+            padding: 18px;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: var(--card);
+        }
+
+        .rule b {
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .todo-list {
+            display: grid;
+            gap: 12px;
+            padding: 24px;
+        }
+
+        .todo {
+            display: grid;
+            grid-template-columns: 38px 1fr;
+            gap: 14px;
+            padding: 18px;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: var(--card);
+        }
+
+        .todo-num {
+            display: grid;
+            place-items: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 9px;
+            color: white;
+            background: var(--green);
+            font: 800 11px var(--mono);
+        }
+
+        .todo ul {
+            margin: 10px 0 0;
+            padding-left: 18px;
+            color: var(--muted);
+        }
+
+        footer {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            margin-top: 80px;
+            padding-top: 20px;
+            border-top: 1px solid var(--line);
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        :focus-visible {
+            outline: 3px solid var(--lime);
+            outline-offset: 2px;
+        }
+
+        @media (max-width:850px) {
+
+            .hero,
+            .code-layout,
+            .cache-mechanism {
+                grid-template-columns: 1fr;
+            }
+
+            .copy,
+            .cache-copy {
+                border-right: 0;
+                border-bottom: 1px solid var(--line);
+            }
+
+            .metrics,
+            .three {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .bridge {
+                grid-template-columns: 1fr;
+            }
+
+            .bridge-middle {
+                min-height: 60px;
+            }
+
+            .backend-grid,
+            .failure-branches,
+            .replay-steps {
+                grid-template-columns: 1fr;
+            }
+
+            .section-head {
+                display: block;
+            }
+
+            .section-head>p {
+                margin-top: 14px;
+            }
+        }
+
+        @media (max-width:620px) {
+            main {
+                width: min(100% - 22px, 1180px);
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            .metrics,
+            .three,
+            .safety,
+            .evidence {
+                grid-template-columns: 1fr;
+            }
+
+            section {
+                margin-top: 64px;
+            }
+
+            .run-view,
+            .copy,
+            .code-pane,
+            .cache-copy,
+            .json {
+                padding: 18px;
+            }
+
+            footer {
+                display: block;
+            }
+
+            footer span {
+                display: block;
+                margin-top: 5px;
+            }
+        }
+    </style>
 </head>
+
 <body>
-<main>
-  <nav>
-    <a class="mark" href="#top">gui-cache</a>
-    <div class="nav-links"><a href="#vision">Vision</a><a href="#stagehand">Stagehand</a><a href="#runtime">Runtime</a><a href="#backends">Backends</a><a href="#todos">TODOs</a></div>
-  </nav>
+    <main>
+        <nav>
+            <a class="mark" href="#top">gui-cache</a>
+            <div class="nav-links"><a href="#vision">Vision</a><a href="#stagehand">Stagehand</a><a
+                    href="#runtime">Runtime</a><a href="#cache">Cache</a><a href="#false-hit">Failure</a><a
+                    href="#backends">Why not Simulang</a><a href="#todos">TODOs</a></div>
+        </nav>
 
-  <header class="hero" id="top">
-    <div>
-      <div class="eyebrow">Project overview</div>
-      <h1>A compiler for repeatable GUI work.</h1>
-      <p class="lede">Agents author small semantic workflows. Pi resolves unfamiliar GUI operations once. The cache compiles those choices into validated replay data, then runs warm paths deterministically without another model turn.</p>
-    </div>
-    <aside class="hero-aside">
-      <strong>Not a recording. Not an agent loop.</strong>
-      <p>The product caches reusable operations and grounding—not screenshots, generated source, stale handles, or returned application content.</p>
-    </aside>
-  </header>
+        <header class="hero" id="top">
+            <div>
+                <h1>Cached GUI Automation</h1>
+            </div>
+        </header>
 
-  <div class="metrics" aria-label="Project summary">
-    <div class="metric"><b>thin</b><p>Agent-authored workflow surface</p></div>
-    <div class="metric"><b>0</b><p>model turns on a complete warm hit</p></div>
-    <div class="metric"><b>3</b><p>cache levels: plan, action, extraction</p></div>
-    <div class="metric"><b>live</b><p>UI resolution and returned data every run</p></div>
-  </div>
-
-  <section id="vision">
-    <div class="section-head">
-      <div><div class="eyebrow">01 / Vision</div><h2>Meaning in. Safe replay out.</h2></div>
-      <p>The final interface should be simple enough that workflow authors describe intent and schema, while the library owns traversal, grounding, validation, input delivery, persistence, and healing.</p>
-    </div>
-    <div class="panel code-layout">
-      <div class="copy">
-        <span class="label">What the agent writes</span>
-        <h3 style="margin-top:10px">One task, one schema</h3>
-        <ul>
-          <li>No raw CUA tokens, Simulang nodes, or mouse coordinates.</li>
-          <li>No external coding agent when a cached step is stale.</li>
-          <li>No Outlook semantics inside the generic library.</li>
-          <li>Live email values are outputs, never grounding cache entries.</li>
-        </ul>
-        <div class="quote">Cache hit → replay directly.<br>Cache miss or stale step → invoke Pi internally, compile, validate, update, continue.</div>
-      </div>
-      <div class="code-pane"><span class="label">Target public shape</span><pre><span class="accent">const cua</span> = new CachedCua({
-  piDir: '~/.pi',
-  model: 'provider/model'
+        <section id="vision">
+            <div class="section-head">
+                <div>
+                    <h2>LLM resolves once,<br> code replay for the future</h2>
+                </div>
+            </div>
+            <div class="panel code-layout">
+                <div class="copy">
+                    <h3 style="margin-top:10px">Flow</h3>
+                    <ul>
+                        <li>Agent explores the task</li>
+                        <li>Agent plans with code</li>
+                        <li>Low level GUI control is transparent</li>
+                        <li>Agent resolves action, codify to AX elements</li>
+                        <li>Actions are cached for future replay</li>
+                    </ul>
+                </div>
+                <div class="code-pane"><span class="label">Target public shape</span>
+<pre><span class="accent">const cua</span> = new CachedCua({
+    piDir: '~/.pi',
+    model: 'provider/model'
 })
 
 <span class="accent">const outlook</span> = await cua.openApp('Outlook', {
-  bundleId: 'com.microsoft.Outlook'
+    bundleId: 'com.microsoft.Outlook'
 })
 
 <span class="accent">await cua.act</span>('Open the topmost Inbox email', {
-  scope: outlook
+    scope: outlook
 })
 
 <span class="accent">const email</span> = await cua.extract('Read the open email', {
-  scope: outlook,
-  schema: emailSchema
-})</pre><p class="dim" style="margin-top:18px">Workflow ordering and loops remain ordinary JavaScript. Pi supplies model turns only for missing or stale operations; its TUI and coding-agent loop are not part of runtime self-healing.</p></div>
-    </div>
-  </section>
+    scope: outlook,
+    schema: emailSchema
+})
+</pre>
+                </div>
+            </div>
+        </section>
 
-  <section id="stagehand">
-    <div class="section-head">
-      <div><div class="eyebrow">02 / Stagehand</div><h2>Borrow the compilation boundary</h2></div>
-      <p>Stagehand does not remove site-specific intent. It converts a semantic browser operation into bounded structured replay data. Native GUI automation needs the same boundary with a different selector language.</p>
-    </div>
-    <div class="panel bridge">
-      <div class="bridge-side"><span class="label">Browser · Stagehand</span><h3 style="margin-top:12px">DOM locator + operation</h3><p>On a miss, a model examines the DOM and selects an element and supported method. A hit resolves the locator against the current DOM and executes without another grounding turn.</p><div class="artifact">{ selector: "xpath=…",<br>&nbsp; method: "click",<br>&nbsp; arguments: [] }</div></div>
-      <div class="bridge-middle">≈</div>
-      <div class="bridge-side"><span class="label">Native GUI · gui-cache</span><h3 style="margin-top:12px">AX descriptor + operation</h3><p>Pi selects one bounded current-UI candidate. The library compiles stable role, scope, ordinal, tokens, method, and delivery metadata—never generated JavaScript.</p><div class="artifact">{ descriptor: { role: "AXCell", scope: "Message List", ordinal: 2 },<br>&nbsp; method: "click", addressing: "pixel" }</div></div>
-    </div>
-    <div class="three" style="margin-top:14px">
-      <article class="card primary"><div class="icon">1</div><h3>Resolve once</h3><p>Model grounding is for misses and stale steps, not every execution.</p></article>
-      <article class="card info"><div class="icon">2</div><h3>Cache structure</h3><p>Store selectors or descriptors and methods—not generated source or returned content.</p></article>
-      <article class="card warn"><div class="icon">3</div><h3>Heal granularly</h3><p>Re-ground only the stale operation with the same in-process inference client.</p></article>
-    </div>
-  </section>
+        <section id="stagehand">
+            <div class="section-head">
+                <div>
+                    <h2>Inspiration</h2>
+                </div>
+            </div>
+            <div class="panel bridge">
+                <div class="bridge-side"><span class="label">Browser · Stagehand</span>
+                    <h3 style="margin-top:12px">DOM locator + operation</h3>
+                    <p>On a miss, a model examines the DOM and selects an element and supported method. A hit resolves
+                        the locator against the current DOM and executes without another grounding turn.</p>
+                    <div class="artifact">{ selector: "xpath=…",<br>&nbsp; method: "click",<br>&nbsp; arguments: [] }
+                    </div>
+                </div>
+                <div class="bridge-middle">≈</div>
+                <div class="bridge-side"><span class="label">Native GUI · gui-cache</span>
+                    <h3 style="margin-top:12px">AX descriptor + operation</h3>
+                    <p>Pi selects one bounded current-UI candidate. The library compiles stable role, scope, ordinal,
+                        tokens, method, and delivery metadata—never generated JavaScript.</p>
+                    <div class="artifact">{ descriptor: { role: "AXCell", scope: "Message List", ordinal: 2 },&nbsp;
+                        method: "click", addressing: "pixel" }</div>
+                </div>
+            </div>
+        </section>
 
-  <section id="runtime">
-    <div class="section-head">
-      <div><div class="eyebrow">03 / Runtime</div><h2>Explore miss, hit, and healing</h2></div>
-      <p>A hit skips inference—not fresh-state resolution or validation. Once dispatch may have happened, the runtime never blindly retries.</p>
-    </div>
-    <div class="panel">
-      <div class="run-picker" role="tablist" aria-label="Runtime path">
-        <button class="active" data-run="miss" role="tab" aria-selected="true">Cold run · miss</button>
-        <button data-run="hit" role="tab" aria-selected="false">Warm run · hit</button>
-        <button data-run="heal" role="tab" aria-selected="false">UI drift · heal</button>
-      </div>
-      <div class="run-view"><div class="flow-wrap"><div class="flow">
-        <article class="step" data-stage="key"><span class="num">1</span><h3>Build key</h3><p>Instruction, operation kind, app, route, schema, or variable names.</p></article>
-        <article class="step" data-stage="lookup"><span class="num">2</span><h3>Lookup artifact</h3><p>Read workflow, action, or extraction JSON by stable SHA-256 key.</p></article>
-        <article class="step" data-stage="snapshot"><span class="num">3</span><h3>Fresh UI</h3><p>Read bounded AX structure; include a screenshot only when grounding needs it.</p></article>
-        <article class="step model" data-stage="model"><span class="num">4</span><h3>Ask Pi</h3><p>Select an offered target or compile a bounded recipe. Validate the result.</p></article>
-        <article class="step" data-stage="dispatch"><span class="num">5</span><h3>Resolve + dispatch</h3><p>Use a fresh token/frame. Prefer AX; use one foreground click when required.</p></article>
-        <article class="step" data-stage="verify"><span class="num">6</span><h3>Verify + commit</h3><p>Observe the outcome, return live data, and persist only reusable structure.</p></article>
-      </div></div><div class="run-summary"><span class="badge miss" id="runBadge">MISS</span><p id="runText">No artifact exists. Pi resolves the missing operation, and validated replay data is stored.</p></div></div>
-    </div>
-  </section>
+        <section id="runtime">
+            <div class="section-head">
+                <div>
+                    <h2>Cache miss invokes pi to resolve</h2>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="run-picker" role="tablist" aria-label="Runtime path">
+                    <button class="active" data-run="miss" role="tab" aria-selected="true">Cold run - cache miss</button>
+                    <button data-run="hit" role="tab" aria-selected="false">Replay - cache hit</button>
+                </div>
+                <div class="run-view">
+                    <div class="flow-wrap">
+                        <div class="flow">
+                            <article class="step" data-stage="key"><span class="num">1</span>
+                                <h3>Build key</h3>
+                                <p>Instruction, operation kind, app, route, schema, or variable names.</p>
+                            </article>
+                            <article class="step" data-stage="lookup"><span class="num">2</span>
+                                <h3>Lookup artifact</h3>
+                                <p>Read workflow, action, or extraction JSON by stable SHA-256 key.</p>
+                            </article>
+                            <article class="step" data-stage="snapshot"><span class="num">3</span>
+                                <h3>Fresh UI</h3>
+                                <p>Read bounded AX structure; include a screenshot when compiling or pixel-addressing.
+                                </p>
+                            </article>
+                            <article class="step model" data-stage="model"><span class="num">4</span>
+                                <h3>Ask Pi</h3>
+                                <p>Select an offered target or compile a bounded recipe. Validate the result.</p>
+                            </article>
+                            <article class="step" data-stage="dispatch"><span class="num">5</span>
+                                <h3>Resolve + dispatch</h3>
+                                <p>Use a fresh token/frame. Dispatch once; acceptance alone does not prove the UI
+                                    outcome.</p>
+                            </article>
+                            <article class="step" data-stage="verify"><span class="num">6</span>
+                                <h3>Apply commit policy</h3>
+                                <p>Actions cache after acceptance, recipes after compilation and an application attempt,
+                                    plans after output validation.</p>
+                            </article>
+                        </div>
+                    </div>
+                    <div class="run-summary"><span class="badge miss" id="runBadge">MISS</span>
+                        <p id="runText">Pi compiles the missing artifact. Persistence then follows that artifact’s
+                            commit policy.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
 
-  <section id="cache">
-    <div class="section-head">
-      <div><div class="eyebrow">04 / Cache</div><h2>Operations compile independently</h2></div>
-      <p>Imperative workflow code is the source of ordering. Action and extraction artifacts remove repeated model turns while every app result is read live.</p>
-    </div>
-    <div class="panel">
-      <div class="tabs" role="tablist" aria-label="Cache levels">
-        <button class="active" data-cache="workflow" role="tab" aria-selected="true">Optional agent plan</button>
-        <button data-cache="action" role="tab" aria-selected="false">Compiled action</button>
-        <button data-cache="extraction" role="tab" aria-selected="false">Extraction recipe</button>
-      </div>
-      <div class="cache-panel active" id="workflow"><div class="cache-copy"><span class="label">Optional planning cache</span><h3 style="margin-top:10px">Only for <code>cua.execute()</code></h3><ul><li><b>Default:</b> imperative JavaScript; no workflow plan is needed</li><li><b>Optional:</b> stores agent-planned <code>act</code>/<code>extract</code> ordering</li><li><b>Commit:</b> after the autonomous workflow output validates</li></ul></div><div class="json"><pre>{ "steps": [
-  { "kind": "act", "scope": "outlook", "instruction": "Open first message" },
-  { "kind": "extract", "scope": "outlook", "instruction": "Read sender, subject, body" }
-] }</pre></div></div>
-      <div class="cache-panel" id="action"><div class="cache-copy"><span class="label">Grounding cache</span><h3 style="margin-top:10px">Target + operation</h3><ul><li><b>Stores:</b> durable descriptor, method, addressing</li><li><b>Removes:</b> repeated target grounding</li><li><b>Never stores:</b> token, index, PID, window ID, absolute point</li></ul></div><div class="json"><pre>{ "method": "click",
-  "target": { "role": "AXCell", "scope": "Message List", "ordinal": 2 },
-  "addressing": "pixel", "deliveryMode": "foreground" }</pre></div></div>
-      <div class="cache-panel" id="extraction"><div class="cache-copy"><span class="label">Reading cache</span><h3 style="margin-top:10px">Live field recipe</h3><ul><li><b>Stores:</b> root descriptor, structural field paths and roles</li><li><b>Removes:</b> repeated field grounding</li><li><b>Never stores:</b> sender, subject, body, or screenshot</li></ul></div><div class="json"><pre>{ "root": { "role": "AXWindow", "tokens": ["inbox"] },
-  "fields": [
-    { "name": "sender", "path": [36], "source": "value" },
-    { "name": "body", "path": [43], "source": "subtree_text" }
-  ] }</pre></div></div>
-    </div>
-  </section>
-
-  <section id="outlook">
-    <div class="section-head"><div><div class="eyebrow">05 / Outlook example</div><h2>Thin workflow, layered runtime</h2></div><p>The application meaning remains concise: Inbox, message rows, Reading Pane, sender, subject, and body. Generic mechanics remain inside the library.</p></div>
-    <div class="three">
-      <article class="card primary"><div class="icon">A</div><h3>Orchestrate</h3><p>Ordinary JavaScript orders actions, extraction, loops, and validation. The schema constrains each live email read.</p></article>
-      <article class="card info"><div class="icon">B</div><h3>Ground and replay</h3><p>Resolve Message List cells against fresh AX. Reuse compiled actions when descriptors remain valid.</p></article>
-      <article class="card warn"><div class="icon">C</div><h3>Read and verify</h3><p>Apply the cached extraction recipe to the live Reading Pane and verify messages change between selections.</p></article>
-    </div>
-  </section>
-
-  <section id="backends">
-    <div class="section-head"><div><div class="eyebrow">06 / Backends</div><h2>Both are imperfect AX clients</h2></div><p>macOS AX is a dynamic application-supplied graph, not a standardized, durable DOM. The cache must expect rebuilt nodes, duplicate relationships, missing actions, and transient structure.</p></div>
-    <div class="backend-grid">
-      <article class="backend cua"><span class="status">PRIMARY FOR NOW</span><h3>CUA Driver</h3><p>Preferred because it has repeatedly produced a finite Outlook snapshot and completed bounded live Inbox extraction.</p><div class="evidence"><div><b>587</b><p>finite elements in one probe</p></div><div><b>AX + image</b><p>bounded Pi context</p></div><div><b>bounded</b><p>live extraction proven</p></div></div><ul class="limits"><li>Can intermittently return a recursive menu-only tree without Message List.</li><li>Indices and tokens are snapshot-local.</li><li>Outlook cells lack <code>AXPress</code>, so row clicks require foreground pixel input.</li><li>Structural extraction paths can become stale and need healing.</li></ul></article>
-      <article class="backend simulang"><span class="status preserve">PRESERVE</span><h3>Simulang</h3><p>Its node API is elegant, and it can access Outlook’s Message List—but our current depth-first search does not reliably reach it.</p><div class="evidence"><div><b>998</b><p>duplicate DFS Search hits</p></div><div><b>0</b><p>DFS Message List hits</p></div><div><b>60</b><p>BFS Message List/context hits</p></div></div><ul class="limits"><li>Depth-first traversal can revisit duplicate AX nodes until <code>maxNodes</code> is exhausted.</li><li>Breadth-first traversal reaches table, row, and cell nodes.</li><li>Unreadable child branches appear as empty children, limiting diagnosis.</li><li>Full app-root snapshots can be expensive; bounded window search is safer.</li></ul></article>
-    </div>
-    <div class="callout"><b>Decision, not dogma:</b> CUA has completed bounded live runs, but all-Inbox completion and extraction healing remain open. Simulang has a reproduced traversal problem with a promising BFS/deduplication fix. Keep the public workflow backend-independent.</div>
-  </section>
-
-  <section id="safety">
-    <div class="section-head"><div><div class="eyebrow">07 / Lessons</div><h2>The cache is an execution policy</h2></div><p>Correctness comes from boundaries around inference, identity, dispatch, verification, and persistence—not from storing more UI state.</p></div>
-    <div class="safety">
-      <div class="rule"><b>Acceptance ≠ success</b><p>A backend accepting input does not prove the intended UI outcome. Verify fresh state.</p></div>
-      <div class="rule"><b>Uncertain dispatch is terminal</b><p>Never heal or retry after input may have happened; that risks duplicate actions.</p></div>
-      <div class="rule"><b>Identity has semantics</b><p>“First row” follows position; a keyed item must remain uniquely identifiable.</p></div>
-      <div class="rule"><b>Completion must be proven</b><p>No settled extraction change can mean a boundary, lost focus, latency, or stale structure. The current all-Inbox demo reports this as incomplete.</p></div>
-      <div class="rule"><b>Serialization is deliberately lossy</b><p>Bound depth, nodes, and text. Convert stale getters to safe JSON values.</p></div>
-      <div class="rule"><b>Privacy begins at descriptors</b><p>Sanitize labels and tokens before persistence, not only returned values afterward.</p></div>
-    </div>
-  </section>
-
-  <section id="todos">
-    <div class="section-head"><div><div class="eyebrow">08 / TODOs</div><h2>Next capabilities, without widening the API</h2></div><p>Keep workflow code simple. Add power beneath the compilation boundary.</p></div>
-    <div class="panel todo-list">
-      <div class="todo"><span class="todo-num">01</span><div><h3>Coordinate → durable AX identity</h3><p>Hit-test a Pi-selected visual point back to an AX element. Cache it only when the element has durable identity and matches the visual target.</p></div></div>
-      <div class="todo"><span class="todo-num">02</span><div><h3>One backend-independent <code>element.click()</code></h3><p>Resolve fresh, prefer semantic AX action, otherwise click a validated point in the current frame.</p><ul><li>Do not assume AX press and coordinate click are equivalent.</li><li>Account for focus, pointer movement, occlusion, scaling, and conversion.</li><li>Never fall back after an uncertain AX dispatch.</li><li>Use workflow risk and postconditions to decide whether fallback is safe.</li></ul></div></div>
-      <div class="todo"><span class="todo-num">03</span><div><h3>Bounded <code>see()</code></h3><p>Return a compact AX view when small, or a screenshot when structure is huge. Prefer keyword-scoped AX search over asking a model to inspect an unbounded tree.</p></div></div>
-      <div class="todo"><span class="todo-num">04</span><div><h3>Harden Simulang traversal</h3><p>Use breadth-first search or a DFS-to-BFS fallback, deduplicate candidates, and surface node-budget exhaustion.</p></div></div>
-      <div class="todo"><span class="todo-num">05</span><div><h3>Cross-scope data flow</h3><p>Bind named live extraction outputs from one app into later actions in another app without persisting those values in workflow or action caches.</p></div></div>
-    </div>
-  </section>
-
-  <footer><span>Canonical docs: <code>ARCHITECTURE.md</code> · <code>STAGEHAND-LEARNINGS.md</code> · <code>BACKEND-LIMITATIONS.md</code> · <code>TODOs.md</code></span><span>Detailed cache anatomy: <a href="CACHE-EXPLAINER.html">CACHE-EXPLAINER.html</a></span></footer>
-</main>
-<script>
-  const runs = {
-    miss: { badge:'MISS', className:'miss', text:'No artifact exists. Pi resolves the missing operation, and validated replay data is stored.', skipped:[] },
-    hit: { badge:'HIT', className:'', text:'Cached structure resolves against the current UI. Replay and live extraction complete with no Pi turn.', skipped:['model'] },
-    heal: { badge:'HEALED', className:'healed', text:'Cached structure is stale. Pi re-grounds only this step, and the cache replaces its replay artifact.', skipped:[] }
+        <section id="cache">
+            <div class="section-head">
+                <div>
+                    <h2>Cache</h2>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="cache-mechanism">
+                    <div class="cache-copy"><span class="label">Key → value</span>
+                        <h3 style="margin-top:10px">Semantic request → replayable artifact</h3>
+                        <ul>
+                            <li><b>Cached:</b> actions</li>
+                            <li><b>Key:</b> <code>sha256({ instruction, app, operationKind, schema | variableNames })</code></li>
+                            <li><b>Action value:</b> versioned JSON with a durable AX descriptor and supported replay
+                                method</li>
+                            <li><b>Not cached:</b> screenshots, live content, element handles, process/window IDs, or
+                                absolute coordinates</li>
+                        </ul>
+                    </div>
+                    <div class="json">
+                        <span class="label">.gui-cache/outlook/actions/&lt;sha256&gt;.json</span>
+                        <pre>{
+  "version": 1,
+  "instruction": "click Send",
+  "action": {
+    "version": 1,
+    "method": "click",
+    "target": {
+      "kind": "element",
+      "descriptor": {
+        "role": "AXButton",
+        "labelTokens": ["send"],
+        "actions": ["AXPress"]
+      }
+    },
+    "addressing": "accessibility",
+    "deliveryMode": "background"
   }
-  document.querySelectorAll('[data-run]').forEach((button) => button.addEventListener('click', () => {
-    const state = runs[button.dataset.run]
-    document.querySelectorAll('[data-run]').forEach((item) => { const active=item===button; item.classList.toggle('active',active); item.setAttribute('aria-selected',String(active)) })
-    document.querySelectorAll('[data-stage]').forEach((step) => { step.classList.toggle('skipped',state.skipped.includes(step.dataset.stage)); step.classList.toggle('heal',button.dataset.run==='heal'&&step.dataset.stage==='model') })
-    const badge=document.querySelector('#runBadge'); badge.textContent=state.badge; badge.className=`badge ${state.className}`.trim(); document.querySelector('#runText').textContent=state.text
-  }))
-  document.querySelectorAll('[data-cache]').forEach((button) => button.addEventListener('click', () => {
-    document.querySelectorAll('[data-cache]').forEach((item) => { const active=item===button; item.classList.toggle('active',active); item.setAttribute('aria-selected',String(active)) })
-    document.querySelectorAll('.cache-panel').forEach((panel) => panel.classList.toggle('active',panel.id===button.dataset.cache))
-  }))
-</script>
+}</pre>
+                    </div>
+                </div>
+                <div class="cache-replay">
+                    <span class="label">JSON → replay</span>
+                    <div class="replay-steps">
+                        <div><b>1 · Load</b>Hash the request and read the matching action JSON.</div>
+                        <div><b>2 · Resolve</b>Match its descriptor against a fresh AX snapshot.</div>
+                        <div><b>3 · Bind</b>Use the fresh element handle—or derive a point from its current frame.</div>
+                        <div><b>4 · Dispatch</b>Call the cached method once. If resolution is stale, ask Pi to replace the
+                            entry instead.</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <section id="false-hit">
+            <div class="section-head">
+                <div>
+                    <h2>Failure mode</h2>
+                </div>
+            </div>
+            <div class="panel run-view">
+                <h3 style="padding-bottom: 20px;">Every time when the app launches, UI might be different</h3>
+                <div class="failure-branches">
+                    <article class="failure-path expected">
+                        <h3>First run</h3>
+                        <div class="failure-node"><code>“Click the first Inbox email”</code></div>
+                        <div class="failure-arrow">↓</div>
+                        <div class="failure-node">Pi selects one concrete <code>AXCell</code></div>
+                        <div class="failure-arrow">↓</div>
+                        <div class="failure-node">Cache records <code>AXCells[6]</code></div>
+                        <span class="failure-verdict">CACHED</span>
+                    </article>
+                    <article class="failure-path bad">
+                        <h3>Second run</h3>
+                        <div class="failure-node"><code>“Click the first Inbox email”</code></div>
+                        <div class="failure-arrow">↓</div>
+                        <div class="failure-node">Open outlook (expanded sidebar, email list opened)</div>
+                        <div class="failure-arrow">↓</div>
+                        <div class="failure-node"><code>AXCells[6]</code> is no longer the first email, repeated healing</div>
+                        <span class="failure-verdict">FALSE HIT</span>
+                    </article>
+                </div>
+                <div class="run-summary"><span class="badge failure">FIX</span>
+                    <p>Cache <code>Message List → individual email rows → first</code>, not a global AXCell ordinal.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="backends">
+            <div class="section-head">
+                <div>
+                    <h2>Why not Simulang?</h2>
+                </div>
+            </div>
+            <article class="backend simulang"><span class="status preserve">PRESERVE</span>
+                <ul class="limits">
+                    <li><b>No background mouse clicks</b></li>
+                    <li><b>DFS revisits duplicate or cyclic Outlook AX nodes.</b></li>
+                    <li><b><code>maxNodes</code> can run out before reaching Message List.</b></li>
+                    <li><b><code>scoredSearch</code> can return hundreds of duplicate-looking global-best matches.</b></li>
+                    <li><b>Full app-root traversal is expensive; one probe was killed before returning.</b></li>
+                </ul>
+            </article>
+            <p style="margin-top:14px">Canonical evidence: <a href="BACKEND-LIMITATIONS.md"><code>BACKEND-LIMITATIONS.md</code></a></p>
+        </section>
+
+        <section id="todos">
+            <div class="section-head">
+                <div>
+                    <h2>Future Improvements</h2>
+                </div>
+            </div>
+            <div class="panel todo-list">
+                <div class="todo"><span class="todo-num">01</span>
+                    <div>
+                        <h3>Coordinate → durable AX identity</h3>
+                        <p>Hit-test a Pi-selected visual point back to an AX element. Cache it only when the element has
+                            durable identity and matches the visual target.</p>
+                    </div>
+                </div>
+                <div class="todo"><span class="todo-num">02</span>
+                    <div>
+                        <h3>One backend-independent <code>element.click()</code></h3>
+                        <p>Resolve fresh, prefer semantic AX action, otherwise click a validated point in the current
+                            frame.</p>
+                        <ul>
+                            <li>Do not assume AX press and coordinate click are equivalent.</li>
+                            <li>Account for focus, pointer movement, occlusion, scaling, and conversion.</li>
+                            <li>Never fall back after an uncertain AX dispatch.</li>
+                            <li>Use workflow risk and postconditions to decide whether fallback is safe.</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="todo"><span class="todo-num">03</span>
+                    <div>
+                        <h3>Bounded <code>see()</code></h3>
+                        <p>Return a compact AX view when small, or a screenshot when structure is huge. Prefer
+                            keyword-scoped AX search over asking a model to inspect an unbounded tree.</p>
+                    </div>
+                </div>
+                <div class="todo"><span class="todo-num">04</span>
+                    <div>
+                        <h3>Harden Simulang traversal</h3>
+                        <p>Use breadth-first search or a DFS-to-BFS fallback, deduplicate candidates, and surface
+                            node-budget exhaustion.</p>
+                    </div>
+                </div>
+                <div class="todo"><span class="todo-num">05</span>
+                    <div>
+                        <h3>Cross-scope data flow</h3>
+                        <p>Bind named live extraction outputs from one app into later actions in another app without
+                            persisting those values in workflow or action caches.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer><span>Canonical docs: <code>ARCHITECTURE.md</code> · <code>STAGEHAND-LEARNINGS.md</code> ·
+                <code>BACKEND-LIMITATIONS.md</code> · <code>TODOs.md</code></span><span>CUA cache mechanism is included
+                above.</span></footer>
+    </main>
+    <script>
+        const runs = {
+            miss: {badge: 'MISS', className: 'miss', text: 'Pi compiles the missing artifact. Actions cache after accepted dispatch, recipes after compilation and an application attempt, and plans only after output validation.', skipped: []},
+            hit: {badge: 'HIT', className: '', text: 'Cached structure resolves against fresh UI with no Pi turn. Live extraction can validate data; action acceptance alone is not outcome proof.', skipped: ['model']},
+            heal: {badge: 'HEALED', className: 'healed', text: 'Cached structure is stale before dispatch. Pi re-grounds only this step, and the replacement follows its artifact’s commit policy.', skipped: []}
+        }
+        document.querySelectorAll('[data-run]').forEach((button) => button.addEventListener('click', () => {
+            const state = runs[button.dataset.run]
+            document.querySelectorAll('[data-run]').forEach((item) => {const active = item === button; item.classList.toggle('active', active); item.setAttribute('aria-selected', String(active))})
+            document.querySelectorAll('[data-stage]').forEach((step) => {step.classList.toggle('skipped', state.skipped.includes(step.dataset.stage)); step.classList.toggle('heal', button.dataset.run === 'heal' && step.dataset.stage === 'model')})
+            const badge = document.querySelector('#runBadge'); badge.textContent = state.badge; badge.className = `badge ${state.className}`.trim(); document.querySelector('#runText').textContent = state.text
+        }))
+    </script>
 </body>
+
 </html>
